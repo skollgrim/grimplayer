@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=GrimPlayer
+Comment=MPD browser with artist, album and track panes
+Exec=omarchy-shell -q shell toggle skollgrim.grimplayer
+Terminal=false
+Type=Application
+Icon=utilities-audio
+Categories=AudioVideo;Audio;

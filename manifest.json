@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "skollgrim.grimplayer",
+  "name": "GrimPlayer",
+  "version": "1.0.0",
+  "author": "skollgrim",
+  "description": "MPD browser with artist, album and track panes, cover art and a now-playing strip",
+  "kinds": [
+    "service",
+    "panel"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "GrimPlayerMpd.qml",
+    "panel": "GrimPlayer.qml"
+  }
+}
