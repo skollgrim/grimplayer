@@ -5,6 +5,8 @@ track panes with cover art and a now-playing strip, written as a Quickshell
 plugin. It talks to MPD over its Unix socket and stays in sync by push, so
 nothing polls.
 
+![GrimPlayer](preview.png)
+
 ## What it does
 
 - **Three panes** — artists, albums for the selected artist, tracks for the
@@ -35,8 +37,6 @@ nothing polls.
 - Omarchy 4.x, with third-party plugin support (`omarchy plugin add`).
 - [MPD](https://www.musicpd.org/) with a Unix socket. The default location is
   `~/.mpd/socket`; set `GRIM_LIBRARY_MPD_SOCKET` to point somewhere else.
-- Hyprland rules, so the panel floats on its own workspace without gaps. Omarchy
-  ships Hyprland, so this is just config.
 
 ## Install
 
@@ -67,49 +67,6 @@ end)
 ```
 
 Pick a binding that is free on your machine — `ALT + M` is only a suggestion.
-
-### Hyprland rules
-
-Quickshell windows all share one app-id and `FloatingWindow` has no `appId`
-property to set, so the window title is the only handle these rules can match
-on. In `~/.config/hypr/hyprland.lua`:
-
-```lua
--- The window asks for fullscreen itself, so only placement belongs here: no
--- animation (the panes repaint on every MPD event), floating, and its own
--- special workspace so the toplevel does not land on whatever is active.
-o.window({ title = "GrimPlayer" }, { no_anim = true })
-o.window({ title = "GrimPlayer" }, { float = true })
-o.window({ title = "GrimPlayer" }, { workspace = "special:grimplayer" })
-```
-
-And in `~/.config/hypr/dropdowns.lua`, so the workspace has no gaps or border
-around it:
-
-```lua
-hl.workspace_rule({ workspace = "s[true]", gaps_in = 0, gaps_out = 0, no_border = true })
-```
-
-Do not park the workspace in `silent`: the shell drives visibility by calling
-`open()`/`close()`, so the window has to be the surface that activates the
-workspace when it is shown.
-
-### Full-bleed
-
-`ALT + F` style fullscreen does nothing visible, because the panel is already a
-fullscreen toplevel and the bar still sits over the first row. Route the key to
-the panel's own IPC instead — in `~/.config/hypr/bindings.lua`:
-
-```lua
-o.rebind("ALT + F", "Full screen", function()
-	local window = hl.get_active_window()
-	if window and window.title == "GrimPlayer" then
-		hl.exec_cmd("omarchy-shell -q grimplayer toggleFullbleed")
-	else
-		hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen" }))
-	end
-end)
-```
 
 ## Keys
 
