@@ -108,6 +108,13 @@ Item {
     // rather than one per pixel.
 
     readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/grimplayer/settings.json"
+    readonly property string stateDir: statePath.substring(0, statePath.lastIndexOf("/"))
+
+    // Quickshell.Io cannot make a directory, so the mkdir below has to run before
+    // the first write. Writes are blocked until it reports back rather than
+    // raced against it: on a first run the save would otherwise land in a
+    // directory that does not exist yet and be lost silently.
+    property bool stateDirReady: false
 
     FileView {
         id: stateFile
@@ -121,6 +128,29 @@ Item {
         // text() is still empty when the panes have already bound to the
         // defaults, and every stored setting silently loses to its default.
         blockLoading: true
+        blockWrites: !root.stateDirReady
+        // Write to a temporary file and rename it into place. The obvious way to
+        // write this -- `cat >` from a shell -- truncates first and writes second,
+        // so two saves close together, or a shell restart mid-write, could leave
+        // half a file behind. applyStored() would then meet unparseable JSON and
+        // quietly reset every setting to its default, which reads as "the panel
+        // forgot everything" rather than as the corruption it was. atomicWrites
+        // means a reader only ever sees a whole file.
+        atomicWrites: true
+    }
+
+    // `mkdir -p` in argv form, so no shell is involved: nothing to quote, and no
+    // JSON anywhere near a command line. It is idempotent, so running it on every
+    // start costs nothing once the directory exists. This is the only subprocess
+    // left in the plugin, and it makes a directory rather than doing any of the
+    // panel's work.
+    Process {
+        id: mkdirProc
+        running: true
+        command: ["mkdir", "-p", root.stateDir]
+        onExited: {
+            root.stateDirReady = true
+        }
     }
 
     // Coalesces bursts of changes -- a slider drag, or reset() walking every
@@ -151,13 +181,11 @@ Item {
             if (store[k] !== undefined) out[k] = store[k]
         }
         var body = JSON.stringify(out, null, 2)
-        var dir = root.statePath.substring(0, root.statePath.lastIndexOf("/"))
-        // The heredoc is quoted so neither the path nor the JSON is expanded by
-        // the shell; the JSON is passed as $1 and written with cat.
-        saveProc.command = ["bash", "-c",
-            "mkdir -p \"$1\" && cat > \"$2\" <<'GRIMJSON'\n" + body + "\nGRIMJSON",
-            "grimplayer-save", dir, root.statePath]
-        saveProc.running = true
+        // The same FileView that reads the file writes it back, so there is one
+        // code path for persistence rather than a native read beside a shell
+        // write. atomicWrites on the FileView is what makes this safe to call on
+        // every change.
+        stateFile.setText(body)
     }
 
     // Applies a stored object over the defaults. Unknown keys are ignored and
@@ -175,13 +203,6 @@ Item {
             else if (typeof current === "string" && typeof v === "string") store[k] = v
         }
     }
-
-    Process {
-        id: saveProc
-        running: false
-        command: []
-    }
-
 
     Component.onCompleted: {
         // Read synchronously: the panel mounts at shell startup and the panes
@@ -206,7 +227,7 @@ Item {
     readonly property bool typeaheadSearch: store.typeaheadSearch
     readonly property bool rowSeparators: store.rowSeparators
     readonly property bool focusGlow: store.focusGlow
-readonly property int borderWidth: store.borderWidth
+    readonly property int borderWidth: store.borderWidth
     readonly property bool coverBorder: store.coverBorder
     readonly property int coverBorderWidth: store.coverBorderWidth
     readonly property bool activeRowBorder: store.activeRowBorder

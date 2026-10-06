@@ -26,7 +26,6 @@ nothing polls.
   capitalised spellings, and the tag-derived `<artist> - <album>` / `<album>`
   names).
 - **Typeahead** — typing letters jumps the caret to the first matching row.
-- **Full-bleed mode** hides the bar so the panes use the whole screen.
 - **Settings card** (`?`) for sizes, fonts, borders, spacing and behaviour,
   persisted to `~/.local/state/grimplayer/settings.json`.
 - Follows the active Omarchy theme; every colour and size comes from the shell's
@@ -58,15 +57,46 @@ install -Dm644 extras/GrimPlayer.desktop ~/.local/share/applications/GrimPlayer.
 
 ### Opening it
 
-Give yourself a key. In `~/.config/hypr/bindings.lua`:
+GrimPlayer ships no keybinding, because which key opens it is a matter of taste.
+The shell exposes three verbs for it:
 
-```lua
-o.rebind("ALT + M", "GrimPlayer", function()
-	hl.exec_cmd("omarchy-shell -q shell toggle skollgrim.grimplayer")
-end)
+```bash
+omarchy-shell -q shell summon skollgrim.grimplayer   # open, or do nothing if open
+omarchy-shell -q shell toggle skollgrim.grimplayer   # open if closed, close if open
+omarchy-shell -q shell hide   skollgrim.grimplayer   # close
 ```
 
-Pick a binding that is free on your machine — `ALT + M` is only a suggestion.
+`summon` is the one to reach for from a launcher or a script: it is idempotent, so
+binding it to a key cannot accidentally toggle the panel shut. A keybinding is
+then a one-liner around whichever of the three you prefer.
+
+### Windowing
+
+GrimPlayer asks for no placement and no size. The window is an ordinary one, and
+nothing in the plugin overrides what the window manager decides to do with it.
+
+What that costs is a fallback: the panel has no size of its own to offer. The
+panes size themselves from the window width (0.26, 0.30, and the remainder for
+tracks), and a purely proportional layout has no way to state how large it would
+like to be. Given a size it fills it exactly.
+
+One detail worth knowing if anything needs to tell this window apart from
+others: Quickshell's `FloatingWindow` exposes no `appId`, so every Quickshell
+window reports the same class. The window title is therefore fixed at
+`"GrimPlayer"` and set in `GrimPlayer.qml`, because it is the most specific
+handle anything can match on.
+
+### Borderless
+
+Optional, and not a plugin setting: the panel draws no border and asks for no
+decorations or margins, so whatever surrounds the window comes from the window
+manager — gaps and a border on an ordinary window, nothing at all on a full-bleed
+one.
+
+If you want it frameless, ask the window manager rather than the plugin. Borders
+are usually droppable per window; gaps usually are not, and tend to be a
+per-workspace setting instead. Since the panel requests no geometry, a rule of
+that kind is free to fill the window or widen it without fighting anything here.
 
 ## Keys
 
@@ -102,8 +132,10 @@ bar or the volume slider, click the volume icon to mute.
   at the album boundary.
 - **No stored playlists and no queue view**, by design: the queue is always the
   tail of the library from wherever you are.
-- The panel assumes a top bar when it offsets its first row; a bottom bar will
-  overlap the now-playing strip.
+- **Without a sizing rule of some kind the panel comes up 100x100.** Its own
+  content is purely proportional, so it cannot state a size for itself; that is a
+  property of a proportional layout rather than something this plugin can work
+  around. See [Windowing](#windowing).
 
 ## Development
 

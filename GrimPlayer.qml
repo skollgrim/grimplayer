@@ -1,21 +1,19 @@
 // GrimPlayer panel: the MPD media-library browser.
 //
-// A full-bleed toplevel on special:grimplayer, dropped over whatever workspace
-// was in front. The manifest sets keepLoaded, so the shell mounts this once at
-// startup and it stays mounted; the keybinding asks the shell to toggle this
-// panel's id, and the shell calls open()/close() below. See the host contract
-// comment further down for why visibility is owned here instead of by flipping
-// the special workspace from the keybinding.
+// An ordinary resizable window. It asks the compositor for no placement at all:
+// where it floats, tiles or lands, and whether the bar overlaps it, is the window
+// manager's business, so this file needs no compositor rules to work and none of
+// the user's. It sizes itself as a fraction of the monitor it opens on, so there
+// is nothing screen-shaped to hardcode either.
 //
-// The content is inset below the bar rather than drawn under it: the bar is a
-// layer-shell panel, so it floats above this window and would otherwise sit on
-// top of the first row. ALT + F toggles a full-bleed mode that hides the bar and
-// drops the inset, so the panes start at the top edge.
+// The manifest sets keepLoaded, so the shell mounts this once at startup and it
+// stays mounted; something asks the shell to toggle this panel's id, and the shell
+// calls open()/close() below. See the host contract comment further down for why
+// visibility is owned here instead of by flipping a special workspace.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Io
 import qs.Commons
 
 // The sibling components live beside this file, so the directory needs to be on
@@ -53,33 +51,6 @@ Item {
             root.mpd.adoptStoredMode(prefs.repeatMode)
     }
 
-    readonly property int liveBarSize: root.shell && root.shell.bar && !root.shell.bar.barHidden
-        ? Math.max(0, root.shell.bar.barSize) : Style.bar.sizeHorizontal
-
-    // ---- full-bleed ----
-    // ALT + F while this panel is focused hides the bar and pulls the content up
-    // to the top edge; hypr/bindings.lua routes the key here instead of the
-    // generic Hyprland fullscreen, which only toggled a state that looked the
-    // same because the window is already a fullscreen toplevel. The bar is a
-    // layer-shell surface, so it cannot be covered by the window; it has to be
-    // toggled off.
-    property bool fullBleed: false
-
-    // The bar flag persists, so remember what the user had on entry and restore
-    // that on exit rather than always leaving the bar shown.
-    property bool barWasHidden: false
-
-    function setFullBleed(on) {
-        if (on === fullBleed) return
-        if (on && root.shell && root.shell.bar)
-            barWasHidden = root.shell.bar.barHidden === true
-        fullBleed = on
-        // bar-off is the hidden flag: omarchy-toggle-bar on hides, off shows.
-        var wantHidden = on ? true : barWasHidden
-        barToggle.command = ["bash", "-c", "omarchy-toggle-bar " + (wantHidden ? "on" : "off")]
-        barToggle.running = true
-    }
-
     // ---- persisted preferences ----
     //
     // A child rather than a property of the window: it has no visual presence,
@@ -90,6 +61,21 @@ Item {
     Cfg.GrimPlayerConfig {
         id: prefs
     }
+
+    // Read here rather than in PaneRow because only this file imports Quickshell,
+    // and a binding that names an unimported module fails silently to 0 -- which
+    // is what a zero divider quantum does to the layout. Zero until the shell
+    // reports a screen, at which point PaneRow's quantum resolves.
+    readonly property real pixelRatio: {
+        var screens = Quickshell.screens
+        return screens && screens.length > 0 ? (screens[0].devicePixelRatio || 0) : 0
+    }
+
+    // Height of the now-playing strip. Named because two overlays sit clear of it
+    // and have to agree with it: the typeahead readout and the MPD error banner.
+    // They used to each repeat the number, which is how a change to the strip's
+    // height would have left the error banner sitting on top of it.
+    readonly property int stripHeight: Math.round(84 * prefs.uiScale)
 
     // ---- selection ----
     property string pane: "artists"
@@ -115,16 +101,15 @@ Item {
     // The shell owns whether this panel is open: it tracks that in openPanelIds
     // and calls open()/close() accordingly.
     //
-    // This used to be driven the other way round, by dispatching Hyprland's
-    // togglespecialworkspace from the keybinding. That only ever moved the
-    // surface in and out of the special workspace and never told the panel
-    // anything, which worked only for as long as the window was permanently
-    // visible. It failed permanently on the first real close: ALT + Q destroys
-    // the surface, Hyprland keeps special:grimplayer marked active because the
-    // hidden surface still belongs to it, and every press after that toggled a
-    // workspace with nothing in it. Owning visibility here fixes both halves --
-    // the panel comes back in one press, and closing it leaves no special
-    // workspace behind to toggle.
+    // This used to be driven the other way round, by having the launch
+    // binding toggle a compositor special workspace. That only ever moved the
+    // surface in and out of the workspace and never told the panel anything, which
+    // worked only for as long as the window was permanently visible. It failed
+    // permanently on the first real close: the compositor destroys the surface,
+    // but keeps the workspace marked active because the hidden surface still
+    // belongs to it, and every press after that toggled a workspace with nothing
+    // in it. Owning visibility here fixes both halves -- the panel comes back in
+    // one press, and closing it leaves no workspace behind to toggle.
     property bool closingFromHost: false
 
     function open(payloadJson) {
@@ -430,49 +415,38 @@ Item {
         title: "GrimPlayer"
         color: Color.background
         // Starts closed; the shell summons the panel on demand. Starting visible
-        // meant the surface outlived the workspace it was pinned to, which is what
-        // left special:grimplayer stuck as active after a close.
+        // meant the surface outliving whatever it was pinned to, which is what
+        // left its workspace stuck as active after a close.
         visible: false
-        fullscreen: true
 
         onVisibleChanged: {
-            // Hidden by something other than close() -- ALT + Q closing the
-            // toplevel from the compositor side. The host has to be told, or it
-            // keeps reporting the panel as open and the next toggle would hide it
-            // again instead of showing it.
+            // Hidden by something other than close() -- the window manager
+            // destroying the toplevel, which is its own decision and not one this
+            // panel asked for. The host has to be told, or it keeps reporting the
+            // panel as open and the next request to show it would hide it again
+            // instead.
             if (!visible && !root.closingFromHost && root.shell && root.manifest
                     && typeof root.shell.hide === "function") {
                 root.shell.hide(root.manifest.id)
             }
-            // Never leave the bar hidden behind a closed panel.
-            if (!visible) root.setFullBleed(false)
         }
 
-        // The panes size themselves from window.width (0.26/0.30/0.44 of it),
-        // so with no explicit size the window's implicit size is a loop:
-        // content <-> parent. Qt resolves that loop to the 100x100 default, and
-        // the panel came up as a 100x100 window in the middle of the screen --
-        // no rows reachable by mouse, and no room for the keyboard handler.
-        // fullscreen alone does not set the surface size here, so the monitor
-        // geometry is bound in explicitly.
-        readonly property var screenInfo: {
-            var list = Quickshell.screens
-            if (!list || list.length === 0) return null
-            if (screen) {
-                for (var i = 0; i < list.length; i++) {
-                    if (list[i].name === screen) return list[i]
-                }
-            }
-            return list[0]
-        }
-        implicitWidth: screenInfo ? screenInfo.width : 1920
-        implicitHeight: screenInfo ? screenInfo.height : 1080
+        // No size is requested. The panes size themselves from window.width
+        // (0.26/0.30 and whatever is left over), so any size derived from the
+        // content would be a loop -- content <-> parent -- which Qt resolves to
+        // the 100x100 default. Stating a number here would only be one more
+        // opinion about geometry, and the compositor has better information than
+        // QML does: it knows the monitor, the work area and the user's own
+        // layout rules. A window rule that maximizes or sizes this panel overrides
+        // anything stated here anyway, so the honest thing is to ask for nothing
+        // and let the panes follow whatever size comes back.
+        //
+        // A window rule is therefore not required to *work*, only to look how you
+        // want: without one the compositor picks the size itself, which is what
+        // any other application gets.
 
         ColumnLayout {
             anchors.fill: parent
-            // Full-bleed removes the bar inset along with the bar itself, so the
-            // panes start at the very top edge.
-            anchors.topMargin: root.fullBleed ? 0 : root.liveBarSize
             spacing: 0
 
             // ---- panes ----
@@ -485,6 +459,7 @@ Item {
                 // pinned to 1px whatever the setting said.
                 prefs: prefs
                 paneWidth: window.width
+                pixelRatio: root.pixelRatio
                 activePane: root.pane
                 artistList: root.artistList
                 albumList: root.albumList
@@ -514,7 +489,7 @@ Item {
             // ---- now playing ----
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.round(84 * prefs.uiScale)
+                Layout.preferredHeight: root.stripHeight
                 color: Qt.rgba(0, 0, 0, 0.35)
 
                 RowLayout {
@@ -761,7 +736,7 @@ Item {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.rightMargin: Math.round(20 * prefs.uiScale)
-            anchors.bottomMargin: Math.round(84 * prefs.uiScale) + Math.round(20 * prefs.uiScale)
+            anchors.bottomMargin: root.stripHeight + Math.round(20 * prefs.uiScale)
             width: Math.round(prefs.coverSize * prefs.uiScale)
             height: Math.round(prefs.coverSize * prefs.uiScale)
         }
@@ -774,7 +749,7 @@ Item {
             anchors.left: parent.left
             anchors.bottom: parent.bottom
             anchors.leftMargin: Math.round(12 * prefs.uiScale)
-            anchors.bottomMargin: Math.round(84 * prefs.uiScale) + Math.round(12 * prefs.uiScale)
+            anchors.bottomMargin: root.stripHeight + Math.round(12 * prefs.uiScale)
             visible: root.typeaheadBuffer.length > 0
             width: typeaheadReadout.implicitWidth + Math.round(20 * prefs.uiScale)
             height: typeaheadReadout.implicitHeight + Math.round(12 * prefs.uiScale)
@@ -801,21 +776,42 @@ Item {
 
         // Failure has to be loud: a player that silently shows an empty library
         // is indistinguishable from an empty one.
+        //
+        // It shares the typeahead's band above the now-playing strip -- the one
+        // part of the window nothing else competes for, and the part least likely
+        // to be over a row the user is reading -- but centred rather than tucked
+        // into the artists pane's corner, because this is a statement about the
+        // whole panel and not about the caret. The band comes from stripHeight so
+        // the two cannot drift apart.
         Rectangle {
-            anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.topMargin: (root.fullBleed ? 0 : root.liveBarSize) + Math.round(12 * prefs.uiScale)
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.stripHeight + Math.round(12 * prefs.uiScale)
             visible: root.mpd !== null && (!root.mpd.connected || root.mpd.lastError !== "")
             width: errorText.implicitWidth + Math.round(32 * prefs.uiScale)
-            height: Math.round(32 * prefs.uiScale)
+            height: errorText.implicitHeight + Math.round(12 * prefs.uiScale)
             radius: Math.round(6 * prefs.uiScale)
-            color: Util.alpha(Color.urgent, 0.92)
+            // Built like the typeahead rather than as a filled slab: a low wash of
+            // the theme's own alert token, a firmer edge on the same token, and
+            // readable text. The previous urgent fill at 0.92 under hardcoded white
+            // was the one part of this panel that ignored the theme, which is why
+            // it read as a system dialog dropped onto a themed surface -- and why a
+            // theme with a paler alert colour turned it into a flat pink block.
+            //
+            // The text stays in foreground rather than urgent: `urgent` is allowed
+            // to be a dark muted red (it defaults to one), so tinting the label
+            // with it too could leave the text unreadable on a dark theme. The
+            // tint and the border carry the urgency, and they use the same two
+            // stops the typeahead already uses.
+            color: Util.alpha(Color.urgent, 0.18)
+            border.width: 1
+            border.color: Util.alpha(Color.urgent, 0.6)
 
             Text {
                 id: errorText
                 anchors.centerIn: parent
                 text: root.mpd && root.mpd.lastError !== "" ? "MPD: " + root.mpd.lastError : "MPD not connected"
-                color: "#ffffff"
+                color: Color.foreground
                 font.pixelSize: Math.round((Style.font.caption + prefs.fontCaption) * prefs.uiScale)
             }
         }
@@ -1035,25 +1031,5 @@ Item {
         interval: 800
         repeat: false
         onTriggered: root.clearTypeahead()
-    }
-
-    // Bar visibility is a flag file owned by omarchy-toggle-bar, not a property
-    // of the shell, so full-bleed drives it through the command rather than
-    // reaching into the bar object.
-    Process {
-        id: barToggle
-        running: false
-        command: []
-    }
-
-    // ALT + F, routed here by hypr/bindings.lua when this panel is the active
-    // window. The panel stays mounted while hidden (manifest keepLoaded), so the
-    // handler exists even before the first open.
-    IpcHandler {
-        target: "grimplayer"
-
-        function toggleFullbleed() {
-            root.setFullBleed(!root.fullBleed)
-        }
     }
 }

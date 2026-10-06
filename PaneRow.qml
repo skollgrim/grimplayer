@@ -60,13 +60,43 @@ Item {
     // made the artists|albums rule and the albums|tracks rule look mismatched
     // even though both were handed the same thickness.
     //
-    // Four logical pixels is the smallest multiple that lands on a whole output
-    // pixel for any quarter-step scale (1, 1.25, 1.5, 1.75, 2). Pinning the first
-    // pane to it puts the first rule's left edge on the grid, and giving the
-    // second pane the rule's thickness back puts the second rule's left edge
-    // there too. Both rules then start phase-aligned with the same width and
-    // measure identically at every border width.
-    readonly property int deviceQuantum: 4
+    // The quantum is the smallest whole number of logical pixels that lands on a
+    // whole output pixel: for a device pixel ratio r, the smallest n with n*r
+    // integral. At 1.25 that is 4 (4 * 1.25 = 5), and 4 is also the answer for
+    // every other quarter-step scale -- 1, 1.5, 1.75, 2 -- which is why a hardcoded
+    // 4 looked correct and was only ever correct by luck. A 1.3 display wants 10
+    // and a 4/3 one wants 3; handing either of them 4 puts the rules back off the
+    // grid and the mismatch comes straight back.
+    //
+    // Read from the screen the window is on, falling back to 4 when nothing
+    // reports a ratio, which is the quarter-step case the old constant assumed.
+    // Pinning the first pane to the quantum puts the first rule's left edge on the
+    // grid, and giving the second pane the rule's thickness back puts the second
+    // rule's left edge there too. Both rules then start phase-aligned with the
+    // same width and measure identically at every border width.
+    // Read from the panel rather than from Quickshell here: this file does not
+    // import Quickshell, and referencing `Quickshell` from it is a ReferenceError
+    // inside a binding, which does not fail loudly -- the property is simply left
+    // at 0. A zero quantum then divides to Infinity inside alignQuantum, which
+    // hands NaN to Layout.preferredWidth and collapses two of the three panes to
+    // nothing. So the panel passes the ratio in, the same way it passes uiScale,
+    // and a zero default means "not told yet" rather than "quantum of zero".
+    property real pixelRatio: 0
+
+    readonly property int deviceQuantum: {
+        var ratio = root.pixelRatio
+        if (!ratio || ratio <= 0) return 4
+        // The tolerance is what lets a ratio that has no finite binary form --
+        // 1.1, 4/3 -- land on its answer, since n * ratio lands a rounding error
+        // away from the whole number rather than on it. The cap is what keeps an
+        // exotic ratio with a huge denominator (1.234) from pinning the panes to
+        // some enormous quantum; it falls back instead.
+        for (var n = 1; n <= 64; n++) {
+            var scaled = n * ratio
+            if (Math.abs(scaled - Math.round(scaled)) < 0.000001) return n
+        }
+        return 4
+    }
     // Whole logical pixels on purpose: the layout re-quantises item sizes to
     // them, so a fractional thickness would just be rounded away again.
     //

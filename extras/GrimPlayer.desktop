@@ -1,7 +1,9 @@
 [Desktop Entry]
 Name=GrimPlayer
 Comment=MPD browser with artist, album and track panes
-Exec=omarchy-shell -q shell toggle skollgrim.grimplayer
+# summon rather than toggle: a launcher entry that toggles means a second click
+# closes the panel again, which is not what clicking an icon twice should do.
+Exec=omarchy-shell -q shell summon skollgrim.grimplayer
 Terminal=false
 Type=Application
 Icon=utilities-audio
