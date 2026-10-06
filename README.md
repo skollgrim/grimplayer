@@ -128,8 +128,9 @@ In the settings card: arrows or `hjkl` move, `Enter` toggles a switch or opens a
 slider, `←` `→` (or `h` `l`) adjust the open slider, `g` / `G` jump to an end,
 `R` resets everything, `Esc` steps back out and `Q` closes.
 
-The mouse works too: click a row to activate it, click a setting to change it,
-drag the seek bar or the volume slider, click the volume icon to mute.
+The mouse works too: click a row to select it and move the caret into the next
+pane (playback still needs `Enter`), click a setting to change it, drag the seek
+bar or the volume slider, click the volume icon to mute.
 
 ## Notes and limitations
 
