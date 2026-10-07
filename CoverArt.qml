@@ -61,7 +61,7 @@ Item {
     // same kind of thing: something derived from the library that should survive a
     // shell restart without being recomputed. Keyed by album rather than by track,
     // since every track on an album carries the same picture.
-    readonly property string cacheDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/grimplayer/covers"
+    readonly property string cacheDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/skollgrim.grimplayer/covers"
 
     // FNV-1a. Only has to be stable and well spread, not cryptographic: a collision
     // would mean one album showing another's artwork, which is vanishingly unlikely

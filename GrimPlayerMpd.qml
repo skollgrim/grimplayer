@@ -466,7 +466,7 @@ Item {
     // from the file directly -- but only ever once per album, then kept.
     readonly property string countryStatePath: (
         (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state"))
-        + "/grimplayer/countries.json"
+        + "/skollgrim.grimplayer/countries.json"
     )
     property var countryCache: ({})
     property string playingCountryDir: ""
@@ -812,7 +812,7 @@ Item {
     Process {
         id: countryMkdir
         command: ["mkdir", "-p", (Quickshell.env("XDG_STATE_HOME")
-            || (Quickshell.env("HOME") + "/.local/state")) + "/grimplayer"]
+            || (Quickshell.env("HOME") + "/.local/state")) + "/skollgrim.grimplayer"]
         onExited: root.countriesDirReady = true
     }
 

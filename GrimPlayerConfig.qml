@@ -108,7 +108,7 @@ Item {
     // Every write goes through saveSoon() so a slider drag is one file write
     // rather than one per pixel.
 
-    readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/grimplayer/settings.json"
+    readonly property string statePath: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/skollgrim.grimplayer/settings.json"
     readonly property string stateDir: statePath.substring(0, statePath.lastIndexOf("/"))
 
     // Quickshell.Io cannot make a directory, so the mkdir below has to run before

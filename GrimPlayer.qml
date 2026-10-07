@@ -39,7 +39,7 @@ Item {
     // map read, so this binding re-evaluates and picks the service up whenever it
     // appears. nosignal.omasend does the same thing and seeds itself from
     // onSvcChanged for the same reason.
-    readonly property var selfId: root.manifest && root.manifest.id ? root.manifest.id : "grimplayer"
+    readonly property var selfId: root.manifest && root.manifest.id ? root.manifest.id : "skollgrim.grimplayer"
     readonly property var mpd: root.shell && typeof root.shell.serviceFor === "function"
         ? root.shell.serviceFor(root.selfId)
         : root.service
@@ -1125,7 +1125,7 @@ Item {
     // be opened on whatever is selected without the panel having to be focused
     // first. This is what the desktop binding calls.
     IpcHandler {
-        target: "grimplayer"
+        target: "skollgrim.grimplayer"
         function editTags(): void {
             root.openTagEditor()
         }

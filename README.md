@@ -26,10 +26,10 @@ nothing polls.
   capitalised spellings, and the tag-derived `<artist> - <album>` / `<album>`
   names). An album with nothing beside the tracks falls back to the artwork
   embedded in the file itself, extracted once with `ffmpeg` and cached under
-  `~/.local/state/grimplayer/covers/`.
+  `~/.local/state/skollgrim.grimplayer/covers/`.
 - **Typeahead** — typing letters jumps the caret to the first matching row.
 - **Settings card** (`?`) for sizes, fonts, borders, spacing and behaviour,
-  persisted to `~/.local/state/grimplayer/settings.json`.
+  persisted to `~/.local/state/skollgrim.grimplayer/settings.json`.
 - Follows the active Omarchy theme; every colour and size comes from the shell's
   own `Style`/`Color` tokens.
 
@@ -133,7 +133,7 @@ pane, the whole album in the albums pane, or everything by that artist in the
 artists pane. It can also be opened without focusing the panel:
 
 ```sh
-omarchy-shell grimplayer editTags
+omarchy-shell skollgrim.grimplayer editTags
 ```
 
 Each field shows what the selected tracks agree on. A field they disagree about
@@ -168,7 +168,7 @@ Some things to know:
   they are reported as skipped rather than guessed at.
 - **Country is not a tag MPD reports.** MPD's song model has no country field at
   all, so the value is read from the file directly — once per album, then kept in
-  `~/.local/state/grimplayer/countries.json`, including when the answer is
+  `~/.local/state/skollgrim.grimplayer/countries.json`, including when the answer is
   "no country here". Editing it through GrimPlayer updates that cache.
 - The tag is Picard's, which is what most libraries are already tagged with:
   `MusicBrainz Album Release Country` on MP3, and both
