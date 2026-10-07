@@ -733,6 +733,7 @@ Item {
             uiScale: prefs.uiScale
             coverBorder: prefs.coverBorder
             coverBorderWidth: prefs.coverBorderWidth
+            placeholder: prefs.coverPlaceholder
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.rightMargin: Math.round(20 * prefs.uiScale)

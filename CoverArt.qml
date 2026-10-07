@@ -189,6 +189,13 @@ Item {
     property bool coverBorder: true
     property int coverBorderWidth: 1
 
+    // Whether an album with no artwork anywhere shows the disc at all. Off leaves
+    // the corner empty rather than standing in a graphic for a cover that does
+    // not exist -- which is what this used to do unconditionally, before the
+    // disc was drawn at all. Real artwork always shows regardless: this is only
+    // about the absence of a cover.
+    property bool placeholder: true
+
     // Album directory whose cover is currently displayed. Used to skip redundant
     // probes; see refresh().
     property string loadedDir: ""
@@ -316,10 +323,12 @@ Item {
     // keeps it a cover rather than a thumbnail while still leaving room for the
     // tracks list beside it); the panel sets width and height from it.
 
-    // Always on screen. An album with no cover on disk used to hide the whole
-    // frame, which read as a hole punched in the pane. The frame now falls back
-    // to a placeholder instead, so "no artwork" looks deliberate.
-    visible: true
+    // On screen whenever there is something to show: real artwork, or the disc when
+    // an album has none and the placeholder is left on. With the placeholder off
+    // and no artwork, the whole frame goes -- empty corner rather than a graphic
+    // standing in for a cover that does not exist, which is how this behaved
+    // before the disc was drawn.
+    visible: root.placeholder || art.status === Image.Ready
 
     // Outward border: a larger rounded rectangle behind the artwork, so the
     // visible ring sits on the dark pane background rather than on the image.

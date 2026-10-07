@@ -64,6 +64,7 @@ Item {
         // ring has its own slider so the two never drag each other along.
         property int borderWidth: 1
         property bool coverBorder: true
+        property bool coverPlaceholder: true
         property int coverBorderWidth: 1
 
         // Thicker frame around the row the caret is on.
@@ -171,7 +172,7 @@ Item {
         // Only real properties, not the id or the functions hanging off it.
         var keys = ["wrapAround", "seekThickness", "albumYears", "playingHighlight",
                     "vimKeys", "rowSpacing", "typeaheadSearch", "rowSeparators",
-                    "focusGlow", "borderWidth", "coverBorder",
+                    "focusGlow", "borderWidth", "coverBorder", "coverPlaceholder",
                     "coverBorderWidth", "activeRowBorder", "repeatMode", "coverSize",
                     "uiScale", "iconSize",
                     "fontTitle", "fontSubtitle", "fontBody", "fontBodySmall",
@@ -229,6 +230,7 @@ Item {
     readonly property bool focusGlow: store.focusGlow
     readonly property int borderWidth: store.borderWidth
     readonly property bool coverBorder: store.coverBorder
+    readonly property bool coverPlaceholder: store.coverPlaceholder
     readonly property int coverBorderWidth: store.coverBorderWidth
     readonly property bool activeRowBorder: store.activeRowBorder
     readonly property int repeatMode: store.repeatMode
@@ -340,6 +342,16 @@ Item {
             get: function () { return store.borderWidth },
             set: function (v) { store.borderWidth = v },
             format: function (v) { return v + " px" }
+        },
+        {
+            key: "coverPlaceholder",
+            label: "Placeholder art",
+            hint: "Show a CD when the album has no artwork, or leave the space empty",
+            options: [true, false],
+            defaultValue: true,
+            get: function () { return store.coverPlaceholder },
+            set: function (v) { store.coverPlaceholder = v },
+            format: root.boolText
         },
         {
             key: "coverBorderWidth",
