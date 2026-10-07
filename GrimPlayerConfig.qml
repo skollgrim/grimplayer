@@ -413,6 +413,16 @@ Item {
             format: function (v) { return (v * 100).toFixed(0) + "%" }
         },
         {
+            key: "fontSubtitle",
+            label: "Font size in panes",
+            hint: "Row text and track times, as an offset from the theme",
+            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
+            defaultValue: 0,
+            get: function () { return store.fontSubtitle },
+            set: function (v) { store.fontSubtitle = v },
+            format: root.deltaText
+        },
+        {
             key: "fontTitle",
             label: "Font size playing song",
             hint: "Now playing song title, as an offset from the theme",
@@ -423,18 +433,8 @@ Item {
             format: root.deltaText
         },
         {
-            key: "fontSubtitle",
-            label: "Font size for items",
-            hint: "Row text and track times, as an offset from the theme",
-            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
-            defaultValue: 0,
-            get: function () { return store.fontSubtitle },
-            set: function (v) { store.fontSubtitle = v },
-            format: root.deltaText
-        },
-        {
             key: "fontBody",
-            label: "Font artist and time",
+            label: "Font size artist and time",
             hint: "Artist and the elapsed/total time, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
             defaultValue: 0,
