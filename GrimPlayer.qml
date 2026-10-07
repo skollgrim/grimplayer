@@ -767,9 +767,10 @@ Item {
                 text: root.typeaheadBuffer
                 // Accent, matching how the settings card marks a live value.
                 color: Color.accent
-                // Body rather than caption: at caption this was the smallest text
-                // in the panel, which made a transient indicator easy to miss.
-                font.pixelSize: Math.round(Style.font.body * prefs.uiScale)
+                // Subtitle rather than body: one step up from the panel's default
+                // text, because this is a transient readout that has to be legible
+                // in the corner while the eye is three panes away.
+                font.pixelSize: Math.round(Style.font.subtitle * prefs.uiScale)
                 font.family: Style.font.family
             }
         }
@@ -812,7 +813,11 @@ Item {
                 anchors.centerIn: parent
                 text: root.mpd && root.mpd.lastError !== "" ? "MPD: " + root.mpd.lastError : "MPD not connected"
                 color: Color.foreground
-                font.pixelSize: Math.round((Style.font.caption + prefs.fontCaption) * prefs.uiScale)
+                // bodySmall, one step up from caption: this is a status line that
+                // has to be read at a glance, and caption was the smallest text in
+                // the panel. The user offset still applies on top, so anyone who
+                // wants it larger from the settings card can have it.
+                font.pixelSize: Math.round((Style.font.bodySmall + prefs.fontCaption) * prefs.uiScale)
             }
         }
 

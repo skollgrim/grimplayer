@@ -21,10 +21,12 @@ nothing polls.
 - **Album repeat** is a third repeat mode. MPD's repeat flag repeats whatever
   the queue holds, so this mode narrows the queue to the playing album and
   restarts it when it runs out.
-- **Cover art** is read from the album's own directory, with a probe list
-  (`cover.jpg`, `folder.jpg`, `cover.png`, `front.jpg`, `album.jpg`, the
+- **Cover art** is looked for in the album's own directory first, with a probe
+  list (`cover.jpg`, `folder.jpg`, `cover.png`, `front.jpg`, `album.jpg`, the
   capitalised spellings, and the tag-derived `<artist> - <album>` / `<album>`
-  names).
+  names). An album with nothing beside the tracks falls back to the artwork
+  embedded in the file itself, extracted once with `ffmpeg` and cached under
+  `~/.local/state/grimplayer/covers/`.
 - **Typeahead** — typing letters jumps the caret to the first matching row.
 - **Settings card** (`?`) for sizes, fonts, borders, spacing and behaviour,
   persisted to `~/.local/state/grimplayer/settings.json`.
@@ -36,6 +38,8 @@ nothing polls.
 - Omarchy 4.x, with third-party plugin support (`omarchy plugin add`).
 - [MPD](https://www.musicpd.org/) with a Unix socket. The default location is
   `~/.mpd/socket`; set `GRIM_LIBRARY_MPD_SOCKET` to point somewhere else.
+- Optional, and only for artwork that is inside the files: `ffmpeg`. Albums with
+  an image beside the tracks never need it.
 
 ## Install
 
@@ -121,11 +125,14 @@ bar or the volume slider, click the volume icon to mute.
 
 ## Notes and limitations
 
-- **Cover art has to be a file next to the tracks.** Embedded/tagged artwork is
-  not read and MPD's `albumart` plugin is not used, so a library tagged by Picard
-  or beets gets the placeholder. The music directory is assumed to be `~/Music`
-  (honouring `XDG_MUSIC_DIR` when it is exported), which should match MPD's
-  `music_directory`.
+- **Embedded artwork needs `ffmpeg`, and is always the second choice.** MPD can
+  serve it (`albumart`), but this plugin talks to MPD over a text socket, and a
+  JPEG does not survive that decoding, so the file is handed to `ffmpeg` instead.
+  Without it, an album with no sidecar image keeps the placeholder exactly as
+  before. Where both exist, the sidecar wins — see
+  [`CoverArt.qml`](CoverArt.qml) for why.
+- **The music directory** is assumed to be `~/Music`, honouring `XDG_MUSIC_DIR`
+  when it is exported, which should match MPD's `music_directory`.
 - **Typeahead accepts ASCII letters and digits plus `æøåÆØÅ`.** Widen the regex
   at the bottom of the key handler in `GrimPlayer.qml` for other scripts.
 - **Album repeat is client-side**, so there is a fraction of a second of silence
