@@ -354,43 +354,53 @@ Item {
             maskThresholdMin: 0.5
             maskSpreadAtMin: 0.02
         }
-        color: Util.alpha(Color.foreground, 0.015)
+        // Opaque, and in the panel's own background colour, so the frame behind this
+        // shows as nothing but its rim. The frame is a filled rectangle rather than
+        // an outline -- the artwork is meant to cover its centre and leave only the
+        // ring -- which meant that with no artwork its fill showed straight through
+        // and the placeholder sat on a pale slab, which is what made it read as a
+        // lit square rather than as a CD on the pane. It also gives the centre hole
+        // something true to be a hole in.
+        color: Color.background
 
-        // Shown until real art is Ready, and permanently when the album has
-        // none. Built out of `muted` rather than `foreground`, and that is the whole
-        // trick: the placeholder is the one element here never meant to be read, and
-        // `foreground` is the theme's text colour -- bright by design, so anything
-        // drawn in it at a visible strength pulls the eye towards an empty square.
-        // Muted is the hue the panel already uses for de-emphasised text, so the
-        // placeholder sits in the palette at every strength and still reads correctly
-        // in a light theme, where a white overlay would punch a pale card into it.
-        Rectangle {
+        // Shown until real art is Ready, and permanently when the album has none.
+        // A CD sitting on the pane, drawn as a circle and nothing else: the earlier
+        // version washed the whole square with a gradient, and that square was the
+        // problem -- it made the placeholder read as a lit tile with a faint circle
+        // on it rather than as a disc. Only the disc is painted now, and nothing
+        // behind it.
+        //
+        // Every tone is `muted`, which is the hue the panel already uses for
+        // de-emphasised text. `foreground` is the theme's text colour, bright by
+        // design, so anything drawn in it at a strength you can see pulls the eye
+        // towards an empty shape -- and the placeholder is the one element here
+        // never meant to be read.
+        // An Item, not a Rectangle: this only exists to centre the disc, and a
+        // Rectangle with no colour of its own falls back to opaque white. It was a
+        // gradient until recently, which masked that default.
+        Item {
             anchors.fill: parent
             visible: art.status !== Image.Ready
 
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Util.alpha(Color.muted, 0.10) }
-                GradientStop { position: 1.0; color: Util.alpha(Color.muted, 0.03) }
-            }
-
             Rectangle {
                 anchors.centerIn: parent
-                width: Math.round(parent.width * 0.60)
+                width: Math.round(parent.width * 0.76)
                 height: width
                 radius: width / 2
-                color: Util.alpha(Color.muted, 0.07)
+                color: Util.alpha(Color.muted, 0.05)
                 border.width: 1
                 border.color: Util.alpha(Color.muted, 0.16)
 
-                // Label. A trace of accent, low enough that it tints the
-                // placeholder rather than competing with the artwork it stands in
-                // for, and still themes with everything else.
+                // The spindle hole, which is what makes a circle read as a CD rather
+                // than as a dot. Punched back out to the panel background rather
+                // than tinted: a centre lighter than the disc looks like a spot
+                // printed on it, which is what the old accent dot came across as.
                 Rectangle {
                     anchors.centerIn: parent
-                    width: Math.round(parent.width * 0.28)
+                    width: Math.round(parent.width * 0.15)
                     height: width
                     radius: width / 2
-                    color: Util.alpha(Color.accent, 0.05)
+                    color: Color.background
                 }
             }
         }
