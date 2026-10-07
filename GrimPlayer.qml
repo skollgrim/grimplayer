@@ -14,6 +14,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 
 // The sibling components live beside this file, so the directory needs to be on
@@ -315,6 +316,51 @@ Item {
         else if (pane === "albums") pane = "tracks"
     }
 
+    // ---- tag editing ----
+    //
+    // What a tag edit applies to is whatever the caret is sitting on, which is the
+    // same three levels the browser is already built from: one track in the tracks
+    // pane, the whole album in the albums pane, every track by that artist across
+    // their albums in the artists pane. There is no separate selection to keep in
+    // step with the caret, and no way for the two to disagree about what is
+    // selected.
+    property var tagSongs: []
+    property bool tagOpen: false
+
+    function selectionLevel() {
+        if (pane === "tracks") return "track"
+        if (pane === "albums") return "album"
+        return "artist"
+    }
+
+    function selectionSongs() {
+        if (pane === "tracks") {
+            return (trackIndex >= 0 && trackIndex < trackList.length) ? [trackList[trackIndex]] : []
+        }
+        if (pane === "albums") {
+            if (albumIndex < 0 || albumIndex >= albumList.length) return []
+            return albumList[albumIndex].tracks
+        }
+        if (artistIndex < 0 || artistIndex >= artistList.length) return []
+        var albums = artistList[artistIndex].albums
+        var out = []
+        for (var a = 0; a < albums.length; a++) out = out.concat(albums[a].tracks)
+        return out
+    }
+
+    function openTagEditor() {
+        if (!mpd) return
+        var songs = selectionSongs()
+        if (songs.length === 0) return
+        tagSongs = songs
+        tagOpen = true
+    }
+
+    // The flag for the release currently playing. Empty for an album with no
+    // country, and for one tagged Worldwide, where the service substitutes a
+    // globe because there is no territory to draw a flag for.
+    readonly property string nowPlayingFlag: mpd ? mpd.flagEmoji(mpd.playingCountry) : ""
+
     // ---- elapsed time, interpolated locally ----
     // `time` is deliberately not an idle subsystem, so subscribing to it would
     // mean a status read every second. The bar is advanced from a local anchor
@@ -517,8 +563,16 @@ Item {
                             // middle pane, so repeating it here said nothing the
                             // list does not, and the year prefix made the line
                             // long enough to elide on a two-word artist.
+                            //
+                            // The flag rides at the end of the same run rather than
+                            // in a column beside it: country is a fact about the
+                            // release, not about who plays it, so it reads as an
+                            // aside on the artist rather than a second attribute.
+                            // As part of the text it also elides with the name,
+                            // which a fixed-position flag would not.
                             text: root.mpd && root.mpd.current && root.mpd.current.file
                                 ? (root.mpd.current.Artist || root.mpd.current.AlbumArtist || "Unknown artist")
+                                    + (root.nowPlayingFlag ? "  " + root.nowPlayingFlag : "")
                                 : (root.mpd && root.mpd.connected ? "Library ready" : "Not connected to MPD")
                             color: Color.muted
                             font.pixelSize: Math.round((Style.font.body + prefs.fontBody) * prefs.uiScale)
@@ -832,14 +886,18 @@ Item {
         Item {
             id: keyCatcher
             anchors.fill: parent
-            focus: true
+            // Stands down while the tag editor is up: the editor's fields are real
+            // text inputs, and a focused catcher above them would take every
+            // letter before it reached a field.
+            enabled: !root.tagOpen
+            focus: !root.tagOpen
 
             // The manifest sets keepLoaded, so the panel mounts with the shell
             // and open() is never called to claim focus. Taking it when the
             // window becomes visible is what makes the keys work at all.
-            onVisibleChanged: if (visible) Qt.callLater(function () { keyCatcher.forceActiveFocus() })
+            onVisibleChanged: if (visible && !root.tagOpen) Qt.callLater(function () { keyCatcher.forceActiveFocus() })
 
-            Component.onCompleted: Qt.callLater(function () { keyCatcher.forceActiveFocus() })
+            Component.onCompleted: Qt.callLater(function () { if (!root.tagOpen) keyCatcher.forceActiveFocus() })
 
             Keys.onPressed: function (event) {
                 var handled = true
@@ -934,6 +992,17 @@ Item {
                 // Seeking keeps shift+left/shift+right rather than the bare
                 // arrows, which are wanted for pane changes.
                 switch (event.key) {
+                // Handled ahead of the switch and only with Alt held: plain R is
+                // an ordinary letter as far as the browser is concerned and feeds
+                // the typeahead, and settings uses R for reset, so the modifier is
+                // what keeps this from colliding with either.
+                case Qt.Key_R:
+                    if (event.modifiers & Qt.AltModifier) {
+                        root.openTagEditor()
+                        break
+                    }
+                    handled = false
+                    break
                 case Qt.Key_Down:
                     root.move(1); break
                 case Qt.Key_Up:
@@ -995,6 +1064,19 @@ Item {
             onEditModeRequested: function (on) { root.settingsEditMode = on }
             onDismissed: { root.settingsOpen = false; root.settingsEditMode = false }
         }
+
+        // Above the settings card, which is itself above the panes: both are
+        // modal, but the tag editor is opened from outside this window, so it has
+        // to be able to appear over a settings card nobody is looking at.
+        Cfg.TagEditor {
+            id: tagEditor
+            anchors.fill: parent
+            mpd: root.mpd
+            songs: root.tagSongs
+            uiScale: prefs.uiScale
+            visible: root.tagOpen
+            onDismissed: root.tagOpen = false
+        }
     }
 
     // MPD has no mute command, so muting is modelled the way every MPD client
@@ -1037,5 +1119,15 @@ Item {
         interval: 800
         repeat: false
         onTriggered: root.clearTypeahead()
+    }
+
+    // Reached from outside the window as well as from inside it, so the editor can
+    // be opened on whatever is selected without the panel having to be focused
+    // first. This is what the desktop binding calls.
+    IpcHandler {
+        target: "grimplayer"
+        function editTags(): void {
+            root.openTagEditor()
+        }
     }
 }

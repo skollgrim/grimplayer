@@ -43,6 +43,16 @@ Item {
         return String(StandardPaths.writableLocation(StandardPaths.HomeLocation)).replace(/^file:\/\//, "") + "/.mpd/socket"
     }
 
+    // MPD reports every path relative to its music_directory, so writing tags
+    // means turning one back into a filesystem path. Same derivation as the panel
+    // side, kept here as well because this is the half that touches the disk.
+    readonly property string musicDir: {
+        var dir = Quickshell.env("XDG_MUSIC_DIR")
+        if (dir) return String(dir)
+        var home = Quickshell.env("HOME")
+        return (home ? String(home) : "") + "/Music"
+    }
+
     property bool connected: false
     property bool everConnected: false
     property string serverVersion: ""
@@ -263,6 +273,7 @@ Item {
             if (songError) root.setError("currentsong: " + songError)
             else {
                 root.current = toMap(songLines)
+                root.notePlayingSong(root.current.file)
                 // The loop point is a function of the tree and the playing song,
                 // so it is repopulated whenever the song changes rather than only
                 // when the user leaves album mode.
@@ -347,6 +358,7 @@ Item {
                 else if (key === "Date") cur.date = value
                 else if (key === "Track") cur.track = leadingInt(value)
                 else if (key === "Disc") cur.disc = leadingInt(value)
+                else if (key === "Genre") cur.genre = value
                 else if (key === "duration") cur.duration = parseFloat(value)
                 else if (key === "Time" && !cur.duration) cur.duration = parseFloat(value)
             }
@@ -395,6 +407,440 @@ Item {
 
         root.artists = ordered
         root.libraryLoaded = true
+    }
+
+    // ---- writing tags ----
+    //
+    // MPD cannot write tags: it has no command for it and treats the library as
+    // read-only. So the files are edited in place by the tools that already ship
+    // on the machine -- mid3v2 for ID3v2 and metaflac for Vorbis comments -- both
+    // of which rewrite only the tag block and leave the audio stream alone. That
+    // matters here: rewriting the file instead (ffmpeg, say) would touch the
+    // audio itself, and a player that can quietly re-encode someone's library is
+    // not a thing worth shipping.
+    //
+    // Nothing is discovered at runtime beyond the extension. There is no ffmpeg
+    // fallback, because there is no safe way to try one: if it fails partway the
+    // file is the thing that was at risk.
+    readonly property var id3Frames: ({
+        title: "TIT2", artist: "TPE1", albumArtist: "TPE2", album: "TALB",
+        track: "TRCK", disc: "TPOS", date: "TDRC", genre: "TCON"
+    })
+
+    readonly property var vorbisFields: ({
+        title: "TITLE", artist: "ARTIST", albumArtist: "ALBUMARTIST", album: "ALBUM",
+        track: "TRACKNUMBER", disc: "DISCNUMBER", date: "DATE", genre: "GENRE"
+    })
+
+    // ---- country ----
+    //
+    // MPD has no country field at all: its song model exposes a fixed list of tags
+    // (checked against this library, which is how these names were chosen) and
+    // this is not on it, so nothing MPD reports can be trusted to carry one. The
+    // tag itself is Picard's, which is what this library is already tagged with,
+    // and it holds an ISO 3166-1 alpha-2 code rather than a name.
+    //
+    // MP3 carries it as a TXXX user frame, so it cannot go through id3Frames --
+    // a TXXX is identified by its description, not by the frame name alone.
+    readonly property var id3Txxx: ({
+        country: "MusicBrainz Album Release Country"
+    })
+
+    // Vorbis comments are a flat list of named fields, and readers disagree about
+    // which name a release country goes under, so both are written and either is
+    // accepted on the way in.
+    function vorbisFieldsFor(key) {
+        if (key === "country") return ["MUSICBRAINZ_ALBUMRELEASECOUNTRY", "RELEASECOUNTRY"]
+        var field = root.vorbisFields[key]
+        return field ? [field] : []
+    }
+
+    // Country is an album-level fact, so it is remembered per directory. That
+    // keeps the cache small, and means one probe covers a whole album rather than
+    // one per track. MPD cannot be asked for this at all, which is why it is read
+    // from the file directly -- but only ever once per album, then kept.
+    readonly property string countryStatePath: (
+        (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state"))
+        + "/grimplayer/countries.json"
+    )
+    property var countryCache: ({})
+    property string playingCountryDir: ""
+    property string playingCountry: ""
+    property var countriesDirty: false
+
+    function albumDirOf(file) {
+        var rel = String(file === undefined || file === null ? "" : file)
+        var cut = rel.lastIndexOf("/")
+        return cut < 0 ? "" : rel.slice(0, cut)
+    }
+
+    // What the editor shows for a song's country: the cached value if the album
+    // has one, otherwise empty. An album nobody has probed or tagged reads as
+    // untagged rather than as an error.
+    function countryForDir(dir) {
+        if (!dir) return ""
+        var value = root.countryCache[dir]
+        return value === undefined || value === null ? "" : String(value)
+    }
+
+    // A two-letter code becomes a flag by offsetting each letter into the
+    // regional indicator block, which is laid out as consecutive code points from
+    // A, so the letters of a country and its indicator pair differ by a constant.
+    // Written with fromCharCode rather than fromCodePoint so it does not depend on
+    // how much of ES6 the QML engine happens to expose.
+    function flagEmoji(code) {
+        var c = String(code === undefined || code === null ? "" : code).trim().toUpperCase()
+        // MusicBrainz spells "released worldwide" as the pseudo-country XW. There
+        // is no territory behind it, so it gets a globe rather than a flag.
+        if (c === "XW") return "\uD83C\uDF0D"
+
+        // The UK home nations are not ISO 3166-1 countries: England, Scotland and
+        // Wales have no two-letter code of their own, and MusicBrainz tags UK
+        // releases as plain GB. So they are accepted as ISO 3166-2 subdivisions,
+        // which is what the subdivision flag emoji are keyed on. Northern Ireland
+        // is deliberately absent: Noto Color Emoji has no gb-nir glyph, so it would
+        // render as an empty white flag, which is worse than falling back to GB.
+        var subdivision = {
+            "GB-ENG": "ENG", "GB-SCT": "SCT", "GB-WLS": "WLS"
+        }
+        if (subdivision[c] !== undefined) {
+            return tagFlag("GB" + subdivision[c])
+        }
+
+        if (!/^[A-Z]{2}$/.test(c)) return ""
+        if (c.charAt(0) === "X") return "\uD83C\uDF0D"
+        return String.fromCharCode(
+            0xD83C, 0xDDE6 + c.charCodeAt(0) - 65,
+            0xD83C, 0xDDE6 + c.charCodeAt(1) - 65
+        )
+    }
+
+    // A subdivision flag is a waving black flag followed by one tag character per
+    // letter (a base of U+E0061) and a cancel tag to close the run.
+    //
+    // The hyphen is dropped deliberately. The spec includes it, as U+E002D, but
+    // Noto Color Emoji has no glyph for it, so the hyphenated sequence fails to
+    // compose and every one of these renders as a blank grey flag -- verified by
+    // rendering both forms. Omitting it composes correctly and matches what the
+    // emoji actually shows, at the cost of not being what the spec says.
+    function tagFlag(letters) {
+        var out = [0x1F3F4]
+        for (var i = 0; i < letters.length; i++) {
+            out.push(0xE0061 + letters.charCodeAt(i) - 65)
+        }
+        out.push(0xE007F)
+        return String.fromCodePoint.apply(String, out)
+    }
+
+    function shellQuote(s) {
+        return "'" + String(s).replace(/'/g, "'\\''") + "'"
+    }
+
+    // Called when the playing song changes. Country belongs to the album, so this
+    // only does work when the album itself changed, and only if that album has
+    // never been asked about before.
+    function notePlayingSong(file) {
+        var dir = root.albumDirOf(file)
+        if (dir === "" || dir === root.playingCountryDir) return
+        root.playingCountryDir = dir
+        var known = root.countryCache[dir]
+        if (known !== undefined && known !== null) {
+            root.playingCountry = String(known)
+            return
+        }
+        root.playingCountry = ""
+        root.probeCountry(dir, root.writablePath(file))
+    }
+
+    // Reads the country off the file that is playing. It is an album-level tag, so
+    // any track answers for the whole album and there is no need to go looking for
+    // a better one.
+    function probeCountry(dir, path) {
+        if (path === "") return
+        var isFlac = path.toLowerCase().slice(-5) === ".flac"
+        var cmd = isFlac
+            ? "metaflac --export-tags-to=- " + root.shellQuote(path) + " 2>/dev/null"
+            : "mid3v2 -l " + root.shellQuote(path) + " 2>/dev/null"
+        root.countryProbeDir = dir
+        countryProbe.command = ["sh", "-c", cmd]
+        countryProbe.running = true
+    }
+
+    property string countryProbeDir: ""
+
+    // Pulls the country out of whichever reader produced the output. Returns ""
+    // for "no country here", which is a legitimate answer and gets cached as one
+    // so an untagged album is not probed again on every play.
+    //
+    // Both spellings are matched with the separators squeezed out, because the
+    // Picard name is words ("MusicBrainz Album Release Country") while the Vorbis
+    // field is one token (MUSICBRAINZ_ALBUMRELEASECOUNTRY). A TXXX is only
+    // answered once its description has been checked: a library carries dozens of
+    // them, and taking the first would return whatever frame happened to sort
+    // first.
+    function parseCountry(output) {
+        var lines = String(output === undefined || output === null ? "" : output).split("\n")
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim()
+            var eq = line.indexOf("=")
+            if (eq < 0) continue
+            var head = line.slice(0, eq).trim()
+            var rest = line.slice(eq + 1)
+            var candidate = ""
+
+            if (head.toUpperCase() === "TXXX") {
+                // "TXXX=<description>=<value>"
+                var cut = rest.indexOf("=")
+                if (cut < 0) continue
+                var desc = rest.slice(0, cut).replace(/[\s_-]/g, "").toUpperCase()
+                if (desc.indexOf("RELEASECOUNTRY") < 0) continue
+                candidate = rest.slice(cut + 1).trim()
+            } else if (head.replace(/[\s_-]/g, "").toUpperCase().indexOf("RELEASECOUNTRY") >= 0) {
+                candidate = rest.trim()
+            } else continue
+
+            if (candidate !== "") return candidate
+        }
+        return ""
+    }
+
+    // MPD presents a cue sheet as one virtual song per track, under a path that
+    // does not exist on disk: "<album>.cue/track0001". The audio is a single file
+    // the cue points at, and per-track tags for it live inside the cue sheet, not
+    // in a file mid3v2 or metaflac can open. Those are reported as skipped rather
+    // than guessed at.
+    function writablePath(file) {
+        var rel = String(file === undefined || file === null ? "" : file)
+        if (rel === "") return ""
+        if (/\.cue\/track\d+$/i.test(rel)) return ""
+        return root.musicDir + "/" + rel
+    }
+
+    property var tagQueue: []
+    property var tagResult: null
+    property var tagOnDone: null
+
+    // One song at a time. A whole-artist edit can be several hundred files, and
+    // launching that many taggers at once would be a fork bomb with a music
+    // library attached.
+    // Carries the relative path as well as the absolute one: the write needs the
+    // absolute path, but the country cache is keyed by the album directory MPD
+    // calls the file, and losing that at the point of writing would mean guessing
+    // it back out of an absolute path.
+    function applyTags(entries, tags, onDone) {
+        var queue = []
+        var skipped = 0
+        for (var i = 0; i < entries.length; i++) {
+            var path = root.writablePath(entries[i].file)
+            if (path === "") { skipped++; continue }
+            queue.push({ file: String(entries[i].file), path: path })
+        }
+        root.tagResult = { written: 0, failed: 0, skipped: skipped }
+        root.tagOnDone = typeof onDone === "function" ? onDone : null
+        if (queue.length === 0) {
+            root.finishTags()
+            return
+        }
+        root.tagQueue = queue
+        root.tagTags = tags
+        root.runNextTag()
+    }
+
+    property var tagTags: ({})
+
+    // Returns an argument list, undefined when there was nothing to write, or null
+    // when this file is not a format a tagger here can open. The two are different
+    // answers: the first means the file already says what was asked of it, the
+    // second means it was never touched.
+    function tagCommand(path) {
+        var lower = path.toLowerCase()
+        var isMp3 = lower.slice(-4) === ".mp3"
+        var isFlac = lower.slice(-5) === ".flac"
+        if (!isMp3 && !isFlac) return null
+
+        var args = [isMp3 ? "mid3v2" : "metaflac"]
+        var handled = 0
+        var keys = Object.keys(root.tagTags)
+        for (var k = 0; k < keys.length; k++) {
+            var key = keys[k]
+            var value = root.tagTags[key] === undefined || root.tagTags[key] === null
+                ? "" : String(root.tagTags[key]).trim()
+
+            if (isMp3) {
+                var txxx = root.id3Txxx[key]
+                if (txxx) {
+                    // mid3v2 addresses a TXXX by description, so writing and
+                    // clearing both name the frame and let the value be empty:
+                    // `--delete-frames=TXXX` would have taken the ReplayGain and
+                    // MusicBrainz frames on the way out.
+                    args.push("--TXXX", txxx + ":" + value)
+                    handled++
+                    continue
+                }
+                var frame = root.id3Frames[key]
+                if (!frame) continue
+                if (value === "") args.push("--delete-frames=" + frame)
+                else args.push("--" + frame, value)
+                handled++
+            } else {
+                var fields = root.vorbisFieldsFor(key)
+                for (var f = 0; f < fields.length; f++) {
+                    // Vorbis comments allow a field to repeat, and metaflac's
+                    // --set-tag appends rather than replaces: without the remove
+                    // first, every edit left the old value behind as a second copy
+                    // of the same tag and readers picked whichever they liked.
+                    args.push("--remove-tag=" + fields[f])
+                    if (value !== "") args.push("--set-tag=" + fields[f] + "=" + value)
+                    handled++
+                }
+            }
+        }
+        if (handled === 0) return undefined
+        args.push(path)
+        return args
+    }
+
+    function runNextTag() {
+        if (root.tagQueue.length === 0) {
+            root.finishTags()
+            return
+        }
+        var item = root.tagQueue.shift()
+        var args = root.tagCommand(item.path)
+        if (args === null) {
+            // Nothing here can be tagged: report it rather than quietly counting
+            // it as a success, which would claim files were rewritten that were
+            // not even opened.
+            root.tagResult.skipped++
+            Qt.callLater(root.runNextTag)
+            return
+        }
+        if (args === undefined) {
+            root.tagResult.written++
+            Qt.callLater(root.runNextTag)
+            return
+        }
+        root.tagCurrentDir = root.albumDirOf(item.file)
+        tagger.command = args
+        tagger.running = true
+    }
+
+    property string tagCurrentDir: ""
+
+    // The cache is the only record MPD cannot keep for us, so it moves when the
+    // file does. Keyed by album directory because that is the level country is
+    // meaningful at.
+    function rememberCountry(dir, value) {
+        if (dir === "") return
+        var code = value === undefined || value === null ? "" : String(value).trim().toUpperCase()
+        // Copied rather than edited in place: a var property holding a JS object
+        // reports no change when a key is added to it, so the flag in the panel and
+        // the editor's country field would keep showing the previous value.
+        var map = {}
+        for (var key in root.countryCache) map[key] = root.countryCache[key]
+        if (code === "") delete map[dir]
+        else map[dir] = code
+        root.countryCache = map
+        root.countriesDirty = true
+        if (dir === root.playingCountryDir) root.playingCountry = code
+    }
+
+    function finishTags() {
+        if (root.countriesDirty) {
+            root.countriesDirty = false
+            root.saveCountries()
+        }
+        // Retagging changes mtimes, so MPD's database has to be told before the
+        // tree can show the new values. The database idle event this provokes is
+        // what reloads the library, so there is nothing to do here beyond asking.
+        if (root.tagResult.written > 0) root.send("update")
+        var cb = root.tagOnDone
+        root.tagOnDone = null
+        if (cb) cb(root.tagResult)
+    }
+
+    Process {
+        id: tagger
+        running: false
+        command: []
+        onExited: function (exitCode) {
+            // A non-zero exit means the tool refused the file -- permissions, a
+            // truncated tag, a file that is not really the format its name claims.
+            // Counted and carried on with; one bad file must not abandon the rest
+            // of the album.
+            if (exitCode === 0) {
+                root.tagResult.written++
+                // Only once the write actually succeeded: recording a country for
+                // a file the tagger refused would put a flag next to a track that
+                // does not carry one.
+                if (root.tagTags && root.tagTags.country !== undefined) {
+                    root.rememberCountry(root.tagCurrentDir, root.tagTags.country)
+                }
+            } else root.tagResult.failed++
+            Qt.callLater(root.runNextTag)
+        }
+    }
+
+    // ---- country cache ----
+    //
+    // MPD cannot be asked for a country, so the values are read from the files
+    // themselves with the same tools that write them. One probe per album, on the
+    // album that starts playing, kept on disk afterwards -- including the
+    // negative answer, so an album nobody tagged is not re-read on every play.
+    FileView {
+        id: countryFile
+        path: root.countryStatePath
+        // Only this file edits it, so watching it would just bounce our own
+        // writes back at us.
+        watchChanges: false
+        printErrors: false
+        // Blocking, so the synchronous read at startup sees anything already
+        // there; atomic, so a reader never catches a half-written map and treats
+        // the whole cache as unreadable.
+        blockLoading: true
+        blockWrites: !root.countriesDirReady
+        atomicWrites: true
+    }
+
+    property bool countriesDirReady: false
+
+    Process {
+        id: countryMkdir
+        command: ["mkdir", "-p", (Quickshell.env("XDG_STATE_HOME")
+            || (Quickshell.env("HOME") + "/.local/state")) + "/grimplayer"]
+        onExited: root.countriesDirReady = true
+    }
+
+    function loadCountries() {
+        var raw = countryFile.text()
+        if (raw === undefined || raw === null || raw === "") return
+        try {
+            var parsed = JSON.parse(raw)
+            if (parsed && typeof parsed === "object") root.countryCache = parsed
+        } catch (e) {
+            // A malformed cache is not worth failing over: the alternative is
+            // re-reading every album once, which is what it is for.
+        }
+    }
+
+    function saveCountries() {
+        countryFile.setText(JSON.stringify(root.countryCache))
+    }
+
+    Process {
+        id: countryProbe
+        running: false
+        command: []
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var code = root.parseCountry(this.text)
+                root.rememberCountry(root.countryProbeDir, code)
+                // Saved here rather than left dirty for the next tag write: most
+                // albums are read by a probe and never edited, so waiting for an
+                // edit would mean re-reading every one of them on every start.
+                root.saveCountries()
+            }
+        }
     }
 
     // Track numbers arrive as "3" or "3/12"; discs as "1" or "1/2".
@@ -865,5 +1311,7 @@ Item {
     Component.onCompleted: {
         cmdLoader.active = true
         evLoader.active = true
+        root.loadCountries()
+        countryMkdir.running = true
     }
 }

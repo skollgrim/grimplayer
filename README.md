@@ -40,6 +40,9 @@ nothing polls.
   `~/.mpd/socket`; set `GRIM_LIBRARY_MPD_SOCKET` to point somewhere else.
 - Optional, and only for artwork that is inside the files: `ffmpeg`. Albums with
   an image beside the tracks never need it.
+- Optional, and only for editing tags: `mid3v2` (from `id3v2`) for MP3 and
+  `metaflac` (from `flac`) for FLAC. Reading a country to show its flag uses the
+  same two tools.
 
 ## Install
 
@@ -113,11 +116,63 @@ that kind is free to fill the window or widen it without fighting anything here.
 | `Space` | Play / pause |
 | `Shift` + `←` `→` | Seek ∓5s |
 | any letter or digit | Typeahead |
+| `Alt` + `R` | Tag editor |
 | `?` | Settings card |
 
 In the settings card: arrows or `hjkl` move, `Enter` toggles a switch or opens a
 slider, `←` `→` (or `h` `l`) adjust the open slider, `g` / `G` jump to an end,
 `R` resets everything, `Esc` steps back out and `Q` closes.
+
+In the tag editor: `Enter` saves, `Esc` cancels, `Tab` / `↑` `↓` move through the
+fields and the Save button, wrapping at both ends.
+
+### Tag editor
+
+`Alt` + `R` edits the tags of whatever the caret is on: one track in the tracks
+pane, the whole album in the albums pane, or everything by that artist in the
+artists pane. It can also be opened without focusing the panel:
+
+```sh
+omarchy-shell grimplayer editTags
+```
+
+Each field shows what the selected tracks agree on. A field they disagree about
+reads `multiple` and is **not written** — so retagging a genre across an album
+cannot quietly flatten the track titles with it. Change it and that one value is
+written to every selected track; clear it and the tag is removed. Opening the
+editor and saving without touching anything writes nothing.
+
+Fields: Title, Artist, Album artist, Album, Track, Disc, Year, Genre, Country.
+
+Country takes a two-letter ISO code (`SE`, `FI`, `US`) rather than a name, and
+the flag shown beside the field is the one the now-playing strip will show.
+Releases tagged Worldwide (`XW`, which MusicBrainz uses when there is no single
+territory) get a globe instead, since there is no flag to draw.
+
+The UK home nations have no two-letter code of their own — ISO 3166-1 gives the
+UK a single `GB` — so they are accepted as ISO 3166-2 subdivisions, which is what
+the subdivision flag emoji are keyed on: `GB-ENG`, `GB-SCT` and `GB-WLS`.
+Northern Ireland (`GB-NIR`) is left out, because the emoji font has no glyph for
+it and it renders as an empty white flag.
+
+MPD cannot write tags — it treats the library as read-only — so the files are
+edited in place by `mid3v2` and `metaflac`, one file at a time. Both rewrite only
+the tag block and leave the audio alone. Nothing else is discovered at runtime
+and there is no re-encoding fallback.
+
+Some things to know:
+
+- **Cue sheets are skipped.** MPD presents a cue album as one virtual song per
+  track, at a path (`<album>.cue/track0001`) that does not exist on disk. Their
+  per-track tags live inside the cue sheet, which these tools cannot open, so
+  they are reported as skipped rather than guessed at.
+- **Country is not a tag MPD reports.** MPD's song model has no country field at
+  all, so the value is read from the file directly — once per album, then kept in
+  `~/.local/state/grimplayer/countries.json`, including when the answer is
+  "no country here". Editing it through GrimPlayer updates that cache.
+- The tag is Picard's, which is what most libraries are already tagged with:
+  `MusicBrainz Album Release Country` on MP3, and both
+  `MUSICBRAINZ_ALBUMRELEASECOUNTRY` and `RELEASECOUNTRY` on FLAC.
 
 The mouse works too: click a row to select it and move the caret into the next
 pane (playback still needs `Enter`), click a setting to change it, drag the seek
