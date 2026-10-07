@@ -290,6 +290,11 @@ Item {
     function bootstrap() {
         root.clearError()
         root.connected = true
+        // A connection that answers is the signal that the backoff has done its
+        // job. Without resetting it here the delay only ever ratchets upwards,
+        // so a handful of unrelated blips early in the session leave the panel
+        // sitting disconnected for 30s at a time for the rest of it.
+        root.reconnectDelay = 1500
         // A reconnect starts a fresh exchange. Anything left outstanding when
         // the socket dropped is never going to be answered, so the in-flight
         // guard and the pending FIFO have to be cleared here: left set, the
@@ -1285,6 +1290,30 @@ Item {
         reconnectTimer.interval = root.reconnectDelay
         root.reconnectDelay = Math.min(root.reconnectDelay * 2, 30000)
         reconnectTimer.start()
+    }
+
+    // MPD closes any client that has sent it nothing for `connection_timeout`
+    // seconds, and the default is 60. The event socket is exempt because it is
+    // parked on a blocking `idle`, which suspends that timer -- but the command
+    // socket goes quiet whenever playback is paused or simply nothing is
+    // happening, and MPD drops it a minute later. That is what makes the panel
+    // report MPD gone at random, roughly once a minute, while the event socket
+    // that is still feeding it sits right there.
+    //
+    // A `ping` now and then is the cheap correction: MPD answers OK, the pending
+    // FIFO consumes it like any other response, and the connection stays open.
+    // 25s is well inside the timeout, so one delayed tick still lands in time.
+    Timer {
+        id: pingTimer
+        interval: 25000
+        repeat: true
+        running: root.connected
+        onTriggered: {
+            // Checked against the socket rather than `connected`, which also goes
+            // true for the event socket alone: pinging a closed command socket
+            // would queue a response that can never arrive.
+            if (cmdLoader.item && cmdLoader.item.connected) root.send("ping")
+        }
     }
 
     Timer {
