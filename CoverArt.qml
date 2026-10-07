@@ -1,12 +1,19 @@
 // Album art for the track currently playing.
 //
-// MPD has no image protocol and no albumart plugin is configured here, so the
-// artwork is read straight off disk instead: MPD's `file` is a library-relative
-// path, so the album's own directory is just its parent, and the cover is the
-// conventional cover.jpg in that directory. That is the layout of the collection
-// this was written against -- the covers sit next to the tracks rather than being
-// tagged into them. Libraries whose artwork is embedded in the files get the
-// placeholder instead.
+// Artwork is found on disk beside the tracks first: MPD's `file` is a
+// library-relative path, so the album's own directory is just its parent, and the
+// cover is the conventional cover.jpg in there. That is the layout of the
+// collection this was written against.
+//
+// Failing that, the art is pulled out of the track itself. A tagged library keeps
+// the image inside the file and writes nothing beside it, so those albums used to
+// land on the placeholder. MPD can serve embedded art (`albumart` returns the
+// picture as binary), but it cannot be used here: this plugin talks to MPD through
+// Quickshell.Io.Socket, whose reads arrive as UTF-8 text, and a JPEG or PNG does
+// not survive that decoding. So the file is handed to ffmpeg instead, which writes
+// the picture out as a JPEG that is then cached per album and loaded like any
+// other cover. ffmpeg is optional throughout -- absent, or failing on a track with
+// no embedded art, and the album simply keeps the placeholder, exactly as before.
 //
 // Deliberately an overlay rather than a column in the now-playing strip. The
 // strip already carries title, artist, seek bar, transport and volume, and adding
@@ -20,7 +27,10 @@
 // and guessing once would mean a silently blank square for those albums. The list
 // also carries the capitalised spellings, because the filesystem is case
 // sensitive, and the tag-derived "<artist> - <album>" and "<album>" names that
-// taggers use when one folder holds several releases.
+// taggers use when one folder holds several releases. The cached extraction is
+// last, which is what makes a sidecar image win over the one inside the file: a
+// re-tag that changes the embedded art leaves the old sidecar behind, and having
+// the tag win would make the two disagree.
 //
 // The walk is driven by the Image's own load status rather than by a separate
 // existence check. Qt6 dropped QtQuick's FileIO entirely, and the alternative --
@@ -30,6 +40,7 @@
 import QtQuick
 import QtQuick.Effects
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 
 Item {
@@ -43,6 +54,127 @@ Item {
     // MPD reports paths relative to its music_directory, which mpd.conf sets to
     // $XDG_MUSIC_DIR with ~/Music as the fallback on the next line.
     readonly property string musicDir: Quickshell.env("XDG_MUSIC_DIR") || (Quickshell.env("HOME") + "/Music")
+
+    // ---- embedded artwork cache ----
+    //
+    // Sits beside the settings file the panel already keeps, because it is the
+    // same kind of thing: something derived from the library that should survive a
+    // shell restart without being recomputed. Keyed by album rather than by track,
+    // since every track on an album carries the same picture.
+    readonly property string cacheDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/grimplayer/covers"
+
+    // FNV-1a. Only has to be stable and well spread, not cryptographic: a collision
+    // would mean one album showing another's artwork, which is vanishingly unlikely
+    // at this scale and no worse than the filename collisions the probe already
+    // tolerates. A readable album-directory name would not do -- the names contain
+    // slashes and characters the filesystem treats specially.
+    //
+    // Math.imul is not an optimisation, it is the only correct option here. The
+    // naive `h * 16777619` multiplies a 32-bit value by a 24-bit one and lands
+    // around 2^56, which is past Number.MAX_SAFE_INTEGER, so the double silently
+    // drops low bits and two different albums can land on the same name. imul does
+    // the multiply in 32-bit space where it cannot.
+    function cacheStem(dir) {
+        var h = 0x811c9dc5
+        for (var i = 0; i < dir.length; i++) {
+            h ^= dir.charCodeAt(i)
+            h = Math.imul(h, 0x01000193)
+        }
+        return ("00000000" + (h >>> 0).toString(16)).slice(-8)
+    }
+
+    function cachedCover(dir) {
+        return root.cacheDir + "/" + root.cacheStem(dir) + ".jpg"
+    }
+
+    // The track file itself, which is what ffmpeg is pointed at. Asking MPD for the
+    // path beats searching the album directory for something audio-shaped: it is the
+    // file that is actually playing, so there is no guessing about which one carries
+    // the artwork.
+    function currentFilePath() {
+        if (!mpd || !mpd.current || !mpd.current.file) return ""
+        return root.musicDir + "/" + String(mpd.current.file)
+    }
+
+    // Album directories already found to carry no embedded art. In memory rather
+    // than as marker files on disk: ffmpeg runs again for them once per shell
+    // session, which for a handful of albums is invisible, and it keeps the state
+    // directory holding only things worth keeping.
+    property var noEmbedded: ({})
+
+    property string extractingDir: ""
+    property string queuedDir: ""
+
+    // Point the Image straight at a cached cover we know exists, rather than
+    // walking the candidate list again for an answer already in hand.
+    function showCached(dir) {
+        var target = "file://" + root.cachedCover(dir)
+        // The Image is sitting in Error on this exact URL, and assigning a property
+        // the value it already holds does not re-evaluate it. Clearing it first is
+        // what makes the next assignment a change the Image reacts to.
+        root.imageSource = ""
+        Qt.callLater(function () { root.imageSource = target })
+    }
+
+    // Last resort for the sidecar-less: pull the picture out of the track itself.
+    //
+    // Re-encoding to mjpeg rather than copying the embedded stream, so the cached
+    // file is always a real JPEG at a real extension. Copying would be faster and
+    // lossless, but the source can be a PNG, and naming that .jpg leaves the cache
+    // depending on the image loader sniffing past the extension. The cover is drawn
+    // at coverSize (210px by default), so nothing is lost by rescaling a 1200px
+    // original down to something displayable.
+    function requestEmbedded(dir) {
+        if (!dir || extractor.running) {
+            if (dir) queuedDir = dir
+            return
+        }
+        if (root.noEmbedded[dir] === true) return
+        var file = currentFilePath()
+        if (!file) return
+        extractor.command = ["ffmpeg", "-v", "error", "-y",
+                             "-i", file,
+                             "-an", "-map", "0:v:0", "-frames:v", "1",
+                             "-c:v", "mjpeg", "-q:v", "3",
+                             root.cachedCover(dir)]
+        root.extractingDir = dir
+        extractor.running = true
+    }
+
+    Process {
+        id: extractor
+        running: false
+        command: []
+        onExited: function (exitCode) {
+            var dir = root.extractingDir
+            root.extractingDir = ""
+            // ffmpeg exits non-zero on a track with no attached picture, which is
+            // the common case and not an error worth surfacing -- it just means this
+            // album keeps the placeholder, so remember it and stop asking.
+            if (exitCode !== 0) {
+                var missing = root.noEmbedded
+                missing[dir] = true
+                root.noEmbedded = missing
+            } else if (dir === root.loadedDir) {
+                root.showCached(dir)
+            }
+            if (root.queuedDir) {
+                var next = root.queuedDir
+                root.queuedDir = ""
+                root.requestEmbedded(next)
+            }
+        }
+    }
+
+    // The directory has to exist before ffmpeg can write into it, and Quickshell.Io
+    // has no mkdir. This is the same trade the settings file makes, and the same
+    // shape: one idempotent call at startup, argv rather than a shell so there is
+    // nothing to quote.
+    Process {
+        id: cacheMkdir
+        running: true
+        command: ["mkdir", "-p", root.cacheDir]
+    }
 
     property int candidateIndex: 0
     property var candidates: []
@@ -129,6 +261,11 @@ Item {
         for (var i = 0; i < names.length; i++) {
             out.push(root.musicDir + "/" + dir + "/" + names[i])
         }
+        // Last, so anything on disk wins. The cached extraction is a fallback for
+        // albums a tagger left with no sidecar file at all, not a replacement for
+        // one: where both exist the sidecar is what the user (or the tagger) put in
+        // the folder, and re-tagging the file should not silently change the cover.
+        out.push(root.cachedCover(dir))
         return out
     }
 
@@ -194,7 +331,7 @@ Item {
         width: parent.width + Math.max(2, Math.round(2 * root.coverBorderWidth * root.uiScale))
         height: parent.height + Math.max(2, Math.round(2 * root.coverBorderWidth * root.uiScale))
         radius: Math.round(10 * root.uiScale)
-        color: Qt.rgba(1, 1, 1, 0.30)
+        color: Util.alpha(Color.foreground, 0.24)
         visible: root.coverBorder
     }
 
@@ -217,21 +354,23 @@ Item {
             maskThresholdMin: 0.5
             maskSpreadAtMin: 0.02
         }
-        color: Qt.rgba(1, 1, 1, 0.03)
+        color: Util.alpha(Color.foreground, 0.015)
 
         // Shown until real art is Ready, and permanently when the album has
-        // none. Kept deliberately plain and very faint: the placeholder has to
-        // sit back into the dark pane rather than read as a bright card, since
-        // it covers a large area of the tracks list. Every tone here is a low
-        // white overlay on the panel background, so lowering the alpha lowers
-        // the whole thing without changing the hue it themes with.
+        // none. Built out of `muted` rather than `foreground`, and that is the whole
+        // trick: the placeholder is the one element here never meant to be read, and
+        // `foreground` is the theme's text colour -- bright by design, so anything
+        // drawn in it at a visible strength pulls the eye towards an empty square.
+        // Muted is the hue the panel already uses for de-emphasised text, so the
+        // placeholder sits in the palette at every strength and still reads correctly
+        // in a light theme, where a white overlay would punch a pale card into it.
         Rectangle {
             anchors.fill: parent
             visible: art.status !== Image.Ready
 
             gradient: Gradient {
-                GradientStop { position: 0.0; color: Util.alpha(Color.foreground, 0.03) }
-                GradientStop { position: 1.0; color: Util.alpha(Color.foreground, 0.01) }
+                GradientStop { position: 0.0; color: Util.alpha(Color.muted, 0.10) }
+                GradientStop { position: 1.0; color: Util.alpha(Color.muted, 0.03) }
             }
 
             Rectangle {
@@ -239,18 +378,19 @@ Item {
                 width: Math.round(parent.width * 0.60)
                 height: width
                 radius: width / 2
-                color: Util.alpha(Color.foreground, 0.025)
+                color: Util.alpha(Color.muted, 0.07)
                 border.width: 1
-                border.color: Util.alpha(Color.foreground, 0.06)
+                border.color: Util.alpha(Color.muted, 0.16)
 
-                // Label. The one hint of accent, held low so it themes the
-                // placeholder without becoming the brightest thing on screen.
+                // Label. A trace of accent, low enough that it tints the
+                // placeholder rather than competing with the artwork it stands in
+                // for, and still themes with everything else.
                 Rectangle {
                     anchors.centerIn: parent
                     width: Math.round(parent.width * 0.28)
                     height: width
                     radius: width / 2
-                    color: Util.alpha(Color.accent, 0.06)
+                    color: Util.alpha(Color.accent, 0.05)
                 }
             }
         }
@@ -267,14 +407,16 @@ Item {
 
             onStatusChanged: {
                 if (status !== Image.Error) return
-                // This candidate is not on disk. Try the next name; once they are
-                // all exhausted imageSource stays put on the last failure and the
-                // placeholder below stays on screen, which is the right outcome
-                // for an album with no art.
+                // This candidate is not on disk. Try the next name; when they are
+                // all exhausted the placeholder stays on screen, which is the right
+                // outcome for an album with no art beside the tracks -- unless the
+                // artwork is inside the file, which is the last thing worth asking.
                 var next = root.candidateIndex + 1
                 if (next < root.candidates.length) {
                     root.candidateIndex = next
                     root.imageSource = "file://" + root.candidates[next]
+                } else {
+                    root.requestEmbedded(root.loadedDir)
                 }
             }
         }
