@@ -174,7 +174,20 @@ Item {
         root.coverFromLookup = false
         root.previewSubject = root.songs.length > 0
             ? { file: String(root.songs[0].file), song: root.songs[0] } : null
-        Qt.callLater(root.focusRow)
+        root.syncFields()
+        Qt.callLater(function () { root.syncFields(); root.focusRow() })
+    }
+
+    // Pushes each field's resolved text back into its TextField. Needed because
+    // the TextField does not keep a binding on `text` (see setFieldText), so a
+    // reopened editor would otherwise still hold the last session's typing. Run
+    // again from load()'s deferred callback in case the delegates did not exist
+    // yet the first time.
+    function syncFields() {
+        var rows = fieldColumn.children
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].fieldKey !== undefined) rows[i].setFieldText()
+        }
     }
 
     // Where a song's current value for a field comes from. Every tag but country is
@@ -236,6 +249,13 @@ Item {
     // this fires, and there is no window where the card is up showing fields that
     // have not been worked out yet.
     onVisibleChanged: if (visible && root.songs.length > 0) root.load()
+
+    // Reopened on a new selection while already up: the panel reassigns `songs`
+    // and `tagOpen` stays true, so `visible` never toggles and load() would not
+    // otherwise run. Without this the scope pill counts the new selection while
+    // every field still describes the old one, and a Save would write the old
+    // drafts to the new songs' files.
+    onSongsChanged: if (visible && root.songs.length > 0) root.load()
 
     Component.onCompleted: if (visible && root.songs.length > 0) root.load()
 
@@ -447,6 +467,9 @@ Item {
         }
         root.draft = d
         root.touched = t
+        // The fields no longer bind to currentText (see setFieldText), so a
+        // lookup has to push the values it just drafted into the fields itself.
+        root.syncFields()
 
         if (result.cover && result.cover !== "") {
             root.coverAction = "set"
@@ -880,6 +903,15 @@ Item {
                         // address a row and not what is inside it.
                         function focusField() { input.forceActiveFocus() }
 
+                        // Field text is pushed in rather than bound: a TextField
+                        // writes its own `text` from inside the control while the
+                        // user types, which destroys a declarative binding on it.
+                        // The delegates are never recreated, so a bound field kept
+                        // showing whatever was last typed on the previous album.
+                        // Setting it after every load is what keeps a reopened
+                        // editor honest.
+                        function setFieldText() { input.text = root.currentText(row.fieldKey) }
+
                         Layout.fillWidth: true
                         Layout.preferredHeight: Math.round(34 * root.uiScale)
                         spacing: Math.round(12 * root.uiScale)
@@ -900,7 +932,10 @@ Item {
                             TextField {
                                 id: input
                                 anchors.fill: parent
-                                text: root.currentText(row.modelData.key)
+                                // No `text` binding: the control writes this
+                                // property itself while typing, which drops a
+                                // binding and left the field showing the last
+                                // album's value. Text is pushed by setFieldText().
                                 // Only offered when the selection disagrees. A field
                                 // the tracks all left empty stays empty and reads as
                                 // empty, which is a different offer than "we differ".

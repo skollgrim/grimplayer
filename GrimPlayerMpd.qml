@@ -1297,6 +1297,7 @@ Item {
     }
 
     property bool countriesDirReady: false
+    property bool countriesSavePending: false
 
     Process {
         id: countryMkdir
@@ -1307,6 +1308,10 @@ Item {
             // A decision taken before the directory existed is written now that
             // there is somewhere to put it.
             if (root.coverOverridesDirty) root.saveCoverOverrides()
+            // A country probe that finished before the directory existed held its
+            // write off; flush it now rather than losing the answer for the
+            // session.
+            if (root.countriesSavePending) root.saveCountries()
         }
     }
 
@@ -1323,6 +1328,15 @@ Item {
     }
 
     function saveCountries() {
+        // Held off until mkdir has made the directory, rather than written and
+        // lost: FileView cannot create parents, and a write into a missing
+        // directory fails under printErrors: false. The mkdir process flushes
+        // this when it finishes.
+        if (!root.countriesDirReady) {
+            root.countriesSavePending = true
+            return
+        }
+        root.countriesSavePending = false
         countryFile.setText(JSON.stringify(root.countryCache))
     }
 
@@ -1682,6 +1696,13 @@ Item {
     // after a shell restart in the middle of an album.
     function rememberAlbumLoopPoint() {
         if (root.repeatMode !== 2) return
+        // Not while stopped. maybeLoopAlbum() clears the point and replays; this
+        // runs from the currentsong half of the same refresh, so repopulating here
+        // would immediately re-arm the loop. If the replay does not start playing
+        // (its files were removed, or there is no usable output) MPD reports stop
+        // again, the point is non-null again, and the pair loops forever. The next
+        // refresh, taken while playing, repopulates it as usual.
+        if (root.status && root.status.state === "stop") return
         var loc = root.locateCurrent()
         if (loc) root.albumLoopPoint = { artist: loc.artist, album: loc.album }
     }
@@ -1771,6 +1792,11 @@ Item {
                 }
                 if (evSocket.wasConnected) {
                     evSocket.wasConnected = false
+                    // The command socket may still answer, but with no events the
+                    // panel would sit frozen on stale state while claiming to be
+                    // connected. Mark the service down so the banner is honest and
+                    // the reconnect below is visible.
+                    root.connected = false
                     root.scheduleReconnect()
                 }
             }

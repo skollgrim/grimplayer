@@ -34,6 +34,18 @@ Item {
 
     signal activated(int index)
 
+    // Scrolls the least amount that puts the caret row inside the viewport.
+    // Called when the caret moves and whenever the model is replaced, because a
+    // swapped list leaves the old contentY pointing at a different row.
+    function followCurrent() {
+        var top = root.currentIndex * root.rowPitch
+        var bottom = top + root.rowHeight
+        if (top < flick.contentY)
+            flick.contentY = top
+        else if (bottom > flick.contentY + flick.height)
+            flick.contentY = bottom - flick.height
+    }
+
     // rowSpacing is the row height setting; the gap is derived from it (an eighth
     // of the row) so one control sets the whole rhythm. uiScale multiplies the
     // result, and the fonts below ride along with it.
@@ -141,19 +153,19 @@ Item {
             contentHeight: column.height
             boundsBehavior: Flickable.StopAtBounds
 
-            // The parent's keyboard handling owns selection, so following
-            // currentIndex is what keeps the cursor on screen. Padding keeps the
-            // selected row clear of the pane edges instead of flush against them.
+            // The parent's keyboard handling owns selection, so following the
+            // caret is the whole job here: the pane scrolls only to keep the
+            // selected row inside the viewport.
             Connections {
                 target: root
-                function onCurrentIndexChanged() {
-                    var top = root.currentIndex * root.rowPitch
-                    var bottom = top + root.rowHeight
-                    if (top < flick.contentY)
-                        flick.contentY = top
-                    else if (bottom > flick.contentY + flick.height)
-                        flick.contentY = bottom - flick.height
-                }
+                function onCurrentIndexChanged() { root.followCurrent() }
+                // A replaced model is a different list at the same scroll offset.
+                // Following the caret again is what keeps it visible: on an album
+                // switch the index is reset to 0 and this scrolls back to the top,
+                // and on a library reload (a tag write) the index is unchanged --
+                // no currentIndexChanged fires -- so the pane keeps its place
+                // instead of jumping away from the row the caret is on.
+                function onModelChanged() { root.followCurrent() }
             }
 
             Column {

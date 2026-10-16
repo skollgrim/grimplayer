@@ -229,6 +229,7 @@ Item {
 
     property string extractingDir: ""
     property string queuedDir: ""
+    property var queuedFiles: []
 
     // The audio paths the current extraction is walking, and how far it has got.
     // More than one only for a cue album, whose audio name is a guess (see
@@ -260,9 +261,17 @@ Item {
     // depending on the image loader sniffing past the extension. The cover is drawn
     // at most a share of the pane height, so nothing is lost by rescaling a 1200px
     // original down to something displayable.
-    function requestEmbedded(dir) {
-        if (!dir || extractor.running) {
-            if (dir) queuedDir = dir
+    function requestEmbedded(dir, files) {
+        if (!dir) return
+        // Resolve the audio name now, not when the request is served. A queued
+        // request is drained after the extractor exits, and by then the playing
+        // track may have moved on -- reading the current file then would point
+        // ffmpeg at the wrong album's audio and cache its picture under this
+        // album's name.
+        if (files === undefined) files = root.currentFileCandidates()
+        if (extractor.running) {
+            queuedDir = dir
+            queuedFiles = files
             return
         }
         if (root.noEmbedded[dir] === true) {
@@ -272,7 +281,6 @@ Item {
             root.requestOnline(dir)
             return
         }
-        var files = root.currentFileCandidates()
         if (files.length === 0) {
             root.requestOnline(dir)
             return
@@ -327,8 +335,10 @@ Item {
             }
             if (root.queuedDir) {
                 var queued = root.queuedDir
+                var queuedFiles = root.queuedFiles
                 root.queuedDir = ""
-                root.requestEmbedded(queued)
+                root.queuedFiles = []
+                root.requestEmbedded(queued, queuedFiles)
             }
         }
     }
@@ -482,6 +492,12 @@ Item {
     // The frame is sized by the parent (a share of the pane height); this only
     // carries the scale so the corner radius rides along with it.
     property real uiScale: 1.0
+
+    // Device pixel ratio of the window's screen, so the cover Image decodes at
+    // display size in physical pixels rather than at full source resolution. A
+    // 1500px sidecar decoded into a ~9MB pixmap to be drawn at ~210px, and those
+    // oversized pixmaps are what filled the pixmap cache while scrolling.
+    property real pixelRatio: 1.0
 
     // Ring around the artwork. The toggle and its thickness are separate so the
     // ring can be dropped without losing the thickness it was set to.
@@ -953,6 +969,11 @@ Item {
             cache: true
             smooth: true
             mipmap: true
+            // Decode at display size in physical pixels rather than at the
+            // source's full resolution, which is what keeps a large sidecar
+            // from filling the pixmap cache while the lists scroll.
+            sourceSize.width: width > 0 ? Math.round(width * (root.pixelRatio || 1)) : 0
+            sourceSize.height: height > 0 ? Math.round(height * (root.pixelRatio || 1)) : 0
         }
 
         Image {
@@ -965,6 +986,8 @@ Item {
             cache: true
             smooth: true
             mipmap: true
+            sourceSize.width: width > 0 ? Math.round(width * (root.pixelRatio || 1)) : 0
+            sourceSize.height: height > 0 ? Math.round(height * (root.pixelRatio || 1)) : 0
 
             onStatusChanged: {
                 if (status === Image.Ready) {

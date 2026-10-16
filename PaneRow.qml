@@ -40,9 +40,6 @@ Item {
     property int albumIndex: 0
     property int trackIndex: 0
 
-    // The playing song, for the tracks pane's "this one" highlight.
-    property var current: null
-
     // Which edges of the playing row carry the accent bar. Forwarded to the panes
     // untouched; only the tracks pane is handed a current item, so it only ever
     // shows there.

@@ -675,7 +675,6 @@ Item {
                     artistIndex: root.artistIndex
                     albumIndex: root.albumIndex
                     trackIndex: root.trackIndex
-                    current: root.mpd ? root.mpd.current : null
 
                     artistLabel: function (item) { return item.name }
                     albumLabel: function (item) { return root.albumText(item.year, item.name) }
@@ -852,6 +851,7 @@ Item {
             theme: theme
             mpd: root.mpd
             uiScale: prefs.uiScale
+            pixelRatio: root.pixelRatio
             coverBorder: prefs.coverBorder
             coverBorderWidth: prefs.coverBorderWidth
             rounded: prefs.coverRounded
