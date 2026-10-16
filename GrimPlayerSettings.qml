@@ -1,11 +1,25 @@
+pragma ComponentBehavior: Bound
 // The settings card, modal over the browser.
 //
-// Two columns of settings. Each cell puts the label on the left and a control
-// block on the right whose width does not depend on whether that setting happens
-// to be a slider, so every value lines up on the same vertical edge down both
-// columns. That fixed-width block is the whole trick to it looking deliberate
-// rather than ragged: without it the numeric rows push their values further
-// right than the switches do and the eye reads the grid as misaligned.
+// The settings are laid out as four fixed columns, each a single list under its
+// own heading: the switches and named choices, then the sizes and sliders, then
+// the artwork settings, then the optional extras. Keeping a column to one kind of
+// control means most rows in it have the same shape, so there are no half-empty
+// rows to read past, and a setting is always in the same place every time the
+// card opens. The artwork column is the deliberate exception: it gathers every
+// cover setting, switch and slider alike, so they sit together.
+//
+// Within a cell the label sits on the left and a fixed-width control block on the
+// right, so every value in a column lines up on the same vertical edge. That fixed
+// width is what makes it look deliberate rather than ragged: without it the
+// numeric rows push their values further right than the switches do.
+//
+// The columns scroll together, and the caret's own cell is brought into view as
+// it moves, so a keyboard walk never lands on a row off the bottom edge.
+//
+// The selected row is marked three ways at once -- a filled background, an accent
+// bar down its edge, and its label picked out in the accent -- so the caret is
+// unmistakable whether the pointer or the keyboard put it there.
 //
 // Clicking the scrim closes the card.
 import QtQuick
@@ -20,38 +34,42 @@ Item {
     property bool editMode: false
     property real uiScale: 1.0
 
+    // The panel's colour tokens, injected. The card is modal over the panel, so
+    // it follows the same palette as everything behind it.
+    property var theme: null
+    readonly property color colBackground: theme ? theme.background : Color.background
+    readonly property color colForeground: theme ? theme.foreground : Color.foreground
+    readonly property color colMuted: theme ? theme.muted : Color.muted
+    readonly property color colAccent: theme ? theme.accent : Color.accent
+    readonly property color colSelectedFill: theme ? theme.selectedFill : Style.selectedFill
+
     // The caret belongs to the panel, which also drives it from the keyboard, so
     // the card asks for a change instead of making one: assigning `index` or
     // `editMode` from in here would delete the binding the panel established and
     // every later keyboard move would stop reaching the card.
     signal indexRequested(int index)
     signal editModeRequested(bool on)
+    signal dismissed()
 
-    // The card is two columns that are not two halves of one list: the sliders
-    // all live in the right column and the switches and named choices in the
-    // left, so the sizes read as their own group instead of being scattered
-    // between the toggles. placement() flattens that back into one model with
-    // an explicit row and column per entry, which lets a single Repeater drive
-    // both columns.
-    readonly property var plainItems: place(config ? config.plainEntries : [], 0)
-    readonly property var sliderItems: place(config ? config.sliderEntries : [], 1)
-    readonly property var items: plainItems.concat(sliderItems)
+    // The card renders the config's four columns directly. Each column arrives
+    // as a name plus its entries, and each entry carries its own index into the
+    // visible list -- that index, not the entry object, is what the caret compares
+    // against, because an object identity does not survive the trip through the
+    // Repeater's model.
+    readonly property var columns: config ? config.columns : []
 
-    // Slider plus value, in one fixed-width block. The value column is the
-    // widest text any setting produces ("100%", "spacious"), so 58 holds the
-    // odd one without the numbers jumping about as values change.
-    readonly property int sliderWidth: Math.round(104 * uiScale)
-    readonly property int valueWidth: Math.round(58 * uiScale)
+    // Slider plus value, in one fixed-width block, so the values line up down the
+    // column. The value column is the widest text any setting produces ("300 ms",
+    // "instant"), so it holds the odd one without the numbers jumping about.
+    readonly property int sliderWidth: Math.round(80 * uiScale)
+    readonly property int valueWidth: Math.round(56 * uiScale)
     readonly property int controlWidth: sliderWidth + Math.round(8 * uiScale) + valueWidth
 
     // The hint belongs to the entry under the caret, and the caret is an index
-    // into config.entries -- not into `items`, which groups switches and sliders
-    // into two runs and so disagrees with the entries order.
-    readonly property var current: config && config.entries.length > 0
-        ? config.entries[Math.max(0, Math.min(index, config.entries.length - 1))]
+    // into config.visibleEntries -- the same list the panel walks.
+    readonly property var current: config && config.visibleEntries.length > 0
+        ? config.visibleEntries[Math.max(0, Math.min(index, config.visibleEntries.length - 1))]
         : null
-
-    signal dismissed()
 
     // Park the caret on a row and leave edit mode.
     function caretAt(i) {
@@ -59,16 +77,174 @@ Item {
         root.editModeRequested(false)
     }
 
-    // Each entry carries its index into the config's `entries` table, not its
-    // position on screen, so the panel can keep settingIndex meaning the same
-    // thing in both columns and prefs.entries[settingIndex] stays correct.
-    function place(list, column) {
-        var out = []
-        if (!config) return out
-        for (var i = 0; i < list.length; i++) {
-            out.push({ entry: list[i], index: config.entries.indexOf(list[i]), row: i, column: column })
+    // One setting cell. The same component draws every column; the model
+    // states the entry and its index, and the cell reads the entry for the label
+    // and value and for whether it is a slider.
+    Component {
+        id: settingCell
+
+        Rectangle {
+            id: row
+
+            required property var modelData
+            readonly property var entryData: modelData.entry
+            readonly property var opts: entryData.options || []
+            readonly property bool numeric: opts.length > 0 && typeof opts[0] === "number"
+            readonly property int optIndex: opts.indexOf(entryData.get())
+            readonly property real fraction: opts.length > 1 ? Math.max(0, optIndex) / (opts.length - 1) : 0
+            // The caret's currency is this integer, straight from the model.
+            readonly property int visIndex: modelData.index
+            readonly property bool selected: visIndex === root.index
+
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.round(36 * root.uiScale)
+            // The row's own content width, exposed so a column that hugs its
+            // content (see the columns' fill flag) has something to size to. The
+            // inner RowLayout is anchored, so it does not feed the implicit width
+            // on its own; its natural width plus the two margins is what the cell
+            // actually needs.
+            implicitWidth: innerRow.implicitWidth
+                + Math.round(12 * root.uiScale) + Math.round(10 * root.uiScale)
+            radius: Math.round(6 * root.uiScale)
+            color: selected ? root.colSelectedFill : "transparent"
+
+            // Keep the caret's row on screen as it moves, and once more when the
+            // cell is created, since a cell that appears already selected never
+            // fires selectedChanged.
+            onSelectedChanged: if (selected) flick.reveal(row)
+            Component.onCompleted: if (selected) Qt.callLater(function () { flick.reveal(row) })
+
+            // An accent bar down the selected row's edge: a second, pointer-proof
+            // mark of the caret, so selection reads even where the fill alone is
+            // faint against a busy cover colour.
+            Rectangle {
+                visible: row.selected
+                anchors.left: parent.left
+                anchors.leftMargin: Math.round(4 * root.uiScale)
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(2, Math.round(3 * root.uiScale))
+                height: Math.max(0, parent.height - Math.round(10 * root.uiScale))
+                radius: width / 2
+                color: root.colAccent
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    // Clicking elsewhere just parks the caret.
+                    if (root.index !== row.visIndex) {
+                        root.caretAt(row.visIndex)
+                        return
+                    }
+                    // Clicking the row you are already on does what Enter does: a
+                    // plain switch flips, a slider opens for editing.
+                    if (row.numeric) {
+                        root.editModeRequested(!root.editMode)
+                    } else if (root.config) {
+                        root.config.cycle(row.entryData, 1)
+                    }
+                }
+            }
+
+            RowLayout {
+                id: innerRow
+                anchors.fill: parent
+                anchors.leftMargin: Math.round(12 * root.uiScale)
+                anchors.rightMargin: Math.round(10 * root.uiScale)
+                spacing: Math.round(8 * root.uiScale)
+
+                // The label is deliberately not bolded when the row is selected.
+                // Bolding changes its advance, which changes this cell's implicit
+                // width, which changes the column's -- and the columns divide the
+                // row in proportion to their implicit widths, so every column
+                // would shift a pixel or two each time the caret reached the
+                // longest label. The accent ink, the filled row and the bar down
+                // its edge already carry the selection.
+                Text {
+                    Layout.fillWidth: true
+                    text: row.entryData.label
+                    textFormat: Text.PlainText
+                    color: row.selected ? root.colAccent : root.colForeground
+                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                    opacity: row.selected ? 1.0 : 0.72
+                    elide: Text.ElideRight
+                }
+
+                // Only a slider row reserves the track. A switch only needs the
+                // value, and holding it a track's width from its label across an
+                // empty gap would read as a broken row; values still line up
+                // within a column, which is what the layout asks for.
+                RowLayout {
+                    Layout.preferredWidth: row.numeric ? root.controlWidth : root.valueWidth
+                    Layout.alignment: Qt.AlignRight
+                    spacing: 8
+
+                    Item {
+                        visible: row.numeric
+                        Layout.preferredWidth: root.sliderWidth
+                        Layout.preferredHeight: Math.round(20 * root.uiScale)
+
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width
+                            height: Math.max(1, Math.round(4 * root.uiScale))
+                            radius: Math.max(1, Math.round(2 * root.uiScale))
+                            color: Util.alpha(root.colForeground, row.selected ? 0.18 : 0.10)
+                        }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width * row.fraction
+                            height: Math.max(1, Math.round(4 * root.uiScale))
+                            radius: Math.max(1, Math.round(2 * root.uiScale))
+                            color: root.colAccent
+                            opacity: row.selected ? 1.0 : 0.55
+                        }
+                        // Drawn only once the setting is under the caret, so a
+                        // column of resting sliders reads as a scale rather than
+                        // a row of knobs competing with the labels.
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: Math.max(0, Math.min(parent.width - width, parent.width * row.fraction - width / 2))
+                            width: Math.round(12 * root.uiScale)
+                            height: Math.round(12 * root.uiScale)
+                            radius: Math.round(6 * root.uiScale)
+                            color: root.colAccent
+                            border.width: (row.selected && root.editMode) ? 2 : 1
+                            border.color: root.colBackground
+                            visible: row.selected
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            function pick(mx) {
+                                if (row.opts.length === 0) return
+                                var f = Math.max(0, Math.min(1, mx / width))
+                                var i = Math.round(f * (row.opts.length - 1))
+                                root.indexRequested(row.visIndex)
+                                row.entryData.set(row.opts[i])
+                                // Debounced inside the config, so a drag is one
+                                // write and not one per pixel.
+                                if (root.config) root.config.saveSoon()
+                            }
+                            onClicked: function (mouse) { pick(mouse.x); root.editModeRequested(true) }
+                            onPositionChanged: function (mouse) { if (pressed) { pick(mouse.x); root.editModeRequested(true) } }
+                        }
+                    }
+
+                    // The value keeps one weight: a bold one is wider, and since
+                    // the box is fixed and the ink right-aligned, bolding would
+                    // nudge the value sideways as the caret lands on the row.
+                    Text {
+                        text: root.config ? root.config.textOf(row.entryData) : ""
+                        textFormat: Text.PlainText
+                        color: root.colAccent
+                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                        horizontalAlignment: Text.AlignRight
+                        Layout.preferredWidth: root.valueWidth
+                    }
+                }
+            }
         }
-        return out
     }
 
     Rectangle {
@@ -83,36 +259,39 @@ Item {
     Rectangle {
         id: card
         anchors.centerIn: parent
-        // Wide enough for two columns of label-left / control-right without the
-        // labels having to elide.
-        width: Math.round(900 * uiScale)
-        // Fixed rather than window-relative: the entry list scrolls inside a
-        // Flickable, so the card has no reason to grow with the panel.
-        height: Math.round(700 * uiScale)
-        radius: Math.round(12 * uiScale)
-        color: Color.background
+        // Wide enough for four columns of label-left / control-right without the
+        // labels having to elide, and no wider than the window allows: on a panel
+        // too small for the full width this falls back to the panel width less its
+        // margin rather than overflowing it.
+        width: Math.min(Math.round(1480 * root.uiScale), parent.width - Math.round(32 * root.uiScale))
+        // Fixed rather than window-relative: the list scrolls inside a Flickable,
+        // so the card has no reason to grow with the panel.
+        height: Math.min(Math.round(700 * root.uiScale), parent.height - Math.round(32 * root.uiScale))
+        radius: Math.round(12 * root.uiScale)
+        color: root.colBackground
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.10)
+        border.color: Util.alpha(root.colForeground, 0.10)
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Math.round(24 * uiScale)
+            anchors.margins: Math.round(24 * root.uiScale)
             spacing: 0
 
             Text {
                 text: "Settings"
-                color: Color.foreground
-                font.pixelSize: Math.round(Style.font.body * uiScale)
+                textFormat: Text.PlainText
+                color: root.colForeground
+                font.pixelSize: Math.round(Style.font.body * root.uiScale)
                 font.weight: Font.DemiBold
                 font.letterSpacing: 0.6
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.topMargin: Math.round(12 * uiScale)
-                Layout.bottomMargin: Math.round(12 * uiScale)
-                height: 1
-                color: Qt.rgba(1, 1, 1, 0.08)
+                Layout.topMargin: Math.round(12 * root.uiScale)
+                Layout.bottomMargin: Math.round(12 * root.uiScale)
+                Layout.preferredHeight: 1
+                color: Util.alpha(root.colForeground, 0.08)
             }
 
             Flickable {
@@ -120,147 +299,63 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                contentWidth: grid.width
-                contentHeight: grid.height
+                contentWidth: width
+                contentHeight: board.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
 
-                GridLayout {
-                    id: grid
-                    // Two is the column count, but the rows are not sequential:
-                    // every entry states its own, so the grid is 11 rows tall and
-                    // the left one stops a row early.
-                    columns: 2
-                    columnSpacing: Math.round(24 * uiScale)
-                    rowSpacing: Math.round(6 * uiScale)
-                    width: card.width - Math.round(48 * uiScale)
+                // Flickable has no ensureVisible of its own, so the card scrolls
+                // the caret's own cell into view whenever it moves. Without it a
+                // keyboard walk off the bottom edge selects a row nobody can see.
+                function reveal(item) {
+                    if (!item) return
+                    var y = item.mapToItem(contentItem, 0, 0).y
+                    var h = item.height
+                    var pad = Math.round(8 * root.uiScale)
+                    // Declared with the rest rather than in the branch below: a
+                    // `var` there is hoisted to the whole function anyway, and the
+                    // bare form reads as though it were block-scoped.
+                    var bottom = Math.max(0, contentItem.height - height)
+                    if (y - pad < contentY) {
+                        contentY = Math.max(0, y - pad)
+                    } else if (y + h + pad > contentY + height) {
+                        contentY = Math.max(0, Math.min(bottom, y + h + pad - height))
+                    }
+                }
+
+                RowLayout {
+                    id: board
+                    width: flick.width
+                    spacing: Math.round(20 * root.uiScale)
 
                     Repeater {
-                        model: root.items
+                        model: root.columns
 
-                        Rectangle {
-                            id: row
+                        delegate: ColumnLayout {
+                            id: columnBlock
                             required property var modelData
+                            // Columns fill the card unless the config says otherwise;
+                            // the optional column hugs its content so it stops
+                            // squeezing the artwork beside it.
+                            Layout.fillWidth: modelData.fill !== false
+                            Layout.alignment: Qt.AlignTop
+                            spacing: Math.round(2 * root.uiScale)
 
-                            readonly property var entryData: modelData.entry
-                            readonly property var opts: entryData.options || []
-                            readonly property bool numeric: opts.length > 0 && typeof opts[0] === "number"
-                            readonly property int optIndex: opts.indexOf(entryData.get())
-                            readonly property real fraction: opts.length > 1 ? Math.max(0, optIndex) / (opts.length - 1) : 0
-                            readonly property bool selected: modelData.index === root.index
-
-                            Layout.row: modelData.row
-                            Layout.column: modelData.column
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: Math.round(36 * root.uiScale)
-                            radius: Math.round(6 * root.uiScale)
-                            color: selected ? Style.selectedFill : "transparent"
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    // Clicking elsewhere just parks the caret.
-                                    if (root.index !== row.modelData.index) {
-                                        root.caretAt(row.modelData.index)
-                                        return
-                                    }
-                                    // Clicking the row you are already on does
-                                    // what Enter does: a plain switch flips, a
-                                    // slider opens for editing.
-                                    if (row.numeric) {
-                                        root.editModeRequested(!root.editMode)
-                                    } else {
-                                        root.config.cycle(row.entryData, 1)
-                                    }
-                                }
+                            Text {
+                                Layout.fillWidth: true
+                                text: columnBlock.modelData.name
+                                textFormat: Text.PlainText
+                                color: root.colMuted
+                                font.pixelSize: Math.round(Style.font.bodySmall * root.uiScale)
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                                font.capitalization: Font.AllUppercase
+                                topPadding: Math.round(2 * root.uiScale)
+                                bottomPadding: Math.round(2 * root.uiScale)
                             }
 
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: Math.round(10 * root.uiScale)
-                                anchors.rightMargin: Math.round(10 * root.uiScale)
-                                spacing: Math.round(8 * root.uiScale)
-
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: row.entryData.label
-                                    color: Color.foreground
-                                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                                    opacity: row.selected ? 1.0 : 0.72
-                                    elide: Text.ElideRight
-                                }
-
-                                // Only the slider column reserves the track. Giving the left column the
-                                    // same block would hold its value 104px from its
-                                    // label across an empty gap, which reads as a
-                                    // broken row; values still line up within each
-                                    // column, which is what the divider asks for.
-                                RowLayout {
-                                    Layout.preferredWidth: row.numeric ? root.controlWidth : root.valueWidth
-                                    Layout.alignment: Qt.AlignRight
-                                    spacing: 8
-
-                                    Item {
-                                        visible: row.numeric
-                                        Layout.preferredWidth: root.sliderWidth
-                                        Layout.preferredHeight: Math.round(20 * root.uiScale)
-
-                                        Rectangle {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: parent.width
-                                            height: Math.max(1, Math.round(4 * root.uiScale))
-                                            radius: Math.max(1, Math.round(2 * root.uiScale))
-                                            color: Qt.rgba(1, 1, 1, row.selected ? 0.18 : 0.10)
-                                        }
-                                        Rectangle {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: parent.width * row.fraction
-                                            height: Math.max(1, Math.round(4 * root.uiScale))
-                                            radius: Math.max(1, Math.round(2 * root.uiScale))
-                                            color: Color.accent
-                                            opacity: row.selected ? 1.0 : 0.55
-                                        }
-                                        // Drawn only once the setting is under the
-                                        // caret, so a column of resting sliders
-                                        // reads as a scale rather than a row of
-                                        // knobs competing with the labels.
-                                        Rectangle {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            x: Math.max(0, Math.min(parent.width - width, parent.width * row.fraction - width / 2))
-                                            width: Math.round(12 * root.uiScale)
-                                            height: Math.round(12 * root.uiScale)
-                                            radius: Math.round(6 * root.uiScale)
-                                            color: Color.accent
-                                            border.width: (row.selected && root.editMode) ? 2 : 1
-                                            border.color: Color.background
-                                            visible: row.selected
-                                        }
-
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            function pick(mx) {
-                                                if (row.opts.length === 0) return
-                                                var f = Math.max(0, Math.min(1, mx / width))
-                                                var i = Math.round(f * (row.opts.length - 1))
-                                                root.indexRequested(row.modelData.index)
-                                                row.entryData.set(row.opts[i])
-                                                // Debounced inside the config, so a
-                                                // drag is one write and not one per pixel.
-                                                if (root.config) root.config.saveSoon()
-                                            }
-                                            onClicked: function (mouse) { pick(mouse.x); root.indexRequested(row.modelData.index); root.editModeRequested(true) }
-                                            onPositionChanged: function (mouse) { if (pressed) { pick(mouse.x); root.indexRequested(row.modelData.index); root.editModeRequested(true) } }
-                                        }
-                                    }
-
-                                    Text {
-                                        text: root.config ? root.config.textOf(row.entryData) : ""
-                                        color: Color.accent
-                                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                                        font.weight: row.selected ? Font.DemiBold : Font.Normal
-                                        horizontalAlignment: Text.AlignRight
-                                        Layout.preferredWidth: root.valueWidth
-                                    }
-                                }
+                            Repeater {
+                                model: columnBlock.modelData.items
+                                delegate: settingCell
                             }
                         }
                     }
@@ -269,27 +364,29 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.topMargin: Math.round(12 * uiScale)
-                Layout.bottomMargin: Math.round(10 * uiScale)
-                height: 1
-                color: Qt.rgba(1, 1, 1, 0.08)
+                Layout.topMargin: Math.round(12 * root.uiScale)
+                Layout.bottomMargin: Math.round(10 * root.uiScale)
+                Layout.preferredHeight: 1
+                color: Util.alpha(root.colForeground, 0.08)
             }
 
             Text {
                 Layout.fillWidth: true
                 text: root.current ? root.current.hint : ""
-                color: Color.muted
-                font.pixelSize: Math.round(Style.font.bodySmall * uiScale)
+                textFormat: Text.PlainText
+                color: root.colMuted
+                font.pixelSize: Math.round(Style.font.bodySmall * root.uiScale)
                 wrapMode: Text.WordWrap
-                Layout.bottomMargin: Math.round(8 * uiScale)
+                Layout.bottomMargin: Math.round(8 * root.uiScale)
             }
 
             Text {
                 text: (root.editMode
                         ? "EDITING — ←/→ or H/L adjust  ·  Enter/Esc step back"
-                        : "↑↓←→ or J K H L move  ·  Enter toggles, or opens a slider  ·  g/G ends  ·  R resets  ·  Esc/?/Q closes")
-                color: root.editMode ? Color.accent : Color.muted
-                font.pixelSize: Math.round(Style.font.caption * uiScale)
+                        : "↑↓←→ or J K H L move  ·  Enter toggles, or opens a slider  ·  g/G first/last  ·  R resets  ·  ? keys  ·  Esc/Q closes")
+                textFormat: Text.PlainText
+                color: root.editMode ? root.colAccent : root.colMuted
+                font.pixelSize: Math.round(Style.font.caption * root.uiScale)
                 opacity: 0.8
             }
         }

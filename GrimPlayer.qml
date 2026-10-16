@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 // GrimPlayer panel: the MPD media-library browser.
 //
 // An ordinary resizable window. It asks the compositor for no placement at all:
@@ -63,6 +64,46 @@ Item {
         id: prefs
     }
 
+    // The panel's live colour tokens. Seeded from the shell theme, and folded
+    // from the playing cover's palette when adaptive colouring is on. Every
+    // colour in this file and in the child components reads from here rather
+    // than from the shell's Color singleton, which is global and must not be
+    // written.
+    GrimTheme {
+        id: theme
+    }
+
+    // Fold the current cover's colours into the panel, or settle back on the
+    // theme. Called on every palette change, when the image stops loading, and
+    // when the setting is flipped.
+    //
+    // While a new cover is loading the previous palette is deliberately left in
+    // place: resetting here would flash the theme through between tracks. Only
+    // an album the probe has finished on with no artwork at all falls back to
+    // the theme -- keyed on cover.noArt, not on the Image's own status, which
+    // reports Error between candidates and would flash the theme mid-probe.
+    function syncTheme() {
+        if (!prefs.adaptiveColors) { theme.reset(); return }
+        if (cover.hasArt && cover.palette && cover.palette.length > 0)
+            theme.apply(cover.palette)
+        else if (cover.noArt)
+            theme.reset()
+    }
+
+    Connections {
+        target: cover
+        function onPaletteChanged() { root.syncTheme() }
+        function onHasArtChanged() { root.syncTheme() }
+        function onNoArtChanged() { root.syncTheme() }
+    }
+
+    Connections {
+        target: prefs
+        function onAdaptiveColorsChanged() { root.syncTheme() }
+    }
+
+    Component.onCompleted: syncTheme()
+
     // Read here rather than in PaneRow because only this file imports Quickshell,
     // and a binding that names an unimported module fails silently to 0 -- which
     // is what a zero divider quantum does to the layout. Zero until the shell
@@ -71,6 +112,97 @@ Item {
         var screens = Quickshell.screens
         return screens && screens.length > 0 ? (screens[0].devicePixelRatio || 0) : 0
     }
+
+    // The cover-band setting gives the artwork its own pane: a fourth column on
+    // the right, as tall as the lists beside it, with the cover set into the pane
+    // at a chosen height (top, middle or bottom). It wears the same rounded
+    // corners as the floating cover, so it reads as a deliberate panel of the
+    // layout rather than something crammed against the frame. The art is sized by
+    // the artwork-size setting -- a share of the pane height -- so it sits flush
+    // against the frame at 100% and is inset a little below that. The track
+    // details stay in the footer, which is otherwise unchanged, so the bar reads
+    // the same whether the pane is on or off. That is the Georgia-ReBORN idea --
+    // art as a first-class panel rather than a footer -- adapted to keep all three
+    // lists in view.
+    readonly property bool coverBand: prefs.coverBand
+    readonly property string coverBandAlign: prefs.coverBandAlign
+    // Vertical breathing room kept above and below the cover inside its pane, and
+    // the gutter the floating cover keeps from the window edges. Whether the
+    // artwork pane keeps a margin on the sides too is the coverPadding setting
+    // (see coverPad); the vertical margin gives way on its own as the cover grows
+    // to fill the pane.
+    readonly property int bandPadding: Math.round(14 * prefs.uiScale)
+    readonly property int floatGutter: Math.round(20 * prefs.uiScale)
+    // Everything above the footer strip: the lists and the artwork pane.
+    readonly property int paneHeight: Math.max(0, window.height - root.stripHeight)
+    // Horizontal margin kept around the cover inside the artwork pane, from the
+    // padding setting. Off is zero: the pane is then sized to the cover, so the
+    // art runs flush to both edges and rides over the pane rule along its own
+    // height (see coverPaneWidth).
+    readonly property int coverPad: prefs.coverPadding ? root.bandPadding : 0
+
+    // The artwork-size setting is a share of the pane region rather than a pixel
+    // count, so the art scales with the window: 100% is the full distance from the
+    // very top of the player to the now-playing strip, and every smaller value is
+    // that fraction of it. A share is what lets one setting mean "fill the pane"
+    // on any monitor, instead of landing at a different effective size on each.
+    readonly property int heroCover: Math.max(Math.round(48 * prefs.uiScale),
+        Math.round(root.paneHeight * prefs.coverScale / 100))
+
+    // The square the cover is drawn at in its pane: the chosen share of the pane
+    // height, capped at 60% of the window width so the three lists keep a readable
+    // share of the width. On a short, wide window a height-driven square would
+    // otherwise grow straight over them.
+    readonly property int paneCoverSize: root.coverBand
+        ? Math.max(Math.round(48 * prefs.uiScale),
+                   Math.min(root.heroCover,
+                            Math.round(window.width * 0.60)))
+        : 0
+    // Width of the artwork pane. With a margin (the padding setting on) the cover
+    // is held in from the edges, so the pane spans that margin on each side plus
+    // the rule strip on its inner edge. With no margin the cover runs flush to
+    // both edges and rides over the rule, so the pane is sized to the cover alone
+    // -- no strip reserved -- and the rule shows only above and below the art, as
+    // if the cover had eaten the stretch it covers (see the CoverArt item below).
+    readonly property int coverPaneWidth: root.coverBand
+        ? root.paneCoverSize + root.coverPad * 2 + (prefs.coverPadding ? root.coverPaneRule : 0)
+        : 0
+    // Thickness of the rule on the artwork pane's inner edge, shared with the pane
+    // row so the two never drift. Zero when the column separators are off.
+    // Otherwise it is always drawn: with no margin the cover sits over it and
+    // hides the stretch it spans, leaving the rule visible only above and below
+    // the art; with a margin the cover is held clear of it and the rule runs its
+    // full height.
+    readonly property int coverPaneRule: prefs.paneSeparators
+        ? Math.max(1, Math.round(prefs.borderWidth * prefs.uiScale))
+        : 0
+    // Extra inset for the tracks pane's rows. The pane rule sits on the cover's
+    // inner edge and the cover hides it, so with only the shared inset the
+    // durations would run right up against the art; this holds them off it. Only
+    // the tracks pane meets the cover, and only when the cover band is on --
+    // floating, the pane keeps the shared inset.
+    readonly property int trackArtGutter: root.coverBand ? Math.round(8 * prefs.uiScale) : 0
+    // How far the cover is held off the pane edge it is aligned to, from the
+    // padding setting. Fixed at coverPad until the cover is large enough that the
+    // space left over shrinks to less than that, at which point the inset gives
+    // way so a full pane-height cover sits exactly against the top and the strip
+    // -- flush, not short by a margin it can no longer afford.
+    readonly property int coverBandInset: Math.min(root.coverPad,
+        Math.max(0, Math.round((root.paneHeight - root.paneCoverSize) / 2)))
+    // The cover's y inside the pane, from the pane-position setting: against the
+    // top or bottom edge (bar the inset above), or centred.
+    readonly property int coverBandY: {
+        if (root.coverBandAlign === "top") return root.coverBandInset
+        if (root.coverBandAlign === "middle")
+            return Math.round((root.paneHeight - root.paneCoverSize) / 2)
+        return root.paneHeight - root.coverBandInset - root.paneCoverSize
+    }
+    // The floating cover: the same share of the pane height, capped so it never
+    // spills past the gutter it keeps from the window edges.
+    readonly property int floatingCoverSize: Math.max(Math.round(48 * prefs.uiScale),
+        Math.min(root.heroCover,
+                 window.width - root.floatGutter * 2,
+                 root.paneHeight - root.floatGutter * 2))
 
     // Height of the now-playing strip. Named because two overlays sit clear of it
     // and have to agree with it: the typeahead readout and the MPD error banner.
@@ -84,12 +216,13 @@ Item {
     property int albumIndex: 0
     property int trackIndex: 0
 
-    // The settings card is modal: while it is up the browser keeps its state
-    // underneath but stops answering keys, so j/k cannot walk a list that is
-    // behind a dialog.
+    // The settings card and the key reference are both modal: while either is up
+    // the browser keeps its state underneath but stops answering keys, so j/k
+    // cannot walk a list that is behind a dialog.
     property bool settingsOpen: false
     property int settingIndex: 0
     property bool settingsEditMode: false
+    property bool helpOpen: false
 
     readonly property var artistList: mpd && mpd.artists ? mpd.artists : []
     readonly property var albumList: artistIndex >= 0 && artistIndex < artistList.length
@@ -113,13 +246,23 @@ Item {
     // one press, and closing it leaves no workspace behind to toggle.
     property bool closingFromHost: false
 
-    function open(payloadJson) {
+    // keepSelection is for the editTags IPC: the tag editor works from whatever
+    // the panel has selected, so resetting the pane to artists would make it edit
+    // a different set of songs than the one on screen. Every other caller wants
+    // the fresh-summon reset.
+    function open(payloadJson, keepSelection) {
         closingFromHost = true
         window.visible = true
         closingFromHost = false
-        pane = "artists"
+        if (!keepSelection) pane = "artists"
         settingsOpen = false
         settingsEditMode = false
+        helpOpen = false
+        // The tag editor is modal and its fields would otherwise hold a set of
+        // songs picked in a previous summon, with the panel's key catcher still
+        // disabled because tagOpen was left true.
+        tagOpen = false
+        tagSongs = []
         // The service may have loaded its one status before this panel attached
         // its status listener. If nothing is playing, no further event arrives,
         // so without this the bar would sit at zero until the next playback
@@ -197,7 +340,10 @@ Item {
             var item = list[i]
             var name
             if (pane === "artists") name = item.name || ""
-            else if (pane === "albums") name = albumText(item.year, item.name)
+            // Match the album's own name, not the year-prefixed label the pane
+            // draws: with "Album years" on, that label starts with the year, so a
+            // typed letter could never match it.
+            else if (pane === "albums") name = item.name || ""
             else name = item.title || item.file || ""
             if (name.toLowerCase().startsWith(typeaheadBuffer)) {
                 if (pane === "artists") selectArtist(i, false)
@@ -211,70 +357,66 @@ Item {
     // ---- settings ----
     //
     // The card owns no state of its own beyond which setting is under the caret;
-    // opening it always starts at the top-left so the muscle memory for "s,
-    // change the first thing" survives having scrolled somewhere else last time.
+    // opening it always starts at the top so the muscle memory for "the first
+    // thing" survives having scrolled somewhere else last time.
     //
-    // The two columns are not two halves of one list. The right column is every
-    // slider and the left is every switch and named choice, so the sizes group
-    // together instead of alternating with the toggles. That means up/down walk
-    // one column's own list and left/right cross between them, and because the
-    // columns are different lengths the cross has to clamp.
-    //
-    // settingIndex stays an index into prefs.entries rather than a screen
-    // position. The two orderings disagree, so the functions below convert
-    // between them; keeping the canonical index means cycle(), textOf() and
-    // reset() need no notion of columns at all.
+    // settingIndex is an index into prefs.visibleEntries -- the settings the card
+    // is actually showing. Hidden dependents are not in that list, so navigation
+    // never lands on a row nobody can see. The card is four columns; up/down
+    // walks the caret down its own column, left/right crosses to the neighbouring
+    // column at the same height. The config owns that geometry, keyed on the bare
+    // index, so the panel and the card cannot disagree about where anything is.
     function toggleSettings() {
         settingsOpen = !settingsOpen
         if (settingsOpen) {
-            settingIndex = settingIndexAt(0, 0) >= 0 ? settingIndexAt(0, 0) : 0
+            helpOpen = false
+            settingIndex = 0
             settingsEditMode = false
         }
     }
 
-    function settingColumnOf(index) {
-        return prefs.isSlider(prefs.entries[index]) ? 1 : 0
-    }
-
-    function settingRowOf(index) {
-        var entry = prefs.entries[index]
-        if (!entry) return 0
-        var list = prefs.isSlider(entry) ? prefs.sliderEntries : prefs.plainEntries
-        return list.indexOf(entry)
-    }
-
-    // Clamps rather than refusing: crossing from a long column into a shorter
-    // one lands on that column's last entry instead of doing nothing, which is
-    // what makes left/right feel like movement when the columns differ.
-    function settingIndexAt(column, row) {
-        var list = column === 1 ? prefs.sliderEntries : prefs.plainEntries
-        if (list.length === 0) return -1
-        var clamped = Math.max(0, Math.min(row, list.length - 1))
-        return prefs.entries.indexOf(list[clamped])
+    // The key reference. Opening it closes the settings card, since both are
+    // modal and only one can be on top.
+    function toggleHelp() {
+        helpOpen = !helpOpen
+        if (helpOpen) {
+            settingsOpen = false
+            settingsEditMode = false
+        }
     }
 
     function moveSettingRows(delta) {
-        if (prefs.entries.length === 0) return
-        var column = settingColumnOf(settingIndex)
-        var next = settingIndexAt(column, settingRowOf(settingIndex) + delta)
+        if (prefs.visibleEntries.length === 0) return
+        var next = prefs.indexAt(prefs.columnOf(settingIndex), prefs.rowOf(settingIndex) + delta)
         if (next < 0 || next === settingIndex) return
         settingIndex = next
         settingsEditMode = false
     }
 
     function moveSettingColumns(delta) {
-        if (prefs.entries.length === 0) return
-        var column = settingColumnOf(settingIndex) + delta
-        if (column < 0 || column > 1) return
-        var next = settingIndexAt(column, settingRowOf(settingIndex))
+        if (prefs.visibleEntries.length === 0) return
+        var column = prefs.columnOf(settingIndex) + delta
+        if (column < 0 || column >= prefs.columns.length) return
+        var next = prefs.indexAt(column, prefs.rowOf(settingIndex))
         if (next < 0 || next === settingIndex) return
         settingIndex = next
         settingsEditMode = false
     }
 
+    // A dependent setting disappears the moment its parent is switched off. The
+    // caret is normally on that parent, but keep it in range anyway so it can
+    // never point past the visible list and select nothing.
+    Connections {
+        target: prefs
+        function onVisibleEntriesChanged() {
+            if (root.settingIndex >= prefs.visibleEntries.length)
+                root.settingIndex = Math.max(0, prefs.visibleEntries.length - 1)
+        }
+    }
+
     function changeSetting(delta) {
-        if (prefs.entries.length === 0) return
-        prefs.cycle(prefs.entries[settingIndex], delta)
+        if (prefs.visibleEntries.length === 0) return
+        prefs.cycle(prefs.visibleEntries[settingIndex], delta)
     }
 
     // Every index change has to reset the panes to its right, otherwise the
@@ -326,12 +468,6 @@ Item {
     // selected.
     property var tagSongs: []
     property bool tagOpen: false
-
-    function selectionLevel() {
-        if (pane === "tracks") return "track"
-        if (pane === "albums") return "album"
-        return "artist"
-    }
 
     function selectionSongs() {
         if (pane === "tracks") {
@@ -413,9 +549,8 @@ Item {
     // because no command had ever gone out, and the click looked ignored.
     function seekToFraction(fraction) {
         if (!mpd) return -1
-        var target = Math.max(0, Math.min(1, fraction)) * duration
         if (!(duration > 0)) return -1
-        var requested = mpd.seekFraction(fraction)
+        var requested = mpd.seekFraction(Math.max(0, Math.min(1, fraction)))
         if (requested < 0) return -1
         anchorElapsed = requested
         anchorAt = Date.now() / 1000
@@ -430,6 +565,18 @@ Item {
         }
         function onCurrentChanged() {
             root.reanchor()
+        }
+        // A database event rebuilds and re-sorts the tree, so an index that was in
+        // range a moment ago can point past the end. Clamp it here rather than
+        // leaving an empty pane (and, for the artist index, an activation that
+        // resolves to no files) until the caret is next moved.
+        function onArtistsChanged() {
+            if (root.artistIndex >= root.artistList.length)
+                root.selectArtist(Math.max(0, root.artistList.length - 1), false)
+            else if (root.albumIndex >= root.albumList.length)
+                root.selectAlbum(Math.max(0, root.albumList.length - 1), false)
+            else if (root.trackIndex >= root.trackList.length)
+                root.trackIndex = Math.max(0, root.trackList.length - 1)
         }
         // The service owns the repeat policy and holds no reference to the config,
         // so persisting the mode is the panel's half of the arrangement.
@@ -459,7 +606,7 @@ Item {
     FloatingWindow {
         id: window
         title: "GrimPlayer"
-        color: Color.background
+        color: theme.background
         // Starts closed; the shell summons the panel on demand. Starting visible
         // meant the surface outliving whatever it was pinned to, which is what
         // left its workspace stuck as active after a close.
@@ -495,49 +642,111 @@ Item {
             anchors.fill: parent
             spacing: 0
 
-            // ---- panes ----
-            PaneRow {
+            // ---- lists + artwork ----
+            //
+            // One region: the three lists, and -- with the cover band on -- the
+            // artwork pane to their right. The lists take the width the pane does
+            // not, and PaneRow is told that width, so its 0.26/0.30 splits are
+            // shares of the lists rather than of the whole window.
+            Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                // Bare `prefs`, not `root.prefs`: the config object is reached by its id, and an
-                // id is only in scope as a plain name. `root.prefs` is undefined,
-                // which left PaneRow silently on its fallback values -- dividers
-                // pinned to 1px whatever the setting said.
-                prefs: prefs
-                paneWidth: window.width
-                pixelRatio: root.pixelRatio
-                activePane: root.pane
-                artistList: root.artistList
-                albumList: root.albumList
-                trackList: root.trackList
-                artistIndex: root.artistIndex
-                albumIndex: root.albumIndex
-                trackIndex: root.trackIndex
-                current: root.mpd ? root.mpd.current : null
 
-                artistLabel: function (item) { return item.name }
-                albumLabel: function (item) { return root.albumText(item.year, item.name) }
-                trackLabel: function (item) {
-                    var n = item.track === null ? "--" : item.track
-                    if (item.disc !== null && item.disc > 1) n = item.disc + "-" + n
-                    return n + ". " + (item.title || "Untitled")
+                PaneRow {
+                    id: paneRow
+
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: Math.max(0, parent.width - root.coverPaneWidth)
+
+                    // Bare `prefs`, not `root.prefs`: the config object is reached by its id, and an
+                    // id is only in scope as a plain name. `root.prefs` is undefined,
+                    // which left PaneRow silently on its fallback values -- dividers
+                    // pinned to 1px whatever the setting said.
+                    prefs: prefs
+                    theme: theme
+                    paneWidth: width
+                    pixelRatio: root.pixelRatio
+                    activePane: root.pane
+                    artistList: root.artistList
+                    albumList: root.albumList
+                    trackList: root.trackList
+                    artistIndex: root.artistIndex
+                    albumIndex: root.albumIndex
+                    trackIndex: root.trackIndex
+                    current: root.mpd ? root.mpd.current : null
+
+                    artistLabel: function (item) { return item.name }
+                    albumLabel: function (item) { return root.albumText(item.year, item.name) }
+                    trackLabel: function (item) {
+                        var n = item.track === null ? "--" : item.track
+                        if (item.disc !== null && item.disc > 1) n = item.disc + "-" + n
+                        return n + ". " + (item.title || "Untitled")
+                    }
+                    trackSublabel: function (item) { return root.formatTime(item.duration) }
+                    playingMarkerSides: prefs.playingMarkerSides
+                    trackArtGutter: root.trackArtGutter
+                    isCurrent: prefs.playingHighlight ? function (item) {
+                        return root.mpd && root.mpd.current && item.file === root.mpd.current.file
+                    } : null
+
+                    onArtistActivated: function (index) { root.selectArtist(index, true) }
+                    onAlbumActivated: function (index) { root.selectAlbum(index, true) }
+                    onTrackActivated: function (index) { root.selectTrack(index) }
                 }
-                trackSublabel: function (item) { return root.formatTime(item.duration) }
-                isCurrent: prefs.playingHighlight ? function (item) {
-                    return root.mpd && root.mpd.current && item.file === root.mpd.current.file
-                } : null
 
-                onArtistActivated: function (index) { root.selectArtist(index, true) }
-                onAlbumActivated: function (index) { root.selectAlbum(index, true) }
-                onTrackActivated: function (index) { root.selectTrack(index) }
+                // The artwork pane. A fourth column in the panel's own background,
+                // so it reads as a peer of the lists rather than as a footer; ruled
+                // on its inner edge like every other boundary. With no padding the
+                // cover is drawn over that rule and hides the stretch it spans, so
+                // the rule reads as broken exactly where the art is; the CoverArt
+                // item below supplies the cover, so there is still only one
+                // album-art loader and one palette extraction running.
+                Rectangle {
+                    id: coverPane
+
+                    visible: root.coverBand
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: root.coverPaneWidth
+                    color: theme.background
+
+                    PaneDivider {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        thickness: root.coverPaneRule
+                        // The same column-separator setting the list rules obey.
+                        // With no padding the cover rides over this rule and hides
+                        // the stretch it spans, so only the parts above and below
+                        // the art show.
+                        visible: root.coverPaneRule > 0
+                        // Stepped up on a light ground, like the PaneRow rules: a
+                        // 0.16 rule that is clear on a dark pane vanishes on a
+                        // near-white one.
+                        ruleColor: theme
+                            ? Util.alpha(theme.foreground, theme.light ? 0.24 : 0.16)
+                            : Qt.rgba(1, 1, 1, 0.08)
+                    }
+                }
             }
 
             // ---- now playing ----
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.stripHeight
-                color: Qt.rgba(0, 0, 0, 0.35)
+                // A step away from the panes, so the footer reads as a strip
+                // rather than as more of the same list background. The shade
+                // comes from the theme (see GrimTheme.strip), because how far to
+                // step depends on whether the ground is light or dark.
+                color: theme.strip
 
+                // The now-playing strip. Unchanged by the cover-band setting: the
+                // track details stay here, in the footer, whether or not the
+                // artwork pane is showing, so the bar looks the same either way
+                // and the artwork pane holds only the art.
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: Math.round(20 * prefs.uiScale)
@@ -546,13 +755,14 @@ Item {
 
                     ColumnLayout {
                         Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
                         spacing: Math.round(4 * prefs.uiScale)
 
                         Text {
                             Layout.fillWidth: true
                             text: root.mpd && root.mpd.current && root.mpd.current.Title
                                 ? root.mpd.current.Title : "Nothing playing"
-                            color: Color.foreground
+                            color: theme.foreground
                             font.pixelSize: Math.round((Style.font.title + prefs.fontTitle) * prefs.uiScale)
                             font.weight: Font.DemiBold
                             elide: Text.ElideRight
@@ -574,226 +784,92 @@ Item {
                                 ? (root.mpd.current.Artist || root.mpd.current.AlbumArtist || "Unknown artist")
                                     + (root.nowPlayingFlag ? "  " + root.nowPlayingFlag : "")
                                 : (root.mpd && root.mpd.connected ? "Library ready" : "Not connected to MPD")
-                            color: Color.muted
+                            color: theme.muted
                             font.pixelSize: Math.round((Style.font.body + prefs.fontBody) * prefs.uiScale)
                             elide: Text.ElideRight
                         }
 
-                        // Seek bar. Press and drag scrubs; the fill previews the
-                        // dragged position and only the release sends a seek, so
-                        // a drag is one MPD command instead of one per pixel.
-                        Item {
-                            id: seek
-
+                        SeekBar {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: Math.round(14 * prefs.uiScale)
-
-                            readonly property real shown: seekArea.pressed
-                                ? seekArea.scrubFraction
-                                : root.progress
-
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width
-                                height: prefs.seekThickness
-                                radius: prefs.seekThickness / 2
-                                color: Qt.rgba(1, 1, 1, 0.14)
-                            }
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width * seek.shown
-                                height: prefs.seekThickness
-                                radius: prefs.seekThickness / 2
-                                color: Color.accent
-                            }
-
-                            // Handle, shown on hover or while dragging, so the bar
-                            // reads as draggable rather than as a progress display.
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: seekArea.containsMouse || seekArea.pressed
-                                width: Math.round(11 * prefs.uiScale)
-                                height: Math.round(11 * prefs.uiScale)
-                                radius: Math.round(5.5 * prefs.uiScale)
-                                color: Color.accent
-                                x: Math.max(0, Math.min(seek.width - width,
-                                    seek.width * seek.shown - width / 2))
-                            }
-
-                            MouseArea {
-                                id: seekArea
-                                anchors.fill: parent
-                                enabled: root.duration > 0
-                                hoverEnabled: true
-
-                                property real scrubFraction: 0
-
-                                function fractionAt(x) {
-                                    return Math.max(0, Math.min(1, x / Math.max(1, seek.width)))
-                                }
-
-                                onPressed: function (mouse) { scrubFraction = fractionAt(mouse.x) }
-                                onPositionChanged: function (mouse) {
-                                    if (pressed) scrubFraction = fractionAt(mouse.x)
-                                }
-                                onReleased: function (mouse) {
-                                    root.seekToFraction(fractionAt(mouse.x))
-                                }
-                                onCanceled: scrubFraction = seek.shown
-                            }
+                            theme: theme
+                            uiScale: prefs.uiScale
+                            progress: root.progress
+                            duration: root.duration
+                            thickness: prefs.seekThickness
+                            onSeekRequested: function (fraction) { root.seekToFraction(fraction) }
                         }
 
                         Text {
                             text: root.formatTime(root.elapsed) + " / " + root.formatTime(root.duration)
-                            color: Color.muted
+                            color: theme.muted
                             font.pixelSize: Math.round((Style.font.body + prefs.fontBody) * prefs.uiScale)
                         }
                     }
 
-                    // ---- transport ----
+                    // ---- transport + volume ----
+                    //
+                    // Kept in one row so the volume rides at the same level as the
+                    // buttons rather than on the floor: centred against each other
+                    // their centrelines pin together, and the row centres with the
+                    // text beside it.
                     RowLayout {
-                        spacing: Math.round(6 * prefs.uiScale)
+                        Layout.alignment: Qt.AlignVCenter
+                        spacing: Math.round(16 * prefs.uiScale)
 
-                        TransportButton {
-                            icon: "shuffle"
+                        TransportRow {
+                            Layout.alignment: Qt.AlignVCenter
+                            theme: theme
+                            mpd: root.mpd
                             iconSize: prefs.iconSize
                             uiScale: prefs.uiScale
-                            active: !!(root.mpd && root.mpd.status && root.mpd.status.random)
-                            onClicked: root.mpd && root.mpd.toggleRandom()
                         }
-                        TransportButton {
-                            icon: "previous"
+
+                        VolumeControl {
+                            Layout.alignment: Qt.AlignVCenter
+                            theme: theme
+                            mpd: root.mpd
                             iconSize: prefs.iconSize
+                            sliderWidth: 120
                             uiScale: prefs.uiScale
-                            onClicked: root.mpd && root.mpd.command("previous")
-                        }
-                        TransportButton {
-                            icon: root.mpd && root.mpd.status && root.mpd.status.state === "play" ? "pause" : "play"
-                            prominent: true
-                            iconSize: prefs.iconSize
-                            uiScale: prefs.uiScale
-                            onClicked: root.mpd && root.mpd.togglePlay()
-                        }
-                        TransportButton {
-                            icon: "next"
-                            iconSize: prefs.iconSize
-                            uiScale: prefs.uiScale
-                            onClicked: root.mpd && root.mpd.command("next")
-                        }
-                        TransportButton {
-                            icon: "repeat"
-                            iconSize: prefs.iconSize
-                            uiScale: prefs.uiScale
-                            // Three modes: off, repeat song, repeat album. Lit for
-                            // both repeat modes, with the dot marking the
-                            // single-track one, which is the same read every
-                            // other player trains you on.
-                            active: root.mpd && root.mpd.repeatMode > 0
-                            modeDot: root.mpd && root.mpd.repeatMode === 1
-                            onClicked: root.mpd && root.mpd.cycleRepeatMode()
-                        }
-                    }
-
-                    // ---- volume ----
-                    RowLayout {
-                        spacing: Math.round(8 * prefs.uiScale)
-
-                        VolumeIcon {
-                            iconSize: prefs.iconSize
-                            uiScale: prefs.uiScale
-                            level: root.mpd && root.mpd.status && root.mpd.status.volume !== undefined
-                                ? root.mpd.status.volume : 0
-                            onClicked: root.toggleMute()
-                        }
-                        // Themed rather than left on Qt's default Basic style: the stock slider comes
-                        // out in the platform's own greys and ignores the theme entirely, which is why
-                        // it was the one control in the panel that never changed with the rest. Track,
-                        // fill and handle are drawn from the same tokens as the seek bar above, so the
-                        // two read as one pair.
-                        Slider {
-                            id: volumeSlider
-                            Layout.preferredWidth: Math.round(120 * prefs.uiScale)
-                            implicitHeight: Math.round(22 * prefs.uiScale)
-                            from: 0
-                            to: 100
-                            stepSize: 1
-
-                            // The level MPD last reported, kept apart from the
-                            // slider's own value rather than bound to it: a drag
-                            // is echoed back one round trip later over `idle
-                            // mixer`, so a binding would pull the handle out from
-                            // under the pointer half way through the press. The
-                            // echo is adopted whenever the handle is not held.
-                            readonly property real reported: root.mpd && root.mpd.status
-                                && root.mpd.status.volume !== undefined ? root.mpd.status.volume : 0
-                            property bool dragging: false
-
-                            onReportedChanged: if (!dragging) value = reported
-                            onPressedChanged: dragging = pressed
-
-                            // Dragging the slider to zero is also a mute, so it has to record the level it
-                            // came from or the icon click would have nothing to restore.
-                            onMoved: {
-                                if (value > 0) root.lastAudibleVolume = value
-                                if (root.mpd) root.mpd.setVolume(value)
-                            }
-
-                            Component.onCompleted: value = reported
-
-                            background: Rectangle {
-                                x: volumeSlider.leftPadding
-                                y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
-                                width: volumeSlider.availableWidth
-                                height: Math.max(2, Math.round(4 * prefs.uiScale))
-                                radius: height / 2
-                                color: Qt.rgba(1, 1, 1, 0.12)
-
-                                Rectangle {
-                                    width: parent.width * volumeSlider.visualPosition
-                                    height: parent.height
-                                    radius: parent.radius
-                                    color: Color.accent
-                                }
-                            }
-
-                            handle: Rectangle {
-                                x: volumeSlider.leftPadding
-                                    + volumeSlider.visualPosition * (volumeSlider.availableWidth - width)
-                                y: volumeSlider.topPadding + (volumeSlider.availableHeight - height) / 2
-                                width: Math.round(13 * prefs.uiScale)
-                                height: width
-                                radius: width / 2
-                                color: Color.foreground
-                                border.width: 2
-                                border.color: Color.background
-                                // Idle handle would sit as a permanent dot on the
-                                // track; the transport buttons behave the same way,
-                                // showing their affordance only on hover or press.
-                                visible: volumeSlider.pressed || volumeSlider.hovered
-                            }
+                            onMuteToggled: root.toggleMute()
+                            onAudibleVolumeChanged: function (v) { root.lastAudibleVolume = v }
                         }
                     }
                 }
             }
         }
 
-        // Album art for the current track, floating over the tracks pane's lower
-        // right corner. Inset, it keeps a gutter on both edges; the preference
-        // drops both to 0 for artwork that runs to the window edges instead.
-        // bottomMargin always clears the 84px now-playing strip so the cover sits
-        // above the footer rather than on top of it.
+        // Album art for the current track. Two placements, both computed rather
+        // than anchored: floating over the tracks pane's lower-right corner by
+        // default, or -- when the cover band is on -- set into the artwork pane,
+        // flush to its right edge with the optional margin, at the top, middle or
+        // bottom of the pane. Nothing is anchored here on purpose -- toggling an
+        // anchor to `undefined` does not reliably clear it, so a mode switch could
+        // leave both edges anchored and stretch the art across the window. Plain
+        // x/y is a value change the layout cannot get stuck on.
         CoverArt {
+            id: cover
+            theme: theme
             mpd: root.mpd
             uiScale: prefs.uiScale
             coverBorder: prefs.coverBorder
             coverBorderWidth: prefs.coverBorderWidth
+            rounded: prefs.coverRounded
             placeholder: prefs.coverPlaceholder
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.rightMargin: Math.round(20 * prefs.uiScale)
-            anchors.bottomMargin: root.stripHeight + Math.round(20 * prefs.uiScale)
-            width: Math.round(prefs.coverSize * prefs.uiScale)
-            height: Math.round(prefs.coverSize * prefs.uiScale)
+            fetchCovers: prefs.fetchCovers
+            transitionDuration: prefs.coverTransition
+            width: root.coverBand ? root.paneCoverSize : root.floatingCoverSize
+            height: width
+            // In the artwork pane the cover keeps the padding setting's margin on
+            // the right, flush when it is off; the pane is sized to match, so with
+            // no margin the art runs flush to the left edge too and covers the pane
+            // rule over its own height. Floating, it keeps its gutter.
+            x: root.coverBand
+                ? parent.width - root.coverPad - width
+                : parent.width - width - root.floatGutter
+            y: root.coverBand
+                ? root.coverBandY
+                : parent.height - root.stripHeight - root.floatGutter - height
         }
 
         // Typeahead readout: the letters being jumped to, shown only while they
@@ -812,16 +888,16 @@ Item {
             // Themed like the rest of the panel: a low foreground wash rather
             // than flat black, so it sits in the palette and follows a theme
             // switch instead of punching a dark hole in it.
-            color: Util.alpha(Color.foreground, 0.10)
+            color: Util.alpha(theme.foreground, 0.10)
             border.width: 1
-            border.color: Util.alpha(Color.foreground, 0.16)
+            border.color: Util.alpha(theme.foreground, 0.16)
 
             Text {
                 id: typeaheadReadout
                 anchors.centerIn: parent
                 text: root.typeaheadBuffer
                 // Accent, matching how the settings card marks a live value.
-                color: Color.accent
+                color: theme.accent
                 // Subtitle rather than body: one step up from the panel's default
                 // text, because this is a transient readout that has to be legible
                 // in the corner while the eye is three panes away.
@@ -843,7 +919,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: root.stripHeight + Math.round(12 * prefs.uiScale)
-            visible: root.mpd !== null && (!root.mpd.connected || root.mpd.lastError !== "")
+            visible: !!root.mpd && (!root.mpd.connected || root.mpd.lastError !== "")
             width: errorText.implicitWidth + Math.round(32 * prefs.uiScale)
             height: errorText.implicitHeight + Math.round(12 * prefs.uiScale)
             radius: Math.round(6 * prefs.uiScale)
@@ -859,15 +935,15 @@ Item {
             // with it too could leave the text unreadable on a dark theme. The
             // tint and the border carry the urgency, and they use the same two
             // stops the typeahead already uses.
-            color: Util.alpha(Color.urgent, 0.18)
+            color: Util.alpha(theme.urgent, 0.18)
             border.width: 1
-            border.color: Util.alpha(Color.urgent, 0.6)
+            border.color: Util.alpha(theme.urgent, 0.6)
 
             Text {
                 id: errorText
                 anchors.centerIn: parent
                 text: root.mpd && root.mpd.lastError !== "" ? "MPD: " + root.mpd.lastError : "MPD not connected"
-                color: Color.foreground
+                color: theme.foreground
                 // bodySmall, one step up from caption: this is a status line that
                 // has to be read at a glance, and caption was the smallest text in
                 // the panel. The user offset still applies on top, so anyone who
@@ -892,37 +968,73 @@ Item {
             enabled: !root.tagOpen
             focus: !root.tagOpen
 
-            // The manifest sets keepLoaded, so the panel mounts with the shell
-            // and open() is never called to claim focus. Taking it when the
-            // window becomes visible is what makes the keys work at all.
-            onVisibleChanged: if (visible && !root.tagOpen) Qt.callLater(function () { keyCatcher.forceActiveFocus() })
-
+            // Focus is claimed here on mount and again by open() on every summon
+            // (the shell calls it -- see the host contract above), which together
+            // are what make the keys work. This item's own visible never changes,
+            // so an onVisibleChanged here would never fire.
             Component.onCompleted: Qt.callLater(function () { if (!root.tagOpen) keyCatcher.forceActiveFocus() })
 
             Keys.onPressed: function (event) {
                 var handled = true
 
-                // Shift and control are read before the switch. shift+left and
-                // shift+right report the same Qt.Key_Left/Qt.Key_Right as the
+                // Shift, control and alt are read before the switch. shift+left
+                // and shift+right report the same Qt.Key_Left/Qt.Key_Right as the
                 // bare arrows, so a case matching on the key alone ran first and
                 // changed pane instead of seeking -- the seek branch below was
-                // unreachable and could never be taken.
+                // unreachable and could never be taken. Alt is what separates the
+                // screen-opening keys from the letters the typeahead wants.
                 var shift = (event.modifiers & Qt.ShiftModifier) !== 0
                 var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+                var alt = (event.modifiers & Qt.AltModifier) !== 0
+
+                // The Alt screen keys, handled before the modal branches so they
+                // work from inside the settings card or the key reference as well
+                // as from the browser: Alt+S toggles the card, Alt+T opens the tag
+                // editor. The tag editor is the exception -- it disables this
+                // catcher and reads its own keys. Plain ? opens the reference, and
+                // is left to the branches below so it can also close a screen.
+                if (alt && (event.key === Qt.Key_S || event.key === Qt.Key_T)) {
+                    if (event.key === Qt.Key_S) {
+                        root.toggleSettings()
+                    } else {
+                        root.settingsOpen = false
+                        root.helpOpen = false
+                        root.openTagEditor()
+                    }
+                    event.accepted = true
+                    return
+                }
+
+                // The key reference is modal too, and sits above the settings
+                // card, so it takes first refusal while it is up. Any key but the
+                // ones that dismiss it is swallowed, so nothing behind it moves.
+                if (root.helpOpen) {
+                    switch (event.key) {
+                    case Qt.Key_Escape:
+                    case Qt.Key_Q:
+                    case Qt.Key_Question:
+                        if (!alt) root.helpOpen = false
+                        break
+                    default:
+                        handled = false
+                    }
+                    if (handled) event.accepted = true
+                    return
+                }
 
                 // Settings is modal, so it gets first refusal on every key: the
                 // browser underneath must not answer j/k while the card is up, or
                 // the caret moves in a list nobody can see.
                 //
-                // Two modes. Browsing: all four arrows, and the hjkl equivalents, walk the
-                // two-dimensional grid -- up/down a row, left/right a column.
+                // Two modes. Browsing: all four arrows, and the hjkl equivalents,
+                // walk the grid -- up/down a column, left/right across columns.
                 // Editing: a slider is open, so left/right belong to it and
                 // up/down go back to moving the caret. Enter is the toggle for
                 // the plain switches and the way into a slider, which is the
                 // only reason edit mode exists at all.
                 if (root.settingsOpen) {
-                    var count = prefs.entries.length
-                    var entry = count > 0 ? prefs.entries[Math.max(0, Math.min(root.settingIndex, count - 1))] : null
+                    var count = prefs.visibleEntries.length
+                    var entry = count > 0 ? prefs.visibleEntries[Math.max(0, Math.min(root.settingIndex, count - 1))] : null
                     var isNumeric = !!(entry && entry.options && entry.options.length > 0 && typeof entry.options[0] === "number")
 
                     switch (event.key) {
@@ -933,8 +1045,16 @@ Item {
                         if (root.settingsEditMode) root.settingsEditMode = false
                         else root.settingsOpen = false
                         break
-                    case Qt.Key_Q:
-                    case Qt.Key_Question: root.settingsOpen = false; break
+                    case Qt.Key_Q: root.settingsOpen = false; break
+                    case Qt.Key_Question:
+                        // ? is the key reference everywhere, so from the card it
+                        // hands over to that rather than just closing. Only the
+                        // bare key: Alt+? is not the shortcut.
+                        if (!alt) {
+                            root.settingsOpen = false
+                            root.helpOpen = true
+                        }
+                        break
 
                     case Qt.Key_Up:
                     case Qt.Key_K: root.moveSettingRows(-1); break
@@ -964,11 +1084,10 @@ Item {
                         if (root.settingsEditMode) {
                             root.changeSetting(shift ? -1 : 1)
                         } else {
-                            // First and last of the whole card, which are the top
-                            // of the left column and the bottom of the right one.
-                            var edge = shift ? 1 : 0
-                            var target = root.settingIndexAt(edge, shift ? 9999 : 0)
-                            if (target >= 0) root.settingIndex = target
+                            // The first and last settings in the card. With four
+                            // columns there is no single end column to ask for, so
+                            // the ends are the ends of the flat visible list.
+                            if (count > 0) root.settingIndex = shift ? count - 1 : 0
                             root.settingsEditMode = false
                         }
                         break
@@ -982,9 +1101,23 @@ Item {
                     return
                 }
 
-                if (shift && event.key === Qt.Key_Left) {
+                // Alt and control are not part of any browser binding -- the Alt
+                // screen keys were taken above. Without this, Alt+letter reached
+                // the typeahead and Ctrl+arrow moved the caret or changed pane.
+                // Swallow them rather than acting on the letter.
+                if (alt || ctrl) {
+                    event.accepted = true
+                    return
+                }
+
+                // Shift+arrows seek. h and l are the vim spelling of the same
+                // two arrows, so with Vim keys on their shifted forms seek the
+                // same way rather than changing pane.
+                if (shift && (event.key === Qt.Key_Left
+                        || (prefs.vimKeys && event.key === Qt.Key_H))) {
                     root.seekBy(-5)
-                } else if (shift && event.key === Qt.Key_Right) {
+                } else if (shift && (event.key === Qt.Key_Right
+                        || (prefs.vimKeys && event.key === Qt.Key_L))) {
                     root.seekBy(5)
                 } else {
                 // Arrows mirror the hjkl bindings, so both schemes navigate the
@@ -992,17 +1125,6 @@ Item {
                 // Seeking keeps shift+left/shift+right rather than the bare
                 // arrows, which are wanted for pane changes.
                 switch (event.key) {
-                // Handled ahead of the switch and only with Alt held: plain R is
-                // an ordinary letter as far as the browser is concerned and feeds
-                // the typeahead, and settings uses R for reset, so the modifier is
-                // what keeps this from colliding with either.
-                case Qt.Key_R:
-                    if (event.modifiers & Qt.AltModifier) {
-                        root.openTagEditor()
-                        break
-                    }
-                    handled = false
-                    break
                 case Qt.Key_Down:
                     root.move(1); break
                 case Qt.Key_Up:
@@ -1018,15 +1140,17 @@ Item {
                 case Qt.Key_K: if (prefs.vimKeys) root.move(-1); else handled = false; break
                 case Qt.Key_L: if (prefs.vimKeys) root.shiftPane(1); else handled = false; break
                 case Qt.Key_H: if (prefs.vimKeys) root.shiftPane(-1); else handled = false; break
-                case Qt.Key_G: if (prefs.vimKeys) root.moveToEnd(false); else handled = false; break
-                case Qt.Key_Greater: if (prefs.vimKeys) root.moveToEnd(true); else handled = false; break
+                case Qt.Key_G: if (prefs.vimKeys) root.moveToEnd(shift); else handled = false; break
                 case Qt.Key_Return:
                 case Qt.Key_Enter:
                     root.activate(); break
                 case Qt.Key_Space:
                     root.mpd && root.mpd.togglePlay(); break
                 case Qt.Key_Question:
-                    root.toggleSettings(); break
+                    // ? (Shift+/) opens the key reference. Alt+? never gets
+                    // here: it is swallowed by the modifier guard above.
+                    root.toggleHelp()
+                    break
                 default:
                     handled = false
                 }
@@ -1051,6 +1175,7 @@ Item {
             // Fill is what makes the card land in the middle of the window: an
             // unanchored Item is 0x0, and the card centres inside it.
             anchors.fill: parent
+            theme: theme
             config: prefs
             index: root.settingIndex
             editMode: root.settingsEditMode
@@ -1065,15 +1190,29 @@ Item {
             onDismissed: { root.settingsOpen = false; root.settingsEditMode = false }
         }
 
+        // The key reference, above the settings card and the panes. Read-only, so
+        // it never takes focus.
+        Cfg.GrimPlayerHelp {
+            anchors.fill: parent
+            theme: theme
+            uiScale: prefs.uiScale
+            visible: root.helpOpen
+            onDismissed: root.helpOpen = false
+        }
+
         // Above the settings card, which is itself above the panes: both are
         // modal, but the tag editor is opened from outside this window, so it has
         // to be able to appear over a settings card nobody is looking at.
         Cfg.TagEditor {
             id: tagEditor
             anchors.fill: parent
+            theme: theme
             mpd: root.mpd
             songs: root.tagSongs
             uiScale: prefs.uiScale
+            coverTransition: prefs.coverTransition
+            fetchCovers: prefs.fetchCovers
+            coverRounded: prefs.coverRounded
             visible: root.tagOpen
             onDismissed: root.tagOpen = false
         }
@@ -1099,14 +1238,18 @@ Item {
 
     function seekBy(seconds) {
         if (!mpd || !duration) return
-        mpd.seekFraction((elapsed + seconds) / duration)
+        // Through seekToFraction so the bar re-anchors to the target and clamps
+        // to the track, the same way a click on the bar does. Sending the raw
+        // fraction straight to MPD left elapsed on its old anchor, so the bar
+        // snapped back to where it was on the next tick.
+        root.seekToFraction((root.elapsed + seconds) / root.duration)
     }
 
     // Only ticks while something is playing: a paused transport has nothing to
     // interpolate, so the timer stops rather than waking the shell every second.
     Timer {
         interval: 1000
-        running: root.mpd !== null && root.mpd.status && root.mpd.status.state === "play"
+        running: !!root.mpd && root.mpd.status && root.mpd.status.state === "play"
         repeat: true
         onTriggered: root.advance()
     }
@@ -1123,10 +1266,13 @@ Item {
 
     // Reached from outside the window as well as from inside it, so the editor can
     // be opened on whatever is selected without the panel having to be focused
-    // first. This is what the desktop binding calls.
+    // first. The panel is summoned first: openTagEditor only sets the editor's
+    // state, and an editor on a hidden window is invisible, which is what the
+    // desktop entry used to hit.
     IpcHandler {
         target: "skollgrim.grimplayer"
         function editTags(): void {
+            root.open("", true)
             root.openTagEditor()
         }
     }

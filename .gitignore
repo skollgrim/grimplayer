@@ -1,0 +1,3 @@
+# Python bytecode cache, written when extras/lookup.py runs.
+__pycache__/
+*.pyc

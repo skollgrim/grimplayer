@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 // The three list panes and the rules between them.
 //
 // This is a row of three panes that differ only in data, label and activation:
@@ -24,6 +25,11 @@ Item {
     // to be restated per pane.
     property var prefs: null
 
+    // The panel's colour tokens, forwarded to each pane. Not read here: this
+    // row only lays the three panes out, and none of them draw anything of
+    // their own.
+    property var theme: null
+
     property real paneWidth: 0
     property string activePane: "artists"
 
@@ -36,6 +42,16 @@ Item {
 
     // The playing song, for the tracks pane's "this one" highlight.
     property var current: null
+
+    // Which edges of the playing row carry the accent bar. Forwarded to the panes
+    // untouched; only the tracks pane is handed a current item, so it only ever
+    // shows there.
+    property string playingMarkerSides: "both"
+
+    // Extra right inset the panel hands the tracks pane, so its rows keep clear of
+    // the artwork when the cover band is on. Only the tracks pane is set; the other
+    // two keep the shared inset.
+    property int trackArtGutter: 0
 
     // Per-pane text, as callbacks because the three panes phrase their rows
     // differently. PaneColumn treats a null callback as "this pane has no such
@@ -71,9 +87,9 @@ Item {
     // Read from the screen the window is on, falling back to 4 when nothing
     // reports a ratio, which is the quarter-step case the old constant assumed.
     // Pinning the first pane to the quantum puts the first rule's left edge on the
-    // grid, and giving the second pane the rule's thickness back puts the second
-    // rule's left edge there too. Both rules then start phase-aligned with the
-    // same width and measure identically at every border width.
+    // grid, and the second rule is placed from that same quantum, so both rules
+    // start phase-aligned with the same width and measure identically at every
+    // border width.
     // Read from the panel rather than from Quickshell here: this file does not
     // import Quickshell, and referencing `Quickshell` from it is a ReferenceError
     // inside a binding, which does not fail loudly -- the property is simply left
@@ -110,6 +126,15 @@ Item {
     readonly property int dividerThickness: prefs
         ? Math.max(1, Math.round(prefs.borderWidth * prefs.uiScale)) : 1
 
+    // A light ground needs a firmer rule than a dark one: the same alpha that
+    // reads clearly as a line on a dark pane all but disappears on a near-white
+    // one, so the light case is stepped up. theme.light is the panel's own read
+    // of its ground, so this follows an adaptive light cover and a light shell
+    // theme alike. Shared by both rules so they can never drift apart.
+    readonly property color ruleColor: root.theme
+        ? Util.alpha(root.theme.foreground, root.theme.light ? 0.24 : 0.16)
+        : Qt.rgba(1, 1, 1, 0.08)
+
     function alignQuantum(logical) {
         var q = root.deviceQuantum
         return Math.max(q, Math.round(logical / q) * q)
@@ -126,23 +151,20 @@ Item {
     readonly property int fontSizeSublabel: prefs
         ? Math.round((Style.font.subtitle + prefs.fontSubtitle) * root.fontScale) : 0
 
+    // ---- panes ----
 
-
-// ---- panes ----
-
-// The shared pane, with the styling that used to be copied into each of the
-// three. An inline component rather than three hand-written PaneColumns
-// because that is exactly what it is for: a type used here that has no
-// existence outside this file. Per-pane differences are set on each instance.
-
-
-
-
-component PaneSlot: PaneColumn {
+    // The shared pane, with the styling that used to be copied into each of the
+    // three. An inline component rather than three hand-written PaneColumns
+    // because that is exactly what it is for: a type used here that has no
+    // existence outside this file. Per-pane differences are set on each instance.
+    component PaneSlot: PaneColumn {
+    theme: root.theme
     Layout.fillHeight: true
     rowSpacing: root.prefs ? root.prefs.rowSpacing : 0
     rowSeparators: root.prefs ? root.prefs.rowSeparators : false
     focusGlow: root.prefs ? root.prefs.focusGlow : true
+    showHeading: root.prefs ? root.prefs.paneHeadings : true
+    playingMarkerSides: root.playingMarkerSides
     uiScale: root.prefs ? root.prefs.uiScale : 1
     borderWidth: root.prefs ? root.prefs.borderWidth : 1
     activeRowBorder: root.prefs ? root.prefs.activeRowBorder : false
@@ -197,6 +219,9 @@ component PaneSlot: PaneColumn {
             label: root.trackLabel
             sublabel: root.trackSublabel
             isCurrent: root.isCurrent
+            // The one pane that ends against the artwork pane; held off it so the
+            // durations do not crowd the cover.
+            rightGutter: root.trackArtGutter
             onActivated: function (index) { root.trackActivated(index) }
         }
     }
@@ -211,6 +236,10 @@ component PaneSlot: PaneColumn {
         width: root.dividerThickness
         height: parent.height
         thickness: root.dividerThickness
+        ruleColor: root.ruleColor
+        // The column-separator setting. Off hides the rule; the panes still meet
+        // at the same boundary, so nothing moves.
+        visible: root.prefs ? root.prefs.paneSeparators : true
     }
 
     PaneDivider {
@@ -218,5 +247,7 @@ component PaneSlot: PaneColumn {
         width: root.dividerThickness
         height: parent.height
         thickness: root.dividerThickness
+        ruleColor: root.ruleColor
+        visible: root.prefs ? root.prefs.paneSeparators : true
     }
 }

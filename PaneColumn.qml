@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 // One of the library's three list panes.
 //
 // Rows are drawn as plain rectangles rather than with ListView's delegate
@@ -21,6 +22,16 @@ Item {
     property var sublabel: null
     property var isCurrent: null
 
+    // The panel's colour tokens, injected the same way. Aliases keep the
+    // fallback to the shell theme in one place, so this pane still draws
+    // correctly if it is ever placed outside the panel.
+    property var theme: null
+    readonly property color colBackground: theme ? theme.background : Color.background
+    readonly property color colForeground: theme ? theme.foreground : Color.foreground
+    readonly property color colMuted: theme ? theme.muted : Color.muted
+    readonly property color colAccent: theme ? theme.accent : Color.accent
+    readonly property color colSelectedFill: theme ? theme.selectedFill : Style.selectedFill
+
     signal activated(int index)
 
     // rowSpacing is the row height setting; the gap is derived from it (an eighth
@@ -29,10 +40,32 @@ Item {
     property bool rowSeparators: false
     property bool focusGlow: true
 
+    // Whether the pane draws its heading bar -- the name over an underline. Off,
+    // the heading and its rule are dropped and the list runs to the very top of
+    // the pane.
+    property bool showHeading: true
+
     property real uiScale: 1.0
     property int rowSpacing: 32
     readonly property int rowHeight: Math.round(rowSpacing * uiScale)
     readonly property int rowGap: Math.max(1, Math.round(rowHeight / 8))
+
+    // The right inset of the row content -- the label, the sublabel and the row
+    // hairline all share it. A gutter rides on top of the base inset so a pane
+    // that ends against the artwork (the tracks pane, when the cover band is on)
+    // can keep its duration clear of the cover.
+    property int rightGutter: 0
+    readonly property int rowRightMargin: Math.round(12 * root.uiScale) + root.rightGutter
+
+    // Which edges of the playing row carry the accent bar: "none", "left", "right"
+    // or "both". The tint is unaffected -- this only places the bars. Only the
+    // tracks pane is handed a current item, so the bars only ever show there.
+    property string playingMarkerSides: "both"
+    readonly property bool playingMarkerLeft: playingMarkerSides === "left" || playingMarkerSides === "both"
+    readonly property bool playingMarkerRight: playingMarkerSides === "right" || playingMarkerSides === "both"
+    // One width and one colour shared by both bars, so the pair can never render
+    // as two differently-sized or differently-shaded marks.
+    readonly property int playingMarkerWidth: Math.max(2, Math.round(3 * uiScale))
 
     // Resolved font sizes, injected by GrimPlayer as theme size plus the player's
     // offset, already scaled by uiScale. The defaults are the bare theme values,
@@ -49,9 +82,9 @@ Item {
     // Thicker frame around the row the caret sits on.
     property bool activeRowBorder: false
 
-    // Row pitch, used for scrolling and hit placement: height plus the gap that
-    // follows it. Rows are positioned on this rather than stacked by the Column's
-    // own spacing, because a gap has to count towards the scrollable extent.
+    // Row pitch, used for scrolling: height plus the gap that follows it. The
+    // gap is a real Column spacing, so it counts towards the scrollable extent
+    // and the follow math has to step by this rather than by the bare row height.
     readonly property int rowPitch: rowHeight + rowGap
 
     // The focused pane holds full strength; the others pull back, but only when
@@ -61,7 +94,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: Color.background
+        color: root.colBackground
         opacity: 0.97
     }
 
@@ -71,6 +104,7 @@ Item {
 
         Text {
             id: heading
+            visible: root.showHeading
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
@@ -79,7 +113,7 @@ Item {
             anchors.topMargin: Math.round(14 * root.uiScale)
             anchors.bottomMargin: Math.round(6 * root.uiScale)
             text: root.title
-            color: root.active ? Color.foreground : Color.muted
+            color: root.active ? root.colForeground : root.colMuted
             font.pixelSize: root.fontSizeHeading
             font.weight: Font.DemiBold
             font.letterSpacing: 0.6
@@ -87,17 +121,18 @@ Item {
         }
 
         Rectangle {
+            visible: root.showHeading
             anchors.top: heading.bottom
             anchors.left: parent.left
             anchors.right: parent.right
             height: Math.max(1, Math.round(root.borderWidth * root.uiScale))
-            color: Qt.rgba(1, 1, 1, 0.08)
+            color: Util.alpha(root.colForeground, 0.08)
         }
 
         Flickable {
             id: flick
-            anchors.top: heading.bottom
-            anchors.topMargin: 1
+            anchors.top: root.showHeading ? heading.bottom : parent.top
+            anchors.topMargin: root.showHeading ? 1 : 0
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -112,7 +147,7 @@ Item {
             Connections {
                 target: root
                 function onCurrentIndexChanged() {
-                    var top = root.currentIndex * root.rowHeight
+                    var top = root.currentIndex * root.rowPitch
                     var bottom = top + root.rowHeight
                     if (top < flick.contentY)
                         flick.contentY = top
@@ -124,6 +159,10 @@ Item {
             Column {
                 id: column
                 width: flick.width
+                // The gap between rows the rowSpacing setting promises. Column
+                // spacing is part of column.height, so contentHeight picks it up
+                // and the Flickable scrolls over it rather than clipping it.
+                spacing: root.rowGap
 
                 Repeater {
                     model: root.model
@@ -143,7 +182,7 @@ Item {
                         // row, and framing all three at once reads as noise.
                         readonly property bool framed: root.activeRowBorder && root.active && index === root.currentIndex
                         border.width: framed ? Math.max(2, Math.round(2 * root.uiScale)) : 0
-                        border.color: Color.accent
+                        border.color: root.colAccent
 
                         // The track MPD is actually playing. Matching on the file is
                         // what keeps this honest: browsing any other album has no row
@@ -159,19 +198,35 @@ Item {
                         // to match rowOpacity, apart from the accent bar, which is
                         // meant to stay findable.
                         color: index === root.currentIndex
-                            ? (root.active ? Style.selectedFill : Qt.rgba(1, 1, 1, 0.05))
-                            : (row.playing ? Util.alpha(Color.accent, root.active ? 0.11 : 0.07)
-                               : (rowArea.containsMouse ? Qt.rgba(1, 1, 1, 0.03) : "transparent"))
+                            ? (root.active ? root.colSelectedFill : Util.alpha(root.colForeground, 0.05))
+                            : (row.playing ? Util.alpha(root.colAccent, root.active ? 0.11 : 0.07)
+                               : (rowArea.containsMouse ? Util.alpha(root.colForeground, 0.03) : "transparent"))
 
                         // The marker that goes with the tint. A 2px bar was too easy to
                         // miss against a list of rows, and it is the one part of the
                         // treatment that stays at full strength when the pane is not
-                        // focused.
+                        // focused. Left and right are the same bar, sharing their width
+                        // and colour, so the pair reads as one frame rather than two
+                        // marks; the playingMarkerSides setting decides which show.
                         Rectangle {
-                            visible: row.playing
-                            width: Math.max(2, Math.round(3 * root.uiScale))
+                            visible: row.playing && root.playingMarkerLeft
+                            x: 0
+                            width: root.playingMarkerWidth
                             height: parent.height
-                            color: Color.accent
+                            color: root.colAccent
+                        }
+
+                        Rectangle {
+                            visible: row.playing && root.playingMarkerRight
+                            // Placed from a floored x rather than anchored: the pane's
+                            // right edge can land on a fraction when the window is not
+                            // an even multiple of the UI scale, and an anchor there
+                            // smears the bar across two pixels and shades it lighter
+                            // than its left twin. Snapping keeps the two identical.
+                            x: Math.floor(parent.width - width)
+                            width: root.playingMarkerWidth
+                            height: parent.height
+                            color: root.colAccent
                         }
 
                         // Optional hairline between rows. Skipped on the last row so
@@ -179,23 +234,23 @@ Item {
                         // below the row fill so a selected or playing row still reads
                         // as one solid block.
                         Rectangle {
-                            visible: root.rowSeparators && index < root.model.length - 1
+                            visible: root.rowSeparators && row.index < root.model.length - 1
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.leftMargin: Math.round(16 * root.uiScale)
-                            anchors.rightMargin: Math.round(12 * root.uiScale)
+                            anchors.rightMargin: root.rowRightMargin
                             anchors.bottom: parent.bottom
                             height: 1
-                            color: Qt.rgba(1, 1, 1, 0.06)
+                            color: Util.alpha(root.colForeground, 0.06)
                         }
 
                         Text {
                             anchors.fill: parent
                             anchors.leftMargin: Math.round(16 * root.uiScale)
-                            anchors.rightMargin: Math.round(12 * root.uiScale)
+                            anchors.rightMargin: root.rowRightMargin
                             verticalAlignment: Text.AlignVCenter
                             text: root.label ? root.label(parent.modelData) : ""
-                            color: index === root.currentIndex && root.active ? Color.foreground : Color.foreground
+                            color: root.colForeground
                             font.pixelSize: root.fontSizeRow
                             opacity: root.rowOpacity
                             elide: Text.ElideRight
@@ -204,11 +259,11 @@ Item {
                         Text {
                             anchors.fill: parent
                             anchors.leftMargin: Math.round(16 * root.uiScale)
-                            anchors.rightMargin: Math.round(12 * root.uiScale)
+                            anchors.rightMargin: root.rowRightMargin
                             verticalAlignment: Text.AlignVCenter
                             horizontalAlignment: Text.AlignRight
                             text: root.sublabel ? root.sublabel(parent.modelData) : ""
-                            color: Color.muted
+                            color: root.colMuted
                             font.pixelSize: root.fontSizeSublabel
                             opacity: root.rowOpacity
                             elide: Text.ElideRight
@@ -224,7 +279,7 @@ Item {
                             // different lists. Assigning the local currentIndex here
                             // would drop the binding the parent set up and leave the
                             // parent still pointing at the old row.
-                            onClicked: root.activated(index)
+                            onClicked: root.activated(row.index)
                         }
                     }
                 }
@@ -243,7 +298,7 @@ Item {
             height: Math.round(18 * root.uiScale)
             visible: flick.contentY > 0.5
             gradient: Gradient {
-                GradientStop { position: 0.0; color: Util.alpha(Color.background, 0.97) }
+                GradientStop { position: 0.0; color: Util.alpha(root.colBackground, 0.97) }
                 GradientStop { position: 1.0; color: "transparent" }
             }
         }
@@ -255,7 +310,7 @@ Item {
             visible: flick.contentY < flick.contentHeight - flick.height - 0.5
             gradient: Gradient {
                 GradientStop { position: 0.0; color: "transparent" }
-                GradientStop { position: 1.0; color: Util.alpha(Color.background, 0.97) }
+                GradientStop { position: 1.0; color: Util.alpha(root.colBackground, 0.97) }
             }
         }
     }
@@ -273,7 +328,7 @@ Item {
         anchors.centerIn: parent
         visible: root.model.length === 0
         text: "empty"
-        color: Color.muted
+        color: root.colMuted
         font.pixelSize: root.fontSizeSublabel
     }
 }

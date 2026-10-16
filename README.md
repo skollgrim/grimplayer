@@ -7,42 +7,79 @@ nothing polls.
 
 ![GrimPlayer](preview.png)
 
+With **Recolor from cover art** on, the panel follows the playing album's sleeve:
+
+![GrimPlayer recoloured from the album art](preview2.png)
+
 ## What it does
 
+- **Simple and minimal.** Three lists and a strip, nothing to import or index:
+  point it at the library, press `Enter` and it plays.
 - **Three panes** — artists, albums for the selected artist, tracks for the
-  selected album, with the playing track marked.
-- **Now-playing strip** — artwork, title/artist, elapsed and total time, a seek
-  bar, transport (previous, play/pause, next, shuffle, three-state repeat) and
-  volume with click-to-mute.
-- **The queue is derived, not managed.** Activating a track fills MPD's queue
-  with that track *and everything below it in view order*, so playback runs on
-  past the end of the album. There is no queue screen to keep in sync and no
-  stored playlists.
+  selected album, with the playing track marked by an accent bar on either or both
+  sides of its row (a setting picks none, left, right or both). Each pane is topped
+  by a heading — the pane's name over a rule — which a setting can turn off so the
+  lists start at the very top of their panes, and the rules between the panes are a
+  setting too.
+- **The queue is derived, not managed.** Activating a track plays it and
+  everything below it in view order: simply the next song in the album, and on
+  into the next album when that album runs out. There is no queue screen to keep
+  in sync and no stored playlists.
 - **Album repeat** is a third repeat mode. MPD's repeat flag repeats whatever
   the queue holds, so this mode narrows the queue to the playing album and
   restarts it when it runs out.
 - **Cover art** is looked for in the album's own directory first, with a probe
   list (`cover.jpg`, `folder.jpg`, `cover.png`, `front.jpg`, `album.jpg`, the
   capitalised spellings, and the tag-derived `<artist> - <album>` / `<album>`
-  names). An album with nothing beside the tracks falls back to the artwork
-  embedded in the file itself, extracted once with `ffmpeg` and cached under
-  `~/.local/state/skollgrim.grimplayer/covers/`.
+  names). A single-file album played through a cue sheet resolves to the folder
+  beside the cue, not to MPD's virtual `<album>.cue/track0001` path, so artwork
+  sitting next to the rip is found. An album with nothing beside the tracks falls
+  back to the artwork embedded in the file itself, extracted once with `ffmpeg`
+  and cached under `~/.local/state/skollgrim.grimplayer/covers/`. An album with
+  nothing anywhere can have a cover **looked up online** instead — iTunes,
+  then Deezer — and cached the same way, so a clean online sleeve shows where a
+  scan or a blank square would. This is on by default and turned off with
+  **Fetch missing cover art** under *Optional features* in the settings; off,
+  such albums keep the placeholder and the player stays entirely offline.
+  Changing album keeps the current cover on screen until the next one is
+  loaded, so the art never blinks through the placeholder; a setting can fade
+  the new cover in over the old one (instant by default).
+- **Recolor from cover art** — a setting that recolours the whole panel
+  (background, text and accent) from the sleeve of the album that is playing,
+  with the alert colour kept semantic. Off, it follows the shell theme.
 - **Typeahead** — typing letters jumps the caret to the first matching row.
-- **Settings card** (`?`) for sizes, fonts, borders, spacing and behaviour,
-  persisted to `~/.local/state/skollgrim.grimplayer/settings.json`.
-- Follows the active Omarchy theme; every colour and size comes from the shell's
-  own `Style`/`Color` tokens.
+- **A settings card for all of it** (`Alt` + `S`) — row height and spacing,
+  fonts and scale, borders and dividers, pane headings, the playing marker,
+  cover art, and the optional extras, laid out as four columns and persisted to
+  `~/.local/state/skollgrim.grimplayer/settings.json`.
+- **Vim motions** — `j` `k` `h` `l` `g` `G` alongside the arrows (a setting);
+  with them on, `Shift` + `h`/`l` seek like `Shift` + `←`/`→`.
+- **Key reference** (`?`) — a cheat sheet of the browser keys, plus how to
+  reach the settings card, the tag editor and the reference itself.
+
+## Optional features
+
+Everything here is optional, and so are the dependencies each one needs. With
+none of it installed the player still browses, plays, and shows any cover art
+that sits beside the tracks. What a missing dependency costs depends on the
+feature: a cover that cannot be found falls back to the placeholder, while a row
+with a job of its own reports the failure there. The table says which is which.
+
+| Feature | Needs | Without it |
+| --- | --- | --- |
+| Embedded cover art | `ffmpeg` | Albums whose artwork is inside the file fall back to the placeholder; sidecar and fetched art are unaffected. |
+| Tag and cover editing, country flags | `mid3v2` (MP3) or `metaflac` (FLAC), and `zenity` to pick a cover file | The tag editor opens and shows what the files hold, but saving writes nothing and Browse cannot choose a cover file. |
+| Look up | `python3` with [`mutagen`](https://mutagen.readthedocs.io/) and [`musicbrainzngs`](https://python-musicbrainzngs.readthedocs.io/), and network access | The Match row reports the failure; editing by hand still works. |
+| Fetch missing cover art | `python3` (standard library only) and network access | Albums with no artwork keep the placeholder. On by default; turned off under **Optional features** in the settings. |
 
 ## Requirements
 
 - Omarchy 4.x, with third-party plugin support (`omarchy plugin add`).
 - [MPD](https://www.musicpd.org/) with a Unix socket. The default location is
   `~/.mpd/socket`; set `GRIM_LIBRARY_MPD_SOCKET` to point somewhere else.
-- Optional, and only for artwork that is inside the files: `ffmpeg`. Albums with
-  an image beside the tracks never need it.
-- Optional, and only for editing tags: `mid3v2` (from `id3v2`) for MP3 and
-  `metaflac` (from `flac`) for FLAC. Reading a country to show its flag uses the
-  same two tools.
+
+Nothing else is required. The features that need extra tools or a network
+connection are listed in [Optional features](#optional-features).
 
 ## Install
 
@@ -53,8 +90,9 @@ omarchy plugin enable skollgrim.grimplayer
 
 `add` clones into `~/.config/omarchy/plugins/skollgrim.grimplayer/` and lands
 the plugin disabled so you can read it first; `enable` records it in
-`shell.json`. Both commands want a terminal — they print what they are about to
-do — and `omarchy plugin add --yes` skips the prompts if you are scripting.
+`shell.json`. `add` confirms in a terminal — it prints what it is about to do —
+while `enable` does not prompt; `omarchy plugin add --yes` skips the prompts if
+you are scripting.
 
 Optional, to get GrimPlayer in the app launcher:
 
@@ -77,58 +115,49 @@ omarchy-shell -q shell hide   skollgrim.grimplayer   # close
 binding it to a key cannot accidentally toggle the panel shut. A keybinding is
 then a one-liner around whichever of the three you prefer.
 
-### Windowing
-
-GrimPlayer asks for no placement and no size. The window is an ordinary one, and
-nothing in the plugin overrides what the window manager decides to do with it.
-
-What that costs is a fallback: the panel has no size of its own to offer. The
-panes size themselves from the window width (0.26, 0.30, and the remainder for
-tracks), and a purely proportional layout has no way to state how large it would
-like to be. Given a size it fills it exactly.
-
-One detail worth knowing if anything needs to tell this window apart from
-others: Quickshell's `FloatingWindow` exposes no `appId`, so every Quickshell
-window reports the same class. The window title is therefore fixed at
-`"GrimPlayer"` and set in `GrimPlayer.qml`, because it is the most specific
-handle anything can match on.
-
-### Borderless
-
-Optional, and not a plugin setting: the panel draws no border and asks for no
-decorations or margins, so whatever surrounds the window comes from the window
-manager — gaps and a border on an ordinary window, nothing at all on a full-bleed
-one.
-
-If you want it frameless, ask the window manager rather than the plugin. Borders
-are usually droppable per window; gaps usually are not, and tend to be a
-per-workspace setting instead. Since the panel requests no geometry, a rule of
-that kind is free to fill the window or widen it without fighting anything here.
-
 ## Keys
 
 | Key | Action |
 | --- | --- |
-| `↑` `↓`, `j` `k` | Move the caret |
-| `←` `→`, `h` `l` | Change pane |
-| `g` / `G` | First / last row *(with Vim keys on)* |
-| `Enter` | Activate — play the artist, album or track under the caret |
+| `↑` `↓` | Change row |
+| `←` `→` | Change pane |
+| any letter or digit | Typeahead |
+| `Enter` | Play the artist, album or track under the caret |
 | `Space` | Play / pause |
-| `Shift` + `←` `→` | Seek 5s back / forward |
-| any other letter or digit | Typeahead |
-| `Alt` + `R` | Tag editor |
-| `?` | Settings card |
+| `Shift` + `←` `→` | Seek ∓ 5 s |
+| `j` `k` | Change row *(Vim keys on)* |
+| `h` `l` | Change pane *(Vim keys on)* |
+| `Shift` + `h` `l` | Seek ∓ 5 s *(Vim keys on)* |
+| `g` / `G` | First / last row *(Vim keys on)* |
+| `Alt` + `S` | Settings card |
+| `Alt` + `T` | Tag editor |
+| `?` | Key reference |
 
-In the settings card: arrows or `hjkl` move, `Enter` toggles a switch or opens a
-slider, `←` `→` (or `h` `l`) adjust the open slider, `g` / `G` jump to an end,
-`R` resets everything, `Esc` steps back out and `Q` or `?` closes.
+In the settings card: arrows or `hjkl` move — up/down moves within a column,
+left/right crosses the four columns — `Enter` (or `Space`) toggles a switch or
+opens a slider, `←` `→` (or `h` `l`) adjust the open slider, `g` / `G` jump to the
+first or last setting, `R` resets everything, `?` switches to the key reference,
+`Esc` steps back out and `Q` closes.
+
+The card shows the switches and named choices in one column, the sizes and
+sliders in the next, every artwork setting together in a third, and the optional
+extras last, so a setting is always in the same place. A setting that only matters
+while another is on — a cover border's width, the artwork pane's position — stays
+hidden until its parent is switched on, and its value is kept for when it comes
+back.
+
+In the key reference: it lists the browser keys and how to reach each screen;
+`Esc`, `Q` or `?` closes it.
 
 In the tag editor: `Enter` saves, `Esc` cancels, `Tab` / `↑` `↓` move through the
-fields and the Save button, wrapping at both ends.
+fields, the match row, the cover row and the Save button, wrapping at both ends.
+On the match row, `←` `→` move between Look up, Prev and Next; on
+the cover row, `←` `→` move between Browse and Remove. `L` runs a lookup from
+the card itself — a field that has focus just types the letter.
 
 ### Tag editor
 
-`Alt` + `R` edits the tags of whatever the caret is on: one track in the tracks
+`Alt` + `T` edits the tags of whatever the caret is on: one track in the tracks
 pane, the whole album in the albums pane, or everything by that artist in the
 artists pane. It can also be opened without focusing the panel:
 
@@ -143,6 +172,44 @@ written to every selected track; clear it and the tag is removed. Opening the
 editor and saving without touching anything writes nothing.
 
 Fields: Title, Artist, Album artist, Album, Track, Disc, Year, Genre, Country.
+
+Below them, reading as one more field, is a **Cover art** row: a small preview of
+the selection's cover, a **Browse…** button that opens a file chooser in the album
+folder (so the covers already beside the tracks are the first thing on offer), and
+a **Remove** button. Saving a chosen image embeds it into every selected file;
+removing strips the embedded picture back out. The album folder itself is left
+alone either way — no `cover.jpg` is written and an existing one is not touched —
+so the embedded copy is what travels with the files, and the cached extraction is
+dropped so the player re-reads what the files now hold.
+
+Because the folder is left alone, an album that already has a sidecar image would
+otherwise keep showing it. The editor therefore remembers the decision per album
+(in `~/.local/state/skollgrim.grimplayer/coveroverrides.json`): a set cover tells
+the player to show the embedded picture and ignore the sidecar beside the tracks,
+and a removal tells it to show no art at all rather than falling back to the
+sidecar or the stores. The choice survives a restart and is undone by deleting
+that album's entry from the file (or the file itself).
+
+Above it, reading as one more field, is a **Match** row with a **Look up** button:
+it searches [MusicBrainz](https://musicbrainz.org/) for the selected album and
+pre-fills everything from the best match — Artist, Album artist, Album, Year and
+Country, each track's own Title, Track and Disc, and a front cover. The cover is
+not taken from MusicBrainz: the two stores that serve clean, square, high-res
+sleeves (iTunes, then Deezer) are asked first, at up to 1200px, and the
+[Cover Art Archive](https://coverartarchive.org/) is used only when neither has
+a confident match. The status line says which source won and how big it is. It
+writes nothing on its own: the match is shown so it can be reviewed, corrected
+by hand, or stepped past with **Next** before Save commits it.
+
+The search uses the selection's own Artist and Album tags; for a folder that has
+none, it falls back to the `Artist/Album` directory names. When several pressings
+match, the folder's year and track count rank them, and **Prev** /
+**Next** walk the candidates — each step re-fetches only that release, so a
+wrong first guess costs one click rather than a retype. It is offered for a single
+album only: a selection spanning several albums (an artist's whole shelf) is
+refused rather than guessed at. Look up needs `python3` with `mutagen` and
+`musicbrainzngs` (see Requirements); without them the row reports the failure and
+the editor is otherwise unchanged.
 
 Country takes a two-letter ISO code (`SE`, `FI`, `US`) rather than a name, and
 the flag shown beside the field is the one the now-playing strip will show.
@@ -185,7 +252,27 @@ bar or the volume slider, click the volume icon to mute.
   JPEG does not survive that decoding, so the file is handed to `ffmpeg` instead.
   Without it, an album with no sidecar image keeps the placeholder exactly as
   before. Where both exist, the sidecar wins — see
-  [`CoverArt.qml`](CoverArt.qml) for why.
+  [`CoverArt.qml`](CoverArt.qml) for why. The one exception is an album whose
+  cover was set or removed through the tag editor: that decision is remembered,
+  and the embedded picture (or nothing) wins there until the entry is deleted. For a cue album the audio is a single
+  file beside the cue whose name MPD never reports, so `ffmpeg` is pointed at
+  the cue's own stem with the usual rip extensions tried in turn; a cue whose
+  audio is named differently will not have its embedded art found.
+- **Fetched covers are the last choice and are never written into the music.** A
+  downloaded cover is cached as `covers/<hash>.online.jpg`, beside the
+  `<hash>.jpg` the `ffmpeg` extraction writes, and is used only once the sidecars
+  and the embedded picture have both come up empty — so a store's guess never
+  stands in for what the file actually holds, and clearing the embedded art lets
+  the download show again. Nothing is written to the album folder and no sidecar
+  is created. Removing a cover by hand hides the download for that album, so a
+  deliberate removal stays empty rather than being filled back in; the decision is
+  remembered — see the tag editor's cover overrides above — so a shell restart
+  keeps it empty too, until that album's entry is deleted from
+  `coveroverrides.json`. Deleting the file under
+  `~/.local/state/skollgrim.grimplayer/covers/` forces a fresh lookup. Asking the
+  stores means telling them the artist and album name — the same query iTunes and
+  Deezer's own search boxes send — so this is on by default but can be turned off
+  for a library that should stay offline.
 - **The music directory** is assumed to be `~/Music`, honouring `XDG_MUSIC_DIR`
   when it is exported, which should match MPD's `music_directory`.
 - **Typeahead accepts ASCII letters and digits plus `æøåÆØÅ`.** Widen the regex
@@ -194,10 +281,6 @@ bar or the volume slider, click the volume icon to mute.
   at the album boundary.
 - **No stored playlists and no queue view**, by design: the queue is always the
   tail of the library from wherever you are.
-- **Without a sizing rule of some kind the panel comes up 100x100.** Its own
-  content is purely proportional, so it cannot state a size for itself; that is a
-  property of a proportional layout rather than something this plugin can work
-  around. See [Windowing](#windowing).
 
 ## Development
 
@@ -206,19 +289,25 @@ protocol, library tree, queue policy) and `GrimPlayer.qml` (the panel). The
 socket has to outlive the panel, hence `kinds: ["service", "panel"]` with
 `keepLoaded`.
 
+Adaptive colouring is two more files: [`GrimTheme.qml`](GrimTheme.qml) holds the
+panel's own colour tokens and folds a cover's palette into them, and
+[`Palette.js`](Palette.js) is the pure colour maths behind it. The shell's
+`Color` singleton is global, so the panel never writes to it — it keeps this
+copy instead. `CoverArt.qml`'s `ColorQuantizer` exposes the palette the panel
+reads.
+
 Edit the files under `~/.config/omarchy/plugins/skollgrim.grimplayer/` and the
 shell reloads the panel on save. The service is `keepLoaded`, so changes to
 `GrimPlayerMpd.qml` only take effect after a shell restart (`omarchy restart
-shell`).
+shell`). `Palette.js` is a `.pragma library`, which the engine caches across
+plugin reloads, so colour-maths changes also need a full shell restart rather
+than just a save.
 
 Check a manifest before pushing it out:
 
 ```bash
 omarchy plugin validate ~/.config/omarchy/plugins/skollgrim.grimplayer
 ```
-
-The QML is kept `qmllint`-clean, so `qmllint *.qml` is the cheap regression
-check before a commit.
 
 There is no test harness — this is a UI plugin, so it is verified against a live
 MPD: kill MPD underneath it, restart it, add an album and confirm the tree

@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 // Transport control in the now-playing strip.
 //
 // The icons are drawn as vector paths rather than picked from a Unicode symbol
@@ -49,6 +50,13 @@ Item {
     property int iconSize: 16
     property real uiScale: 1.0
 
+    // The panel's colour tokens, injected. Fallbacks keep the button correct if
+    // it is ever placed outside the panel.
+    property var theme: null
+    readonly property color colBackground: theme ? theme.background : Color.background
+    readonly property color colForeground: theme ? theme.foreground : Color.foreground
+    readonly property color colAccent: theme ? theme.accent : Color.accent
+
     readonly property int glyphSize: Math.max(8, Math.round(iconSize * 1.6 * uiScale))
     readonly property int diameter: Math.max(16, Math.round(iconSize * (prominent ? 2.875 : 2.5) * uiScale))
 
@@ -67,7 +75,19 @@ Item {
     // root rather than on the Shape: ShapePath is a QObject rather than an Item,
     // so `parent` does not resolve to the Shape that owns it and reads back
     // undefined.
-    readonly property color glyphColor: prominent ? Color.background : (active ? Color.accent : Color.foreground)
+    //
+    // A resting glyph is the theme foreground pulled part of the way toward the
+    // cover accent, not the bare foreground it used to be. On a plain theme that
+    // is imperceptible (foreground and accent are both cool and light); once a
+    // cover's palette is folded in it is what makes the transport carry the
+    // album's colour at rest instead of only when a toggle is engaged. The blend
+    // stops short of the accent itself so "engaged" (shuffle/repeat on) still
+    // reads as a distinct, louder state.
+    readonly property color glyphColor: prominent
+        ? root.colBackground
+        : (active ? root.colAccent
+                  : (theme ? theme.mix(root.colForeground, root.colAccent, 0.55)
+                           : root.colForeground))
 
     readonly property var glyph: ({
         // Bars sit at x=6/18 with the triangle filling the gap between them, so
@@ -91,9 +111,22 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: width / 2
-        color: root.prominent ? Color.foreground : "transparent"
-        opacity: root.active ? 1.0 : (hover.hovered ? 0.72 : 0.55)
-        Behavior on opacity { ColorAnimation { duration: Style.duration(90) } }
+        // The prominent (play/pause) button is filled with the cover accent, not
+        // the bare foreground: a foreground fill is the same near-neutral disc on
+        // every album, so only the glyph inside it ever moved. Its glyph is the
+        // ground colour, which is the opposite end from the accent on both a dark
+        // and a light panel, so it stays legible either way.
+        color: root.prominent ? root.colAccent : "transparent"
+        // A resting control is dimmed, but only a little: at the old 0.55 the
+        // prev/next arrows and, on a light cover, the grey resting glyph all read
+        // as washed out rather than as controls waiting to be used. 0.66 keeps
+        // them clearly de-emphasised without losing them, and hover still steps up.
+        opacity: root.active ? 1.0 : (hover.hovered ? 0.80 : 0.66)
+        // NumberAnimation, not ColorAnimation: opacity is a number, and a
+        // ColorAnimation cannot interpolate one -- the behaviour snapped instead
+        // of easing. (GrimTheme's own Behaviours are on colours and stay
+        // ColorAnimations.)
+        Behavior on opacity { NumberAnimation { duration: Style.duration(90) } }
 
         // No ring for the secondary toggles. shuffle and repeat read as on/off through
         // the glyph itself -- accent when engaged, foreground when not -- so the
@@ -135,7 +168,7 @@ Item {
     // repeat path already runs its top rail and arrowhead through the middle of
     // the box, so a dot placed there overlapped the stroke and read as a smudge
     // rather than a marker -- and being a child of the button's Rectangle, it
-    // inherited that Rectangle's 0.55 resting opacity, so at rest the dot was
+    // inherited that Rectangle's resting opacity, so at rest the dot was
     // barely distinguishable from the dimmed glyph it was supposed to annotate.
     // Both problems are solved by the same move: outside the glyph box it has
     // clear background, and outside the opacity Rectangle it is drawn at full
@@ -151,7 +184,7 @@ Item {
         width: Math.max(3, Math.round(4 * root.uiScale))
         height: width
         radius: width / 2
-        color: root.active ? Color.accent : Color.foreground
+        color: root.active ? root.colAccent : root.colForeground
     }
 
     HoverHandler { id: hover }

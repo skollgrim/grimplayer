@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 // MPD client for GrimPlayer, exposed to the panel as the plugin's service.
 //
 // Talks to MPD over its Unix socket, so there is nothing to proxy and no reason
@@ -20,6 +21,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import QtCore
+import "Covers.js" as Covers
 
 Item {
     id: root
@@ -52,6 +54,15 @@ Item {
         var home = Quickshell.env("HOME")
         return (home ? String(home) : "") + "/Music"
     }
+
+    // Everything the plugin keeps on disk lives under one state directory:
+    // XDG_STATE_HOME, or ~/.local/state. Quickshell.env() answers null for an
+    // unset variable, and null + "/.local/state" would stringify to
+    // "null/.local/state" rather than failing, so HOME is guarded -- an empty
+    // HOME leaves the path rooted at "/" instead of prefixed with "null".
+    readonly property string stateDir:
+        (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state"))
+        + "/skollgrim.grimplayer"
 
     property bool connected: false
     property bool everConnected: false
@@ -90,6 +101,10 @@ Item {
 
     // Artist -> album -> tracks, built once from a single listallinfo.
     property var artists: []
+
+    // file path -> { artist, album, track } into the tree above. Rebuilt with it,
+    // so locateCurrent does not walk the library on every event.
+    property var trackLocations: ({})
 
     property int reconnectDelay: 1500
 
@@ -177,7 +192,12 @@ Item {
         var open = body.indexOf("{")
         var close = body.indexOf("}", open + 1)
         if (close < 0) return body
-        var code = body.substring(1, body.indexOf("@"))
+        // A well-formed ACK reads "[<code>@<cmdnum>] ...", so the code sits
+        // between the leading bracket and the at-sign. A line without an at-sign
+        // has no code to read, and substring(1, -1) would silently swap its
+        // arguments and hand back the bracket instead.
+        var at = body.indexOf("@")
+        var code = at > 0 ? body.substring(1, at) : ""
         var message = body.substring(close + 1).trim()
         if (code === "50") return null
         return message === "" ? body : message
@@ -358,7 +378,6 @@ Item {
                 if (key === "Title") cur.title = value
                 else if (key === "Artist") cur.artist = value
                 else if (key === "AlbumArtist") cur.albumArtist = value
-                else if (key === "ArtistSort") cur.artistSort = value
                 else if (key === "Album") cur.album = value
                 else if (key === "Date") cur.date = value
                 else if (key === "Track") cur.track = leadingInt(value)
@@ -373,6 +392,10 @@ Item {
         // Grouping matches ncmpcpp: by each track's own Artist, falling back to
         // the album artist for the handful of tracks that omit it.
         var byArtist = {}
+        // A per-artist album lookup rather than a linear scan of artist.albums:
+        // an "Unknown artist" bucket in a partly-untagged library can hold
+        // hundreds of albums, which made the scan quadratic.
+        var albumByKey = {}
         var ordered = []
 
         for (var s = 0; s < songs.length; s++) {
@@ -386,12 +409,11 @@ Item {
                 byArtist[artistName] = artist
                 ordered.push(artist)
             }
-            var album = null
-            for (var a = 0; a < artist.albums.length; a++) {
-                if (artist.albums[a].name === albumName) { album = artist.albums[a]; break }
-            }
-            if (album === null) {
+            var key = artistName + "\u0000" + albumName
+            var album = albumByKey[key]
+            if (album === undefined) {
                 album = { name: albumName, tracks: [] }
+                albumByKey[key] = album
                 artist.albums.push(album)
             }
             album.tracks.push(song)
@@ -410,6 +432,20 @@ Item {
         }
         ordered.sort(byName)
 
+        // A file -> tree position map, built once here so locateCurrent (which
+        // runs on every currentsong refresh, including during album-repeat) is a
+        // lookup rather than a walk of the whole library. The indices are taken
+        // after sorting, so they match the order the panel sees.
+        var locations = {}
+        for (var la = 0; la < ordered.length; la++) {
+            var lartist = ordered[la]
+            for (var lb = 0; lb < lartist.albums.length; lb++) {
+                var ltracks = lartist.albums[lb].tracks
+                for (var lt = 0; lt < ltracks.length; lt++)
+                    locations[ltracks[lt].file] = { artist: la, album: lb, track: lt }
+            }
+        }
+        root.trackLocations = locations
         root.artists = ordered
         root.libraryLoaded = true
     }
@@ -464,14 +500,11 @@ Item {
     // keeps the cache small, and means one probe covers a whole album rather than
     // one per track. MPD cannot be asked for this at all, which is why it is read
     // from the file directly -- but only ever once per album, then kept.
-    readonly property string countryStatePath: (
-        (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state"))
-        + "/skollgrim.grimplayer/countries.json"
-    )
+    readonly property string countryStatePath: root.stateDir + "/countries.json"
     property var countryCache: ({})
     property string playingCountryDir: ""
     property string playingCountry: ""
-    property var countriesDirty: false
+    property bool countriesDirty: false
 
     function albumDirOf(file) {
         var rel = String(file === undefined || file === null ? "" : file)
@@ -560,18 +593,40 @@ Item {
     // Reads the country off the file that is playing. It is an album-level tag, so
     // any track answers for the whole album and there is no need to go looking for
     // a better one.
+    //
+    // Only one probe runs at a time. The collector reports the answer through the
+    // shared countryProbeDir, so starting a second probe before the first has been
+    // read would attribute the first album's output to the second -- and cache it
+    // that way. A request that arrives while one is running is queued instead.
     function probeCountry(dir, path) {
         if (path === "") return
+        if (root.countryBusy) {
+            root.countryQueue.push({ dir: dir, path: path })
+            return
+        }
+        root.startCountryProbe(dir, path)
+    }
+
+    function startCountryProbe(dir, path) {
         var isFlac = path.toLowerCase().slice(-5) === ".flac"
         var cmd = isFlac
             ? "metaflac --export-tags-to=- " + root.shellQuote(path) + " 2>/dev/null"
             : "mid3v2 -l " + root.shellQuote(path) + " 2>/dev/null"
+        root.countryBusy = true
         root.countryProbeDir = dir
         countryProbe.command = ["sh", "-c", cmd]
         countryProbe.running = true
     }
 
+    function runQueuedCountry() {
+        if (root.countryBusy || root.countryQueue.length === 0) return
+        var job = root.countryQueue.shift()
+        root.startCountryProbe(job.dir, job.path)
+    }
+
     property string countryProbeDir: ""
+    property bool countryBusy: false
+    property var countryQueue: []
 
     // Pulls the country out of whichever reader produced the output. Returns ""
     // for "no country here", which is a legitimate answer and gets cached as one
@@ -623,7 +678,12 @@ Item {
 
     property var tagQueue: []
     property var tagResult: null
-    property var tagOnDone: null
+    // Whole writes, queued: the editor can be dismissed mid-write (Escape is
+    // allowed while busy) and reopened, and a second Save must not replace the
+    // queue already in flight -- that dropped the remaining files and stranded
+    // the first callback, so its editor stayed on "Writing...".
+    property var tagRequestQueue: []
+    property var tagCurrent: null
 
     // One song at a time. A whole-artist edit can be several hundred files, and
     // launching that many taggers at once would be a fork bomb with a music
@@ -632,32 +692,59 @@ Item {
     // absolute path, but the country cache is keyed by the album directory MPD
     // calls the file, and losing that at the point of writing would mean guessing
     // it back out of an absolute path.
-    function applyTags(entries, tags, onDone) {
+    //
+    // `common` goes to every file. `perFile`, keyed by the relative path, supplies
+    // a file's own values, but a shared (user-touched) value beats it -- see
+    // mergeTags. That is how a whole-album lookup lands each track's own title and
+    // number, which the editor's one-value-per-field model cannot express: the
+    // album-level fields stay shared, the track-level ones differ.
+    function applyTagsSet(entries, common, perFile, onDone) {
         var queue = []
         var skipped = 0
         for (var i = 0; i < entries.length; i++) {
-            var path = root.writablePath(entries[i].file)
+            var rel = String(entries[i].file)
+            var path = root.writablePath(rel)
             if (path === "") { skipped++; continue }
-            queue.push({ file: String(entries[i].file), path: path })
+            queue.push({ file: rel, path: path, tags: root.mergeTags(common, perFile, rel) })
         }
-        root.tagResult = { written: 0, failed: 0, skipped: skipped }
-        root.tagOnDone = typeof onDone === "function" ? onDone : null
-        if (queue.length === 0) {
+        root.tagRequestQueue.push({
+            queue: queue,
+            skipped: skipped,
+            onDone: typeof onDone === "function" ? onDone : null
+        })
+        root.runNextTagRequest()
+    }
+
+    function runNextTagRequest() {
+        if (root.tagCurrent !== null || root.tagRequestQueue.length === 0) return
+        var req = root.tagRequestQueue.shift()
+        root.tagCurrent = req
+        root.tagQueue = req.queue
+        root.tagResult = { written: 0, failed: 0, skipped: req.skipped }
+        if (root.tagQueue.length === 0) {
             root.finishTags()
             return
         }
-        root.tagQueue = queue
-        root.tagTags = tags
         root.runNextTag()
     }
 
-    property var tagTags: ({})
+    // Per-file first, shared second: a value the user typed into a shared field
+    // is a deliberate override and must beat a matched per-track one.
+    function mergeTags(common, perFile, file) {
+        var out = {}
+        var extra = perFile ? perFile[file] : undefined
+        if (extra) for (var e in extra) out[e] = extra[e]
+        for (var k in common) out[k] = common[k]
+        return out
+    }
 
     // Returns an argument list, undefined when there was nothing to write, or null
     // when this file is not a format a tagger here can open. The two are different
     // answers: the first means the file already says what was asked of it, the
     // second means it was never touched.
-    function tagCommand(path) {
+    function tagCommand(item) {
+        var path = item.path
+        var tags = item.tags || {}
         var lower = path.toLowerCase()
         var isMp3 = lower.slice(-4) === ".mp3"
         var isFlac = lower.slice(-5) === ".flac"
@@ -665,11 +752,11 @@ Item {
 
         var args = [isMp3 ? "mid3v2" : "metaflac"]
         var handled = 0
-        var keys = Object.keys(root.tagTags)
+        var keys = Object.keys(tags)
         for (var k = 0; k < keys.length; k++) {
             var key = keys[k]
-            var value = root.tagTags[key] === undefined || root.tagTags[key] === null
-                ? "" : String(root.tagTags[key]).trim()
+            var value = tags[key] === undefined || tags[key] === null
+                ? "" : String(tags[key]).trim()
 
             if (isMp3) {
                 var txxx = root.id3Txxx[key]
@@ -711,7 +798,7 @@ Item {
             return
         }
         var item = root.tagQueue.shift()
-        var args = root.tagCommand(item.path)
+        var args = root.tagCommand(item)
         if (args === null) {
             // Nothing here can be tagged: report it rather than quietly counting
             // it as a success, which would claim files were rewritten that were
@@ -726,11 +813,13 @@ Item {
             return
         }
         root.tagCurrentDir = root.albumDirOf(item.file)
+        root.tagCurrentTags = item.tags
         tagger.command = args
         tagger.running = true
     }
 
     property string tagCurrentDir: ""
+    property var tagCurrentTags: ({})
 
     // The cache is the only record MPD cannot keep for us, so it moves when the
     // file does. Keyed by album directory because that is the level country is
@@ -759,9 +848,11 @@ Item {
         // tree can show the new values. The database idle event this provokes is
         // what reloads the library, so there is nothing to do here beyond asking.
         if (root.tagResult.written > 0) root.send("update")
-        var cb = root.tagOnDone
-        root.tagOnDone = null
+        var req = root.tagCurrent
+        root.tagCurrent = null
+        var cb = req ? req.onDone : null
         if (cb) cb(root.tagResult)
+        Qt.callLater(root.runNextTagRequest)
     }
 
     Process {
@@ -778,11 +869,396 @@ Item {
                 // Only once the write actually succeeded: recording a country for
                 // a file the tagger refused would put a flag next to a track that
                 // does not carry one.
-                if (root.tagTags && root.tagTags.country !== undefined) {
-                    root.rememberCountry(root.tagCurrentDir, root.tagTags.country)
+                if (root.tagCurrentTags && root.tagCurrentTags.country !== undefined) {
+                    root.rememberCountry(root.tagCurrentDir, root.tagCurrentTags.country)
                 }
             } else root.tagResult.failed++
             Qt.callLater(root.runNextTag)
+        }
+    }
+
+    // ---- lookup ----
+    //
+    // One album at a time is looked up on MusicBrainz by a bundled helper, which
+    // hands back the matched release, each track's matched title and number, and
+    // a downloaded front cover -- all as JSON, to the service, which passes it on
+    // to the editor to pre-fill. Nothing is written here: the editor shows the
+    // match, and Save takes the existing embed-only path.
+    // One lookup subprocess at a time, queued, like the cover fetch below. A
+    // second request while one runs would otherwise overwrite the single
+    // on-done slot and hand the first request's JSON to the second caller --
+    // and the editor would accept that result, because it is the current
+    // session, so the wrong album's match would land in the fields.
+    property var lookupQueue: []
+    property var lookupCurrent: null
+
+    // extras/lookup.py, resolved relative to this file so the plugin stays
+    // portable. Quickshell serves its files under the qs:// scheme, so the
+    // scheme is stripped to leave a plain path the taggers can open.
+    readonly property string lookupScript: {
+        var url = String(Qt.resolvedUrl("extras/lookup.py"))
+        var path = url.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "")
+        try { path = decodeURIComponent(path) } catch (e) {}
+        return path
+    }
+
+    // entries is the editor's selection; an optional mbid re-fetches one
+    // candidate (cycling matches) instead of searching again.
+    //
+    // The argv is built here, at request time, and carried on the job: a queued
+    // request must not be re-resolved against a selection that changed while it
+    // waited.
+    function lookUpAlbum(entries, mbid, onDone) {
+        var job = {
+            onDone: typeof onDone === "function" ? onDone : null,
+            args: null,
+            error: null
+        }
+        var files = []
+        for (var i = 0; i < entries.length; i++) {
+            var rel = String(entries[i].file)
+            if (root.writablePath(rel) === "") continue
+            files.push(rel)
+        }
+        if (files.length === 0) {
+            job.error = { status: "error", message: "No taggable files here" }
+        } else {
+            var args = ["python3", root.lookupScript, "--music-dir", root.musicDir]
+            if (mbid !== undefined && mbid !== null && String(mbid) !== "") {
+                args.push("--release", String(mbid))
+            }
+            for (var f = 0; f < files.length; f++) {
+                args.push("--file", files[f])
+            }
+            job.args = args
+        }
+        root.lookupQueue.push(job)
+        root.runNextLookUp()
+    }
+
+    function runNextLookUp() {
+        if (lookup.running || root.lookupQueue.length === 0) return
+        var job = root.lookupQueue.shift()
+        if (job.error) {
+            if (job.onDone) job.onDone(job.error)
+            Qt.callLater(root.runNextLookUp)
+            return
+        }
+        root.lookupCurrent = job
+        lookup.command = job.args
+        lookup.running = true
+    }
+
+    function finishLookUp(result) {
+        var job = root.lookupCurrent
+        root.lookupCurrent = null
+        var cb = job ? job.onDone : null
+        if (cb) cb(result)
+        // Deferred, like the cover and tagger queues: a callback can ask for the
+        // next lookup synchronously while this process still reads as running,
+        // and stepping the queue here would find it busy and stop.
+        Qt.callLater(root.runNextLookUp)
+    }
+
+    Process {
+        id: lookup
+        running: false
+        command: []
+        stdout: StdioCollector { id: lookupOut }
+        stderr: StdioCollector { id: lookupErr }
+        onExited: function (exitCode) {
+            var text = lookupOut.text || ""
+            if (exitCode !== 0 || text.trim() === "") {
+                var reason = (lookupErr.text || "").trim().split("\n")[0]
+                root.finishLookUp({
+                    status: "error",
+                    message: reason !== "" ? reason : "Lookup failed"
+                })
+                return
+            }
+            var parsed = null
+            try { parsed = JSON.parse(text) } catch (e) { parsed = null }
+            if (!parsed || typeof parsed !== "object") {
+                root.finishLookUp({ status: "error", message: "Unreadable lookup result" })
+                return
+            }
+            root.finishLookUp(parsed)
+        }
+    }
+
+    // ---- display cover fetch ----
+    //
+    // The playback path's own cover source, separate from the editor's lookup: an
+    // album with nothing beside the tracks and nothing inside them asks here for
+    // a display-sized cover from the stores. No MusicBrainz, so this runs even
+    // where the tagging libraries are absent, and nothing is written into the
+    // music -- the answer lands in the covers cache and is deleted like any other
+    // derived file.
+    //
+    // One subprocess at a time, queued: the panel and the editor's preview can
+    // both want a cover at once, and the helper is not built to be interrupted.
+    property var coverFetchQueue: []
+    property var coverFetchCurrent: null
+
+    // opts: { artist, album, year, tracks, size, out }. onDone gets the helper's
+    // parsed JSON: status ok with cover/coverSource/coverWidth/coverHeight, or
+    // status error with a message.
+    function fetchAlbumCover(opts, onDone) {
+        root.coverFetchQueue.push({
+            opts: opts,
+            onDone: typeof onDone === "function" ? onDone : null
+        })
+        root.runNextCoverFetch()
+    }
+
+    function runNextCoverFetch() {
+        if (coverFetch.running || root.coverFetchQueue.length === 0) return
+        var job = root.coverFetchQueue.shift()
+        root.coverFetchCurrent = job
+        var opts = job.opts
+        if (!opts || !opts.out) {
+            root.finishCoverFetch({ status: "error", message: "No destination" })
+            return
+        }
+        var args = ["python3", root.lookupScript, "--cover-only",
+                    "--size", String(opts.size || 600),
+                    "--cover-out", String(opts.out)]
+        if (opts.artist) args.push("--artist", String(opts.artist))
+        if (opts.album) args.push("--album", String(opts.album))
+        if (opts.year) args.push("--year", String(opts.year))
+        if (opts.tracks) args.push("--tracks", String(opts.tracks))
+        coverFetch.command = args
+        coverFetch.running = true
+    }
+
+    function finishCoverFetch(result) {
+        var job = root.coverFetchCurrent
+        root.coverFetchCurrent = null
+        var cb = job ? job.onDone : null
+        if (cb) cb(result)
+        // Deferred, like the tagger queue: a callback can ask for the next fetch
+        // synchronously while this process still reads as running, and stepping
+        // the queue here would then find it busy and stop. Handing it to the
+        // event loop lets `running` settle first.
+        Qt.callLater(root.runNextCoverFetch)
+    }
+
+    Process {
+        id: coverFetch
+        running: false
+        command: []
+        stdout: StdioCollector { id: coverFetchOut }
+        stderr: StdioCollector { id: coverFetchErr }
+        onExited: function (exitCode) {
+            var text = coverFetchOut.text || ""
+            var parsed = null
+            try { parsed = JSON.parse(text) } catch (e) { parsed = null }
+            if (exitCode !== 0 || !parsed || typeof parsed !== "object") {
+                root.finishCoverFetch({ status: "error", message: "Cover fetch failed" })
+                return
+            }
+            root.finishCoverFetch(parsed)
+        }
+    }
+
+    // ---- cover art ----
+    //
+    // A cover lives in the files. Setting one embeds the image into every track
+    // and leaves the album folder untouched; clearing strips the embedded picture
+    // back out. The cached extraction of the old picture is dropped either way, so
+    // the probe re-reads what the file now holds instead of what it held before.
+    //
+    // One queue of argv commands, no shell: a filename with a quote in it must not
+    // be able to change what runs.
+    signal coversChanged()
+
+    // What the last cover edit did and to which albums, so the panel can tell a
+    // deliberate removal from an album that never had art at all and leave the
+    // cleared album empty rather than fetching a cover straight back into it.
+    property string lastCoverAction: ""
+    property var lastCoverDirs: []
+
+    // The user's cover decision per album directory, remembered across restarts.
+    // The album folder is never written to, so on an album that already has a
+    // sidecar image the embedded picture the editor just set would otherwise be
+    // hidden by it -- the editor's preview would show the new cover and Save
+    // would flip straight back to the old one. "embedded" tells the probe to show
+    // the picture inside the files and ignore the sidecar; "none" tells it to
+    // show no art at all, so a deliberate removal is not filled back in by the
+    // sidecar or by the stores. Kept beside the country cache for the same
+    // reason: it is derived from a user action and should survive a restart.
+    readonly property string coverOverridePath: root.stateDir + "/coveroverrides.json"
+    property var coverOverrides: ({})
+    property bool coverOverridesReady: false
+    property bool coverOverridesDirty: false
+
+    // "" when this album has no remembered decision and the probe should behave
+    // as it always has.
+    function coverOverrideFor(dir) {
+        if (!dir) return ""
+        var value = root.coverOverrides[dir]
+        return value === undefined || value === null ? "" : String(value)
+    }
+
+    // Rebuilt rather than edited in place, for the same reason every other map
+    // here is: adding a key to the object a var property holds reports no change,
+    // so the probe would keep reading the value from before the edit.
+    function rememberCoverOverride(dir, value) {
+        if (dir === undefined || dir === null || dir === "") return
+        var map = {}
+        for (var key in root.coverOverrides) map[key] = root.coverOverrides[key]
+        if (value === "") delete map[dir]
+        else map[dir] = String(value)
+        root.coverOverrides = map
+        root.coverOverridesDirty = true
+        root.saveCoverOverrides()
+    }
+
+    function loadCoverOverrides() {
+        var raw = coverOverrideFile.text()
+        if (raw === undefined || raw === null || raw === "") return
+        try {
+            var parsed = JSON.parse(raw)
+            if (parsed && typeof parsed === "object") root.coverOverrides = parsed
+        } catch (e) {
+            // A malformed map is not worth failing over; the albums it held simply
+            // fall back to the probe's normal order.
+        }
+    }
+
+    function saveCoverOverrides() {
+        // The state directory has to exist first; the mkdir process sets the flag
+        // and flushes anything set before it finished.
+        if (!root.coverOverridesReady) return
+        root.coverOverridesDirty = false
+        coverOverrideFile.setText(JSON.stringify(root.coverOverrides))
+    }
+
+    readonly property string coverCacheDir: root.stateDir + "/covers"
+
+    // Shared with CoverArt.qml through Covers.js, so a cover cleared here deletes
+    // the same cached file that component loads.
+    function cachedCover(dir) {
+        return root.coverCacheDir + "/" + Covers.fileName(dir)
+    }
+
+    // The probe caches an extraction of a track's embedded picture and falls back
+    // to it before extracting again, so a cover changed here would otherwise keep
+    // showing the picture the file had before. Dropping the cache is what makes the
+    // probe look again.
+    function clearCachedCoverCommand(dir) {
+        return ["rm", "-f", root.cachedCover(dir)]
+    }
+
+    // The picture frames, per format: a list of commands, or null when the file is
+    // a format no tagger here can open.
+    function embeddedCoverCommands(path, image) {
+        var lower = path.toLowerCase()
+        if (lower.slice(-5) === ".flac") {
+            // metaflac will not mix a major operation with shorthands, and
+            // importing over an existing picture block leaves two -- so a replace
+            // is a remove, then an import, as two calls in that order. The remove
+            // is a no-op when there is no block, so it is always safe to run.
+            var flac = [["metaflac", "--remove", "--block-type=PICTURE", path]]
+            if (image !== "") {
+                flac.push(["metaflac", "--import-picture-from=" + image, path])
+            }
+            return flac
+        }
+        if (lower.slice(-4) === ".mp3") {
+            // mid3v2's -p replaces the APIC rather than appending, and
+            // --delete-frames=APIC clears every one; neither needs a check first,
+            // both being no-ops when no picture is present.
+            if (image === "") return [["mid3v2", "--delete-frames=APIC", path]]
+            return [["mid3v2", "-p", image, path]]
+        }
+        return null
+    }
+
+    property var coverQueue: []
+    property var coverResult: null
+    property var coverOnDone: null
+
+    // action is "set" (with an image path) or "remove".
+    function applyCover(entries, action, image, onDone) {
+        var dirs = []
+        var seen = {}
+        var files = []
+        var skipped = 0
+        for (var i = 0; i < entries.length; i++) {
+            var rel = String(entries[i].file)
+            var path = root.writablePath(rel)
+            if (path === "") { skipped++; continue }
+            files.push(path)
+            var dir = root.albumDirOf(rel)
+            if (dir !== "" && seen[dir] === undefined) { seen[dir] = true; dirs.push(dir) }
+        }
+
+        var write = action === "set" && image !== "" && image !== undefined && image !== null
+        var queue = []
+        if (write || action === "remove") {
+            // The decision is remembered per album before anything runs, so the
+            // probe that follows `coversChanged` reads the new intent rather than
+            // the sidecar it would otherwise settle on. A "set" says the embedded
+            // picture is the one to show; a "remove" says show nothing. Neither
+            // writes to the album folder.
+            for (var od = 0; od < dirs.length; od++) {
+                root.rememberCoverOverride(dirs[od], write ? "embedded" : "none")
+            }
+            // One cache per directory, since the extraction is an album-level fact;
+            // dropping it lets the probe pick up the picture the files now hold.
+            for (var d = 0; d < dirs.length; d++) {
+                queue.push(root.clearCachedCoverCommand(dirs[d]))
+            }
+            for (var f = 0; f < files.length; f++) {
+                var cmds = root.embeddedCoverCommands(files[f], write ? image : "")
+                if (cmds === null) continue
+                for (var c = 0; c < cmds.length; c++) queue.push(cmds[c])
+            }
+        }
+
+        root.coverResult = { changed: queue.length > 0, failed: 0, skipped: skipped, dirs: dirs }
+        root.coverOnDone = typeof onDone === "function" ? onDone : null
+        // Remembered here, not in finishCover, so the panel reads the action that
+        // goes with the albums in `dirs` even if another edit arrives first.
+        root.lastCoverAction = write ? "set" : (action === "remove" ? "remove" : "")
+        root.lastCoverDirs = dirs
+        if (queue.length === 0) { root.finishCover(); return }
+        root.coverQueue = queue
+        root.runNextCover()
+    }
+
+    function runNextCover() {
+        if (root.coverQueue.length === 0) { root.finishCover(); return }
+        coverTagger.command = root.coverQueue.shift()
+        coverTagger.running = true
+    }
+
+    function finishCover() {
+        var result = root.coverResult
+        // Changed files need an `update` before MPD's tree can show them, and the
+        // panel needs telling regardless: its probe keys on the album directory,
+        // which has not changed, so it would not otherwise notice the new cover.
+        // A failure in one command still leaves the others done, so neither is
+        // held back by it; the count is what the editor reports.
+        if (result.changed) {
+            root.send("update")
+            root.coversChanged()
+        }
+        var cb = root.coverOnDone
+        root.coverOnDone = null
+        if (cb) cb(result)
+    }
+
+    Process {
+        id: coverTagger
+        running: false
+        command: []
+        onExited: function (exitCode) {
+            // A refused file -- permissions, a truncated tag -- is counted and the
+            // rest carried on with, the same as the tagger above.
+            if (exitCode !== 0) root.coverResult.failed++
+            Qt.callLater(root.runNextCover)
         }
     }
 
@@ -807,13 +1283,31 @@ Item {
         atomicWrites: true
     }
 
+    // The per-album cover decisions, kept the same way and for the same reason as
+    // the country cache. Loading is blocking so the synchronous read at startup
+    // has the map in hand before the first probe runs.
+    FileView {
+        id: coverOverrideFile
+        path: root.coverOverridePath
+        watchChanges: false
+        printErrors: false
+        blockLoading: true
+        blockWrites: !root.coverOverridesReady
+        atomicWrites: true
+    }
+
     property bool countriesDirReady: false
 
     Process {
         id: countryMkdir
-        command: ["mkdir", "-p", (Quickshell.env("XDG_STATE_HOME")
-            || (Quickshell.env("HOME") + "/.local/state")) + "/skollgrim.grimplayer"]
-        onExited: root.countriesDirReady = true
+        command: ["mkdir", "-p", root.stateDir]
+        onExited: {
+            root.countriesDirReady = true
+            root.coverOverridesReady = true
+            // A decision taken before the directory existed is written now that
+            // there is somewhere to put it.
+            if (root.coverOverridesDirty) root.saveCoverOverrides()
+        }
     }
 
     function loadCountries() {
@@ -844,6 +1338,10 @@ Item {
                 // albums are read by a probe and never edited, so waiting for an
                 // edit would mean re-reading every one of them on every start.
                 root.saveCountries()
+                // The output is read, so the slot is free; take up the next album
+                // waiting its turn, if any.
+                root.countryBusy = false
+                root.runQueuedCountry()
             }
         }
     }
@@ -950,17 +1448,8 @@ Item {
     // is the signal to leave the queue alone.
     function locateCurrent() {
         if (!root.current || root.current.file === undefined) return null
-        var file = String(root.current.file)
-        for (var a = 0; a < root.artists.length; a++) {
-            var albums = root.artists[a].albums
-            for (var b = 0; b < albums.length; b++) {
-                var tracks = albums[b].tracks
-                for (var t = 0; t < tracks.length; t++) {
-                    if (tracks[t].file === file) return { artist: a, album: b, track: t }
-                }
-            }
-        }
-        return null
+        var loc = root.trackLocations[String(root.current.file)]
+        return loc === undefined ? null : loc
     }
 
     // ---- playback ----
@@ -970,22 +1459,23 @@ Item {
     }
 
     // Replaces the queue with everything below the activated track and starts
-    // there. single and consume are cleared first: with single on, MPD stops
-    // when a track ends, which is the opposite of what this player promises.
-    // repeat and random are left alone -- they are the user's settings, and
-    // both are visible in the now-playing strip.
+    // there. playFilesScoped already builds the clear/single/consume + add +
+    // play 0 list, so this is the same thing with no resume point and no trailing
+    // commands.
     function playFiles(files) {
-        if (!files.length) return
-        var commands = ["clear", "single 0", "consume 0"]
-        for (var i = 0; i < files.length; i++) commands.push("add " + quote(files[i]))
-        commands.push("play 0")
-        root.sendList(commands, function (lines, error) {
-            if (error) root.setError("play: " + error)
-            else root.refreshState()
-        })
+        root.playFilesScoped(files, 0, [])
     }
 
     function playArtistAndBelow(artistIndex, albumIndex, trackIndex) {
+        // Album mode means the queue is the playing album and nothing past it, so
+        // activating a track must narrow to the album too. Going through filesFrom
+        // here would put the whole library back in the queue and quietly undo the
+        // narrowing that makes the mode "album" rather than "everything".
+        if (root.repeatMode === 2) {
+            root.albumLoopPoint = { artist: artistIndex, album: albumIndex }
+            root.playFilesScoped(root.albumFilesAfter(artistIndex, albumIndex, trackIndex), 0, ["repeat 0"])
+            return
+        }
         root.playFiles(root.filesFrom(artistIndex, albumIndex, trackIndex))
     }
 
@@ -1105,13 +1595,17 @@ Item {
     // Nothing is sent to MPD: the queue was already narrowed by the session that
     // set the mode, and rebuilding it here would restart the album at the top.
     //
-    // The restart point is repopulated separately, by the currentsong refresh that
-    // follows, so its absence here is not a problem.
+    // The restart point has to be rebuilt from the playing song, which only the
+    // currentsong callback does. A refresh is requested here so that callback is
+    // guaranteed to run: its status read happens to fire on bootstrap, but the
+    // panel may adopt the mode after that, leaving albumLoopPoint unset and the
+    // loop silently failing at the album's end.
     function adoptStoredMode(mode) {
         if (mode === undefined || mode === null) return
         var m = Math.round(Number(mode))
         if (isNaN(m)) return
         root.repeatMode = Math.max(0, Math.min(2, m))
+        if (root.repeatMode === 2 && root.connected) root.refreshState()
     }
 
     function applyRepeatMode(mode) {
@@ -1124,12 +1618,15 @@ Item {
         if (mode === 2) {
             if (loc) {
                 root.albumLoopPoint = { artist: loc.artist, album: loc.album }
+                // replaceQueueResuming already appends "repeat 0" to the rebuilt
+                // queue; sending it again here would just be a redundant command.
                 root.replaceQueueResuming(root.albumFilesAfter(loc.artist, loc.album, loc.track), ["repeat 0"])
+            } else {
+                root.command("repeat 0")
             }
             // MPD's own flag stays off: this mode is not MPD's to express.
             root.repeatMode = 2
             root.repeatModeSelected(2)
-            root.command("repeat 0")
             return
         }
 
@@ -1155,6 +1652,13 @@ Item {
     function maybeLoopAlbum() {
         if (root.repeatMode !== 2 || !root.status || root.status.state === undefined) return
         if (root.status.state !== "stop") return
+        // Only a natural end of the queue should replay the album. MPD leaves no
+        // current song when the queue runs out -- status omits `song`/`songid`
+        // and currentsong comes back empty -- but keeps the song it stopped on
+        // for a deliberate stop (even when that stop lands on the last track).
+        // Looping on a manual stop would restart the album from the top, which is
+        // not what Stop means, so a present `song` means the user stopped it.
+        if (root.status.song !== undefined) return
         var point = root.albumLoopPoint
         if (!point) return
         root.albumLoopPoint = null
@@ -1341,6 +1845,7 @@ Item {
         cmdLoader.active = true
         evLoader.active = true
         root.loadCountries()
+        root.loadCoverOverrides()
         countryMkdir.running = true
     }
 }

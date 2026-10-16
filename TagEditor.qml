@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 // Tag editor, modal over the browser.
 //
 // Editing is per-selection: the panel hands over the songs the caret covers, and
@@ -14,7 +15,9 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Quickshell.Io
 import qs.Commons
+import "Covers.js" as Covers
 
 Item {
     id: root
@@ -23,6 +26,26 @@ Item {
     // The panel owns the selection; this only reads it.
     property var songs: []
     property real uiScale: 1.0
+
+    // Mirrors the panel's cover-change transition, so the preview here fades the
+    // same way the player does when a cover is picked or the selection changes.
+    property int coverTransition: 0
+
+    // Mirrors the panel's missing-cover lookup, so a selection with no art shows
+    // the same fetched cover the player would, and honours the same off switch.
+    property bool fetchCovers: true
+
+    // Mirrors the panel's artwork rounding, so the preview's corners match how
+    // the cover is drawn in the player.
+    property bool coverRounded: true
+
+    // The panel's colour tokens, injected. The editor is modal over the panel,
+    // so it follows the same palette as everything behind it.
+    property var theme: null
+    readonly property color colBackground: theme ? theme.background : Color.background
+    readonly property color colForeground: theme ? theme.foreground : Color.foreground
+    readonly property color colMuted: theme ? theme.muted : Color.muted
+    readonly property color colAccent: theme ? theme.accent : Color.accent
 
     signal dismissed()
 
@@ -57,11 +80,81 @@ Item {
     property string status: ""
     property bool busy: false
 
+    // Identifies the current editing session. load() bumps it, and every async
+    // result -- a lookup or a save -- is stamped with the value it was started
+    // under and dropped when that no longer matches. Escape can close the editor
+    // while a write or lookup is still running, and the panel can reopen it on a
+    // different album before that result lands; without this the late callback
+    // would paint the previous album's values and status onto the new session.
+    property int session: 0
+
+    // ---- cover art ----
+    //
+    // The cover is edited alongside the tags but not through them: it is stored in
+    // the files themselves, embedded into each track (see GrimPlayerMpd.applyCover),
+    // and no sidecar is written, so the album folder is left alone.
+
+    // The selection's first song and its file, handed to the preview so it draws
+    // the art for this album rather than whatever is playing.
+    property var previewSubject: null
+
+    // What this open wants done to the cover: "" leaves it alone, "set" embeds
+    // coverPath into the tracks, "remove" strips the embedded picture. Reset by
+    // load(), like the tag fields -- an edit not made this time is not carried
+    // into the next open.
+    property string coverAction: ""
+    property string coverPath: ""
+
+    // A chosen-but-unwritten image is what the preview should show, rather than
+    // what is on disk.
+    readonly property bool coverChosen: root.coverAction === "set" && root.coverPath !== ""
+
+    // Whether there is a cover to remove: the pending choice wins over what is on
+    // disk, so the buttons act on what the preview shows.
+    readonly property bool coverShown: root.coverAction === "set" ? true
+        : (root.coverAction === "remove" ? false : previewArt.foundArt)
+
+    readonly property bool coverFocused: root.rowIndex === root.coverStop()
+
+    // ---- lookup ----
+    //
+    // A MusicBrainz match held for review, not written: the candidates are what
+    // the search returned and the index is which is on show. Per-track fields
+    // (title, number, disc) live in lookupPerFile keyed by file, because the
+    // editor's shared one-value-per-field model cannot hold a different title
+    // for every track -- an album's shared fields hold only what is common.
+    property var lookupCandidates: []
+    property int lookupIndex: 0
+    property var lookupPerFile: ({})
+    property bool lookupBusy: false
+    // Whether the pending cover came from a lookup rather than the user, so a
+    // cycle to a candidate with no art can take it back instead of leaving the
+    // previous candidate's cover looking like the new one's.
+    property bool coverFromLookup: false
+
+    readonly property bool matchFocused: root.rowIndex === root.matchStop()
+
+    readonly property string matchSummary: {
+        if (root.lookupCandidates.length === 0) return ""
+        var c = root.lookupCandidates[root.lookupIndex]
+        if (!c) return ""
+        var s = c.artist || ""
+        if (c.album) s += (s !== "" ? " – " : "") + c.album
+        if (c.date) s += " (" + c.date + ")"
+        return (root.lookupIndex + 1) + "/" + root.lookupCandidates.length + "  " + s
+    }
+
+    function albumFolder() {
+        if (root.songs.length === 0 || !root.mpd) return ""
+        return root.mpd.musicDir + "/" + root.mpd.albumDirOf(root.songs[0].file)
+    }
+
     // Every map here is rebuilt and reassigned rather than modified in place. A var
     // property holding a JS object does not report a change when a key is added to
     // it, so an in-place edit updates what a direct read returns while leaving
     // every binding that depends on it showing the values from before the edit.
     function load() {
+        root.session++
         var agreed = {}
         for (var f = 0; f < root.fields.length; f++) {
             agreed[root.fields[f].key] = root.commonValue(root.fields[f].key)
@@ -72,6 +165,15 @@ Item {
         root.rowIndex = 0
         root.status = ""
         root.busy = false
+        root.coverAction = ""
+        root.coverPath = ""
+        root.lookupCandidates = []
+        root.lookupIndex = 0
+        root.lookupPerFile = {}
+        root.lookupBusy = false
+        root.coverFromLookup = false
+        root.previewSubject = root.songs.length > 0
+            ? { file: String(root.songs[0].file), song: root.songs[0] } : null
         Qt.callLater(root.focusRow)
     }
 
@@ -150,10 +252,19 @@ Item {
 
     // The Save button is the last stop in the focus cycle, past the final field,
     // so rowIndex counts one past the fields rather than being a second cursor.
-    // That keeps the wrap arithmetic in one place: there are fields + 1 stops, and
-    // every key that moves a row just adds to the index and lets moveRow fold it.
-    function saveStop() {
+    // That keeps the wrap arithmetic in one place: there are fields + 3 stops (the
+    // match row, then the cover row, then Save), and every key that moves a row
+    // just adds to the index and lets moveRow fold it.
+    function matchStop() {
         return root.fields.length
+    }
+
+    function coverStop() {
+        return root.fields.length + 1
+    }
+
+    function saveStop() {
+        return root.fields.length + 2
     }
 
     // Focus goes to the text field inside the row rather than the row itself. The
@@ -163,6 +274,14 @@ Item {
     function focusRow() {
         if (root.rowIndex === root.saveStop()) {
             saveButton.forceActiveFocus()
+            return
+        }
+        if (root.rowIndex === root.coverStop()) {
+            browseButton.forceActiveFocus()
+            return
+        }
+        if (root.rowIndex === root.matchStop()) {
+            lookupButton.forceActiveFocus()
             return
         }
         var rows = fieldColumn.children
@@ -178,6 +297,330 @@ Item {
         var n = root.saveStop() + 1
         root.rowIndex = ((root.rowIndex + delta) % n + n) % n
         root.focusRow()
+    }
+
+    // Opens a file chooser in the album folder, so the covers already beside the
+    // tracks are the first thing on offer and one further afield is still a step
+    // away. zenity is part of the desktop's own set of tools and returns the
+    // chosen path on stdout; cancelling is an empty line and leaves the cover as
+    // it was.
+    function openBrowse() {
+        if (root.busy) return
+        var args = ["zenity", "--file-selection", "--title=Choose cover art",
+                    "--file-filter=Images | *.jpg *.jpeg *.png *.webp *.gif *.bmp"]
+        var folder = root.albumFolder()
+        if (folder !== "") args.push("--filename=" + folder + "/")
+        picker.command = args
+        picker.running = true
+    }
+
+    // Landing back on the Browse button would make the next Enter reopen the
+    // chooser rather than save the choice just made, so a picked image moves the
+    // cursor on to Save; cancelling leaves the row where it was.
+    function afterPicker() {
+        if (root.coverChosen) root.rowIndex = root.saveStop()
+        root.focusRow()
+    }
+
+    // A second press undoes a removal, so the decision is not one-way before Save.
+    function clearCover() {
+        if (root.busy) return
+        if (root.coverAction === "remove") {
+            root.coverAction = ""
+        } else {
+            root.coverAction = "remove"
+            root.coverPath = ""
+        }
+        // The removal is the user's decision, not a lookup's: dropping this stops a
+        // later candidate that has no front cover from taking the removal back
+        // (see applyLookup).
+        root.coverFromLookup = false
+    }
+
+    // ---- lookup ----
+
+    // Search MusicBrainz with what the selection already says and pre-fill the
+    // fields and the cover from the best match. Nothing is written: the point is
+    // to show the match so it can be reviewed, corrected, or cycled past before
+    // Save decides it.
+    function lookUp() {
+        if (root.busy || root.lookupBusy || !root.mpd) return
+        // An artist's whole shelf disagrees about the album, and one search
+        // cannot stand for several albums, so it is refused rather than guessed.
+        if (root.isMixed("album")) {
+            root.status = "Select a single album to look up"
+            return
+        }
+        root.lookupBusy = true
+        root.status = "Looking up…"
+        var sess = root.session
+        root.mpd.lookUpAlbum(root.songs, "", function (result) {
+            root.lookupBusy = false
+            // The editor was closed and possibly reopened on something else while
+            // this ran; the answer belongs to the session that asked for it.
+            if (sess !== root.session) return
+            if (!result || result.status !== "ok") {
+                root.status = "Look up failed" +
+                    (result && result.message ? ": " + result.message : "")
+                return
+            }
+            root.lookupCandidates = result.candidates ? result.candidates : []
+            root.lookupIndex = 0
+            root.applyLookup(result)
+        })
+    }
+
+    // Walk to the next candidate and re-fetch it. The search is not repeated --
+    // only the chosen release is detailed, so a cycle costs one round trip.
+    function cycleMatch(delta) {
+        if (root.busy || root.lookupBusy || !root.mpd) return
+        var n = root.lookupCandidates.length
+        if (n < 2) return
+        var next = ((root.lookupIndex + delta) % n + n) % n
+        var candidate = root.lookupCandidates[next]
+        root.lookupBusy = true
+        root.status = "Looking up…"
+        var sess = root.session
+        root.mpd.lookUpAlbum(root.songs, candidate.mbid, function (result) {
+            root.lookupBusy = false
+            if (sess !== root.session) return
+            if (!result || result.status !== "ok") {
+                root.status = "Look up failed" +
+                    (result && result.message ? ": " + result.message : "")
+                return
+            }
+            // Commit the move only once the fetch for it has landed, so a failed
+            // step leaves the caret on the candidate still being shown rather
+            // than skipping one and naming a release that was never applied.
+            root.lookupIndex = next
+            root.applyLookup(result)
+        })
+    }
+
+    function applyLookup(result) {
+        var d = {}
+        for (var k in root.draft) d[k] = root.draft[k]
+        var t = {}
+        for (var k2 in root.touched) t[k2] = root.touched[k2]
+
+        var put = function (key, value) {
+            if (value === undefined || value === null || String(value) === "") return
+            d[key] = key === "country" ? root.tidyCode(value) : String(value)
+            t[key] = true
+        }
+        put("artist", result.artist)
+        put("albumArtist", result.albumArtist)
+        put("album", result.album)
+        put("date", result.date)
+        // Only a non-empty country is taken: MusicBrainz omits it for some
+        // releases, and an empty answer must not blank a deliberate tag.
+        if (result.country) {
+            d["country"] = root.tidyCode(result.country)
+            t["country"] = true
+        }
+
+        // Per-track fields go in lookupPerFile keyed by file, so only files in
+        // the selection are ever covered. For a lone track they are also that
+        // track's own facts, so they are copied into the shared fields and show
+        // in the UI; for an album they differ per track and stay only in the map.
+        var per = {}
+        if (result.tracks) {
+            for (var i = 0; i < result.tracks.length; i++) {
+                var tr = result.tracks[i]
+                if (!tr.file) continue
+                var entry = {}
+                if (tr.title) entry.title = String(tr.title)
+                if (tr.track !== undefined && tr.track !== "") entry.track = String(tr.track)
+                if (tr.disc !== undefined && tr.disc !== "") entry.disc = String(tr.disc)
+                per[String(tr.file)] = entry
+            }
+        }
+        root.lookupPerFile = per
+        if (root.songs.length === 1) {
+            var only = per[String(root.songs[0].file)]
+            if (!only && result.tracks && result.tracks.length > 0) only = result.tracks[0]
+            if (only) {
+                put("title", only.title)
+                put("track", only.track)
+                put("disc", only.disc)
+            }
+        }
+        root.draft = d
+        root.touched = t
+
+        if (result.cover && result.cover !== "") {
+            root.coverAction = "set"
+            root.coverPath = result.cover
+            root.coverFromLookup = true
+        } else if (root.coverFromLookup) {
+            // This candidate has no front cover, so the previous one's must go
+            // rather than stand in for it.
+            root.coverAction = ""
+            root.coverPath = ""
+            root.coverFromLookup = false
+        }
+
+        var parts = ["Match " + (root.lookupIndex + 1) + "/"
+            + root.lookupCandidates.length + "  " + root.matchSummaryBody(result)]
+        if (root.songs.length > 1 && result.tracks && result.tracks.length > 0) {
+            parts.push(Math.min(root.songs.length, result.tracks.length) + " track titles")
+        }
+        if (root.coverAction === "set") {
+            // Say where the cover came from and how big it is: a store cover and
+            // an archive scan are not the same thing, and the size is what tells
+            // a clean 1200px square from a smaller or cropped one.
+            var w = result.coverWidth || 0
+            var h = result.coverHeight || 0
+            var desc = "cover"
+            if (result.coverSource) desc += " from " + result.coverSource
+            if (w > 0 && h > 0) desc += " (" + w + "×" + h + ")"
+            parts.push(desc)
+        }
+        root.status = parts.join(" · ")
+    }
+
+    function matchSummaryBody(result) {
+        var artist = result.artist || ""
+        var where = artist
+        if (result.album) where += (where !== "" ? " – " : "") + result.album
+        if (result.date) where += " (" + result.date + ")"
+        return where
+    }
+
+    // The match buttons and the cover buttons each form one stop, and every key
+    // that is not theirs falls through to here: Escape closes the editor,
+    // Tab/Down/Up moves a row. Shared by both so the two paths cannot drift.
+    function rowKey(event) {
+        if (event.key === Qt.Key_Escape) {
+            root.dismissed()
+        } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Down
+                || event.key === Qt.Key_Up) {
+            root.moveRow(event.key === Qt.Key_Up || (event.key === Qt.Key_Tab
+                && (event.modifiers & Qt.ShiftModifier)) ? -1 : 1)
+        }
+        event.accepted = true
+    }
+
+    // The two match buttons are one stop, so Left/Right walks between them and
+    // everything else moves a row, the same as the cover row.
+    function onLookupKey(event) {
+        // Escape must reach the row handler even mid-lookup: the busy guard below
+        // is about not queueing more work or moving focus, and closing the editor
+        // is neither. Swallowing it left Escape dead while a lookup ran.
+        if ((root.busy || root.lookupBusy) && event.key !== Qt.Key_Escape) {
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space) {
+            root.lookUp()
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Right && prevButton.visible) {
+            prevButton.forceActiveFocus()
+            event.accepted = true
+            return
+        }
+        root.rowKey(event)
+    }
+
+    function onPrevKey(event) {
+        if ((root.busy || root.lookupBusy) && event.key !== Qt.Key_Escape) {
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space) {
+            root.cycleMatch(-1)
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Left) {
+            lookupButton.forceActiveFocus()
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Right && nextButton.visible) {
+            nextButton.forceActiveFocus()
+            event.accepted = true
+            return
+        }
+        root.rowKey(event)
+    }
+
+    function onNextKey(event) {
+        if ((root.busy || root.lookupBusy) && event.key !== Qt.Key_Escape) {
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space) {
+            root.cycleMatch(1)
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Left) {
+            prevButton.forceActiveFocus()
+            event.accepted = true
+            return
+        }
+        root.rowKey(event)
+    }
+
+    // The two cover buttons are one stop in the cycle, so Left/Right walks between
+    // them and everything else moves a row, the same as a field.
+    function onBrowseKey(event) {
+        if (root.busy && event.key !== Qt.Key_Escape) { event.accepted = true; return }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space) {
+            root.openBrowse()
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Right && removeButton.visible) {
+            removeButton.forceActiveFocus()
+            event.accepted = true
+            return
+        }
+        root.rowKey(event)
+    }
+
+    function onRemoveKey(event) {
+        if (root.busy && event.key !== Qt.Key_Escape) { event.accepted = true; return }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space) {
+            root.clearCover()
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Left) {
+            browseButton.forceActiveFocus()
+            event.accepted = true
+            return
+        }
+        root.rowKey(event)
+    }
+
+    Process {
+        id: picker
+        running: false
+        command: []
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var path = this.text.trim()
+                if (path === "") return
+                root.coverPath = path
+                root.coverAction = "set"
+                root.coverFromLookup = false
+            }
+        }
+        // The chooser is a window of its own and takes the keyboard with it; hand
+        // focus back to the card so the editor keeps working afterwards.
+        onExited: {
+            card.forceActiveFocus()
+            Qt.callLater(root.afterPicker)
+        }
     }
 
     // Tab out of the modal would otherwise walk focus into the panel underneath,
@@ -214,7 +657,17 @@ Item {
             tags[key] = root.draft[key] === undefined ? "" : String(root.draft[key]).trim()
             any = true
         }
-        if (!any) {
+        // A matched album's per-track titles and numbers are not in the shared
+        // fields; they ride alongside them and are written per file.
+        var perFile = root.lookupPerFile ? root.lookupPerFile : {}
+        var hasPerFile = Object.keys(perFile).length > 0
+        // A "set" with nothing chosen is not an edit; treat it as untouched.
+        var cover = (root.coverAction === "set" && root.coverPath === "") ? "" : root.coverAction
+        // Captured, not read at callback time: the cover write runs after the tag
+        // write, and an editor closed and reopened in between would have cleared
+        // root.coverPath, silently dropping the cover that was chosen here.
+        var coverPath = root.coverPath
+        if (!any && !hasPerFile && cover === "") {
             root.status = "Nothing changed"
             return
         }
@@ -222,26 +675,84 @@ Item {
         for (var s = 0; s < root.songs.length; s++) files.push(root.songs[s])
         root.busy = true
         root.status = "Writing…"
-        root.mpd.applyTags(files, tags, function (result) {
+        var sess = root.session
+
+        var finish = function (tagResult, coverResult) {
+            // The editor may have been closed and reopened while the taggers ran.
+            // The files were still written -- that part is done -- but the UI
+            // state below belongs to the session that asked for it, not to
+            // whatever is on screen now.
+            if (sess !== root.session) return
             root.busy = false
             var parts = []
-            if (result.written > 0) parts.push(result.written + " updated")
-            if (result.failed > 0) parts.push(result.failed + " failed")
-            if (result.skipped > 0) parts.push(result.skipped + " skipped")
+            if (tagResult) {
+                if (tagResult.written > 0) parts.push(tagResult.written + " updated")
+                if (tagResult.failed > 0) parts.push(tagResult.failed + " failed")
+                if (tagResult.skipped > 0) parts.push(tagResult.skipped + " skipped")
+            }
+            if (coverResult) {
+                if (coverResult.failed > 0) parts.push("cover failed")
+                // A cue album's tracks have no writable file, so the cover edit was
+                // skipped for every one of them. Reporting "cover set" there claimed
+                // work that never happened; the skip is the honest answer, and it is
+                // the same wording the tag half uses.
+                else if (!coverResult.changed && coverResult.skipped > 0)
+                    parts.push(coverResult.skipped + " skipped")
+                else parts.push(cover === "remove" ? "cover removed" : "cover set")
+            }
             root.status = parts.length > 0 ? parts.join(" · ") : "Nothing changed"
-            // Everything the user just typed has been dealt with, so the draft is
-            // no longer pending. Clearing `touched` is what stops the next open
+            // Everything the user just asked for has been dealt with, so the draft
+            // is no longer pending. Clearing `touched` is what stops the next open
             // from offering the previous edit's values as if they were agreed on.
             root.touched = {}
             root.draft = {}
-            root.refreshAgreed()
-        })
+            root.coverAction = ""
+            root.coverPath = ""
+            root.lookupCandidates = []
+            root.lookupIndex = 0
+            root.lookupPerFile = {}
+            root.coverFromLookup = false
+            // The values to show come from what was just written, not from a
+            // re-read of the selection: `songs` is the snapshot the editor was
+            // opened with and the panel replaces its own objects when the library
+            // reloads, so commonValue() here would hand back the pre-edit values
+            // and every field would visibly revert until the editor was reopened.
+            root.settleAgreed(tags, hasPerFile)
+        }
+
+        // Tags first, then the cover: both rewrite the same files, and the two
+        // taggers must not be open on one file at once.
+        if (any || hasPerFile) {
+            root.mpd.applyTagsSet(files, tags, perFile, function (tagResult) {
+                if (cover === "") { finish(tagResult, null); return }
+                root.mpd.applyCover(files, cover, coverPath, function (coverResult) {
+                    finish(tagResult, coverResult)
+                })
+            })
+        } else {
+            root.mpd.applyCover(files, cover, coverPath, function (coverResult) {
+                finish(null, coverResult)
+            })
+        }
     }
 
-    function refreshAgreed() {
+    // The agreed values after a save, built from what was written rather than from
+    // the stale selection. A shared field the user touched now holds the value
+    // that went to every file; a per-track field a lookup filled holds a different
+    // value in each file, so it reads as "multiple" again; a field nobody touched
+    // keeps what it showed before.
+    function settleAgreed(tags, hasPerFile) {
         var a = {}
         for (var f = 0; f < root.fields.length; f++) {
-            a[root.fields[f].key] = root.commonValue(root.fields[f].key)
+            var key = root.fields[f].key
+            if (tags[key] !== undefined) {
+                a[key] = tags[key]
+            } else if (hasPerFile
+                    && (key === "title" || key === "track" || key === "disc")) {
+                a[key] = null
+            } else {
+                a[key] = root.agreed[key]
+            }
         }
         root.agreed = a
     }
@@ -259,11 +770,11 @@ Item {
         id: card
         anchors.centerIn: parent
         width: Math.round(620 * root.uiScale)
-        height: Math.round(552 * root.uiScale)
+        height: Math.round(560 * root.uiScale)
         radius: Math.round(12 * root.uiScale)
-        color: Color.background
+        color: root.colBackground
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.10)
+        border.color: Util.alpha(root.colForeground, 0.10)
 
         // Keys reach the card rather than the browser underneath, and the panel's
         // own key catcher is stood down while this is up for the same reason: a
@@ -291,7 +802,16 @@ Item {
                 root.moveRow(-1)
                 event.accepted = true
             } else if (event.key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier)) {
-                root.moveRow(root.rowIndex === 0 ? root.fields.length - 1 : -1)
+                // Jump to the last stop in the cycle, the way the settings card's
+                // G does. The old form only worked from the first row and moved up
+                // one step from anywhere else.
+                root.rowIndex = root.saveStop()
+                root.focusRow()
+                event.accepted = true
+            } else if (event.key === Qt.Key_L) {
+                // Only reaches the card when no field has focus, so an "l" typed
+                // into a tag never triggers a lookup.
+                root.lookUp()
                 event.accepted = true
             }
         }
@@ -307,7 +827,7 @@ Item {
 
                 Text {
                     text: "Edit tags"
-                    color: Color.foreground
+                    color: root.colForeground
                     font.pixelSize: Math.round(Style.font.subtitle * root.uiScale)
                     font.weight: Font.DemiBold
                     font.family: Style.font.family
@@ -317,13 +837,13 @@ Item {
                     width: scopeLabel.implicitWidth + Math.round(16 * root.uiScale)
                     height: Math.round(20 * root.uiScale)
                     radius: height / 2
-                    color: Util.alpha(Color.accent, 0.14)
+                    color: Util.alpha(root.colAccent, 0.14)
 
                     Text {
                         id: scopeLabel
                         anchors.centerIn: parent
                         text: root.scopeText()
-                        color: Color.accent
+                        color: root.colAccent
                         font.pixelSize: Math.round(Style.font.caption * root.uiScale)
                         font.family: Style.font.family
                     }
@@ -332,28 +852,17 @@ Item {
                 Item { Layout.fillWidth: true }
             }
 
-            Text {
-                Layout.fillWidth: true
-                Layout.topMargin: Math.round(6 * root.uiScale)
-                text: "Fields the tracks disagree on read “multiple” and are left alone unless you change them. Country takes a two-letter code, and the flag beside it is the one the now-playing strip will show — use GB-ENG, GB-SCT or GB-WLS for the UK home nations."
-                color: Util.alpha(Color.muted, 1.0)
-                wrapMode: Text.WordWrap
-                font.pixelSize: Math.round(Style.font.caption * root.uiScale)
-                font.family: Style.font.family
-            }
-
             Rectangle {
                 Layout.fillWidth: true
                 Layout.topMargin: Math.round(14 * root.uiScale)
                 Layout.bottomMargin: Math.round(10 * root.uiScale)
-                height: 1
-                color: Qt.rgba(1, 1, 1, 0.08)
+                Layout.preferredHeight: 1
+                color: Util.alpha(root.colForeground, 0.08)
             }
 
             ColumnLayout {
                 id: fieldColumn
                 Layout.fillWidth: true
-                Layout.fillHeight: true
                 spacing: 0
 
                 Repeater {
@@ -378,8 +887,8 @@ Item {
                         Text {
                             Layout.preferredWidth: Math.round(130 * root.uiScale)
                             text: row.modelData.label
-                            color: row.focused ? Color.foreground
-                                                 : Util.alpha(Color.muted, 1.0)
+                            color: row.focused ? root.colForeground
+                                                 : Util.alpha(root.colMuted, 1.0)
                             font.pixelSize: Math.round(Style.font.body * root.uiScale)
                             font.family: Style.font.family
                         }
@@ -396,8 +905,8 @@ Item {
                                 // the tracks all left empty stays empty and reads as
                                 // empty, which is a different offer than "we differ".
                                 placeholderText: root.isMixed(row.modelData.key) ? "multiple" : ""
-                                placeholderTextColor: Util.alpha(Color.accent, 0.75)
-                                color: Color.foreground
+                                placeholderTextColor: Util.alpha(root.colAccent, 0.75)
+                                color: root.colForeground
                                 font.pixelSize: Math.round(Style.font.body * root.uiScale)
                                 font.family: Style.font.family
                                 selectByMouse: true
@@ -409,11 +918,11 @@ Item {
 
                                 background: Rectangle {
                                     radius: Math.round(6 * root.uiScale)
-                                    color: Util.alpha(Color.foreground, row.focused ? 0.10 : 0.05)
+                                    color: Util.alpha(root.colForeground, row.focused ? 0.10 : 0.05)
                                     border.width: 1
                                     border.color: row.focused
-                                        ? Util.alpha(Color.accent, 0.7)
-                                        : Util.alpha(Color.foreground, 0.12)
+                                        ? Util.alpha(root.colAccent, 0.7)
+                                        : Util.alpha(root.colForeground, 0.12)
                                 }
 
                                 onTextEdited: root.setText(row.modelData.key, text)
@@ -471,12 +980,273 @@ Item {
                 }
             }
 
+            // The match row: one button that searches MusicBrainz for this album
+            // and, once there is an answer, one that walks to the next candidate.
+            // It sits with the fields because what it does is fill them, and it
+            // writes nothing -- Save is still what commits the result.
+            RowLayout {
+                id: matchRow
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.round(34 * root.uiScale)
+                spacing: Math.round(12 * root.uiScale)
+
+                Text {
+                    Layout.preferredWidth: Math.round(130 * root.uiScale)
+                    Layout.alignment: Qt.AlignVCenter
+                    text: "Match"
+                    color: root.matchFocused ? root.colForeground
+                                             : Util.alpha(root.colMuted, 1.0)
+                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                    font.family: Style.font.family
+                }
+
+                Rectangle {
+                    id: lookupButton
+                    Layout.alignment: Qt.AlignVCenter
+                    width: lookupLabel.implicitWidth + Math.round(24 * root.uiScale)
+                    height: Math.round(28 * root.uiScale)
+                    radius: Math.round(6 * root.uiScale)
+                    color: lookupMouse.containsMouse || activeFocus
+                        ? Util.alpha(root.colAccent, 0.26)
+                        : Util.alpha(root.colAccent, 0.16)
+                    border.width: activeFocus ? 1 : 0
+                    border.color: Util.alpha(root.colAccent, 0.7)
+                    activeFocusOnTab: false
+                    Keys.onPressed: (event) => root.onLookupKey(event)
+
+                    Text {
+                        id: lookupLabel
+                        anchors.centerIn: parent
+                        text: root.lookupBusy ? "Looking…" : "Look up"
+                        color: root.colForeground
+                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                        font.family: Style.font.family
+                    }
+
+                    MouseArea {
+                        id: lookupMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.lookUp()
+                    }
+                }
+
+                Rectangle {
+                    id: prevButton
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: root.lookupCandidates.length > 1
+                    width: prevLabel.implicitWidth + Math.round(24 * root.uiScale)
+                    height: Math.round(28 * root.uiScale)
+                    radius: Math.round(6 * root.uiScale)
+                    color: prevMouse.containsMouse || activeFocus
+                        ? Util.alpha(root.colForeground, 0.14)
+                        : Util.alpha(root.colForeground, 0.06)
+                    border.width: activeFocus ? 1 : 0
+                    border.color: Util.alpha(root.colForeground, 0.30)
+                    activeFocusOnTab: false
+                    Keys.onPressed: (event) => root.onPrevKey(event)
+
+                    Text {
+                        id: prevLabel
+                        anchors.centerIn: parent
+                        text: "‹ Prev"
+                        color: root.colForeground
+                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                        font.family: Style.font.family
+                    }
+
+                    MouseArea {
+                        id: prevMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.cycleMatch(-1)
+                    }
+                }
+
+                Rectangle {
+                    id: nextButton
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: root.lookupCandidates.length > 1
+                    width: nextLabel.implicitWidth + Math.round(24 * root.uiScale)
+                    height: Math.round(28 * root.uiScale)
+                    radius: Math.round(6 * root.uiScale)
+                    color: nextMouse.containsMouse || activeFocus
+                        ? Util.alpha(root.colForeground, 0.14)
+                        : Util.alpha(root.colForeground, 0.06)
+                    border.width: activeFocus ? 1 : 0
+                    border.color: Util.alpha(root.colForeground, 0.30)
+                    activeFocusOnTab: false
+                    Keys.onPressed: (event) => root.onNextKey(event)
+
+                    Text {
+                        id: nextLabel
+                        anchors.centerIn: parent
+                        text: "Next ›"
+                        color: root.colForeground
+                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                        font.family: Style.font.family
+                    }
+
+                    MouseArea {
+                        id: nextMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.cycleMatch(1)
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
+                    visible: root.matchSummary !== ""
+                    text: root.matchSummary
+                    color: Util.alpha(root.colMuted, 1.0)
+                    elide: Text.ElideRight
+                    font.pixelSize: Math.round(Style.font.caption * root.uiScale)
+                    font.family: Style.font.family
+                }
+            }
+
+            // The cover is an album-level fact like the fields above it, so it sits
+            // with them, under the last one. It reads the same way -- a label, then
+            // what it holds -- but its value lives in the files rather than in a
+            // single tag MPD reports, so it is edited through buttons.
+            RowLayout {
+                id: coverRow
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.round(44 * root.uiScale)
+                spacing: Math.round(12 * root.uiScale)
+
+                Text {
+                    Layout.preferredWidth: Math.round(130 * root.uiScale)
+                    Layout.alignment: Qt.AlignVCenter
+                    text: "Cover art"
+                    color: root.coverFocused ? root.colForeground
+                                             : Util.alpha(root.colMuted, 1.0)
+                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                    font.family: Style.font.family
+                }
+
+                Item {
+                    Layout.preferredWidth: Math.round(40 * root.uiScale)
+                    Layout.preferredHeight: Math.round(40 * root.uiScale)
+                    Layout.alignment: Qt.AlignVCenter
+
+                    // Shown until the cover is marked for removal. The instance
+                    // overrides CoverArt's own visibility because the editor always
+                    // wants the disc when there is no art, and never wants disk art
+                    // standing in for a cover the user has just cleared.
+                    CoverArt {
+                        id: previewArt
+                        anchors.fill: parent
+                        mpd: root.mpd
+                        theme: root.theme
+                        uiScale: root.uiScale
+                        subject: root.previewSubject
+                        // The editor's own instance, and only while the editor is up.
+                        active: root.visible
+                        coverBorder: false
+                        placeholder: true
+                        transitionDuration: root.coverTransition
+                        fetchCovers: root.fetchCovers
+                        rounded: root.coverRounded
+                        visible: root.coverAction !== "remove"
+                        overrideSource: root.coverChosen ? Covers.fileUrl(root.coverPath) : ""
+                    }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: root.coverAction === "remove"
+                        radius: Math.round(6 * root.uiScale)
+                        color: Util.alpha(root.colForeground, 0.05)
+                        border.width: 1
+                        border.color: Util.alpha(root.colForeground, 0.12)
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "None"
+                            color: Util.alpha(root.colMuted, 1.0)
+                            font.pixelSize: Math.round(Style.font.caption * root.uiScale)
+                            font.family: Style.font.family
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: browseButton
+                    Layout.alignment: Qt.AlignVCenter
+                    width: browseLabel.implicitWidth + Math.round(24 * root.uiScale)
+                    height: Math.round(28 * root.uiScale)
+                    radius: Math.round(6 * root.uiScale)
+                    color: browseMouse.containsMouse || activeFocus
+                        ? Util.alpha(root.colAccent, 0.26)
+                        : Util.alpha(root.colAccent, 0.16)
+                    border.width: activeFocus ? 1 : 0
+                    border.color: Util.alpha(root.colAccent, 0.7)
+                    activeFocusOnTab: false
+                    Keys.onPressed: (event) => root.onBrowseKey(event)
+
+                    Text {
+                        id: browseLabel
+                        anchors.centerIn: parent
+                        text: "Browse…"
+                        color: root.colForeground
+                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                        font.family: Style.font.family
+                    }
+
+                    MouseArea {
+                        id: browseMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.openBrowse()
+                    }
+                }
+
+                Rectangle {
+                    id: removeButton
+                    Layout.alignment: Qt.AlignVCenter
+                    // Stays up while a removal is pending, so the documented
+                    // second press can undo it. coverShown is false once the cover
+                    // is marked removed, hence the extra term.
+                    visible: root.coverShown || root.coverAction === "remove"
+                    width: removeLabel.implicitWidth + Math.round(24 * root.uiScale)
+                    height: Math.round(28 * root.uiScale)
+                    radius: Math.round(6 * root.uiScale)
+                    color: removeMouse.containsMouse || activeFocus
+                        ? Util.alpha(root.colForeground, 0.14)
+                        : Util.alpha(root.colForeground, 0.06)
+                    border.width: activeFocus ? 1 : 0
+                    border.color: Util.alpha(root.colForeground, 0.30)
+                    activeFocusOnTab: false
+                    Keys.onPressed: (event) => root.onRemoveKey(event)
+
+                    Text {
+                        id: removeLabel
+                        anchors.centerIn: parent
+                        text: root.coverAction === "remove" ? "Undo" : "Remove"
+                        color: root.colForeground
+                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                        font.family: Style.font.family
+                    }
+
+                    MouseArea {
+                        id: removeMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.clearCover()
+                    }
+                }
+            }
+
+            Item { Layout.fillHeight: true }
+
             Rectangle {
                 Layout.fillWidth: true
                 Layout.topMargin: Math.round(10 * root.uiScale)
                 Layout.bottomMargin: Math.round(8 * root.uiScale)
-                height: 1
-                color: Qt.rgba(1, 1, 1, 0.08)
+                Layout.preferredHeight: 1
+                color: Util.alpha(root.colForeground, 0.08)
             }
 
             RowLayout {
@@ -486,9 +1256,9 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     text: root.status !== "" ? root.status
-                        : "Enter saves · Esc cancels · Tab cycles fields and Save"
-                    color: root.status === "" ? Util.alpha(Color.muted, 1.0)
-                                               : Util.alpha(Color.accent, 1.0)
+                        : "Enter saves · Esc cancels · L looks up · ← → cycle matches · Tab moves"
+                    color: root.status === "" ? Util.alpha(root.colMuted, 1.0)
+                                               : Util.alpha(root.colAccent, 1.0)
                     elide: Text.ElideRight
                     font.pixelSize: Math.round(Style.font.caption * root.uiScale)
                     font.family: Style.font.family
@@ -500,25 +1270,25 @@ Item {
                     height: Math.round(28 * root.uiScale)
                     radius: Math.round(6 * root.uiScale)
                     color: saveMouse.containsMouse || root.busy || activeFocus
-                        ? Util.alpha(Color.accent, 0.26)
-                        : Util.alpha(Color.accent, 0.16)
+                        ? Util.alpha(root.colAccent, 0.26)
+                        : Util.alpha(root.colAccent, 0.16)
 
                     // Same affordance the focused field rows use, so landing on the
                     // button from the last field reads as focus having moved rather
                     // than as the editor having lost the caret.
                     border.width: activeFocus ? 1 : 0
-                    border.color: Util.alpha(Color.accent, 0.7)
+                    border.color: Util.alpha(root.colAccent, 0.7)
 
                     // Ours, not the focus traversal's: Tab past the last field must
                     // come here rather than leave the modal for the panel under it.
                     activeFocusOnTab: false
-                    Keys.onPressed: root.onSaveKey
+                    Keys.onPressed: (event) => root.onSaveKey(event)
 
                     Text {
                         id: saveLabel
                         anchors.centerIn: parent
                         text: root.busy ? "Writing…" : "Save"
-                        color: Color.foreground
+                        color: root.colForeground
                         font.pixelSize: Math.round(Style.font.body * root.uiScale)
                         font.family: Style.font.family
                     }
