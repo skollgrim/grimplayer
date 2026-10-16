@@ -114,14 +114,14 @@ that kind is free to fill the window or widen it without fighting anything here.
 | `g` / `G` | First / last row *(with Vim keys on)* |
 | `Enter` | Activate — play the artist, album or track under the caret |
 | `Space` | Play / pause |
-| `Shift` + `←` `→` | Seek ∓5s |
-| any letter or digit | Typeahead |
+| `Shift` + `←` `→` | Seek 5s back / forward |
+| any other letter or digit | Typeahead |
 | `Alt` + `R` | Tag editor |
 | `?` | Settings card |
 
 In the settings card: arrows or `hjkl` move, `Enter` toggles a switch or opens a
 slider, `←` `→` (or `h` `l`) adjust the open slider, `g` / `G` jump to an end,
-`R` resets everything, `Esc` steps back out and `Q` closes.
+`R` resets everything, `Esc` steps back out and `Q` or `?` closes.
 
 In the tag editor: `Enter` saves, `Esc` cancels, `Tab` / `↑` `↓` move through the
 fields and the Save button, wrapping at both ends.
@@ -216,6 +216,9 @@ Check a manifest before pushing it out:
 ```bash
 omarchy plugin validate ~/.config/omarchy/plugins/skollgrim.grimplayer
 ```
+
+The QML is kept `qmllint`-clean, so `qmllint *.qml` is the cheap regression
+check before a commit.
 
 There is no test harness — this is a UI plugin, so it is verified against a live
 MPD: kill MPD underneath it, restart it, add an album and confirm the tree
