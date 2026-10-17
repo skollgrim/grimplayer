@@ -30,7 +30,6 @@ Item {
     // column on the left so the actions line up; the text follows.
     readonly property var sections: [
         {
-        {
             title: "Move & browse",
             rows: [
                 { keys: "↑ ↓", action: "Change row" },
