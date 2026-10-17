@@ -180,8 +180,10 @@ Item {
     Text {
         visible: root.modeBadge !== ""
         anchors.horizontalCenter: parent.horizontalCenter
-        // Seated on the top edge, so it reads as a badge on the button.
-        y: 0
+        // Lifted a little above the top edge rather than sitting on it: the glyph
+        // box starts at y=0, and lifting the badge past that keeps it clear of the
+        // repeat path's top rail.
+        y: -Math.round(3 * root.uiScale)
         text: root.modeBadge
         color: root.active ? root.colAccent : root.colForeground
         font.family: Style.font.family
