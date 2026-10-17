@@ -97,11 +97,11 @@ Item {
         // Thicker frame around the row the caret is on.
         property bool activeRowBorder: false
 
-        // Which repeat mode the panel is in: 0 off, 1 repeat song, 2 repeat album.
-        // Stored here rather than read back from MPD because MPD 0.24's repeat
-        // is a plain boolean -- it rejects "repeat 2" outright -- so album mode
-        // is a loop this player performs itself and MPD's flag stays off. That
-        // makes the stored mode the only place the real answer lives.
+        // Which repeat mode the panel is in: 0 off, 1 repeat album, 2 repeat song.
+        // Stored here rather than read back from MPD because album repeat is a loop
+        // this player performs itself: MPD's repeat is a plain boolean over the
+        // whole queue and its flag stays off in album mode, so the stored mode is
+        // the only place the real answer lives.
         property int repeatMode: 0
 
         // Artwork sizing, as a percentage of the pane region -- everything above

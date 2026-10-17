@@ -1472,12 +1472,22 @@ Item {
         return '"' + String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"'
     }
 
+    // The flags a mode leaves on MPD. Album repeat (1) is not expressible by
+    // either: MPD's repeat flag repeats the whole queue, and a queue has no
+    // album in it, so album mode keeps both off and narrows the queue instead
+    // (see applyRepeatMode). Mode 2 is the one MPD can say -- repeat with single
+    // is documented as repeating the current song rather than the queue.
+    function modeFlags(mode) {
+        return mode === 2 ? ["repeat 1", "single 1"] : ["repeat 0", "single 0"]
+    }
+
     // Replaces the queue with everything below the activated track and starts
     // there. playFilesScoped already builds the clear/single/consume + add +
-    // play 0 list, so this is the same thing with no resume point and no trailing
-    // commands.
+    // play 0 list, so this is the same thing with no resume point -- but the
+    // current mode's flags are appended, because the rebuild resets `single` and
+    // repeat-song would otherwise come out of it as repeat-all.
     function playFiles(files) {
-        root.playFilesScoped(files, 0, [])
+        root.playFilesScoped(files, 0, root.modeFlags(root.repeatMode))
     }
 
     function playArtistAndBelow(artistIndex, albumIndex, trackIndex) {
@@ -1485,9 +1495,9 @@ Item {
         // activating a track must narrow to the album too. Going through filesFrom
         // here would put the whole library back in the queue and quietly undo the
         // narrowing that makes the mode "album" rather than "everything".
-        if (root.repeatMode === 2) {
+        if (root.repeatMode === 1) {
             root.albumLoopPoint = { artist: artistIndex, album: albumIndex }
-            root.playFilesScoped(root.albumFilesAfter(artistIndex, albumIndex, trackIndex), 0, ["repeat 0"])
+            root.playFilesScoped(root.albumFilesAfter(artistIndex, albumIndex, trackIndex), 0, root.modeFlags(1))
             return
         }
         root.playFiles(root.filesFrom(artistIndex, albumIndex, trackIndex))
@@ -1498,6 +1508,15 @@ Item {
     function command(name) {
         root.send(name, function (lines, error) {
             if (error) root.setError(name + ": " + error)
+        })
+    }
+
+    // As command, for a short run of them. repeat and single belong together in
+    // one transaction, or a refresh between the two halves could read the flags
+    // mid-change and announce the wrong mode.
+    function commandList(commands) {
+        root.sendList(commands, function (lines, error) {
+            if (error) root.setError("queue: " + error)
         })
     }
 
@@ -1572,12 +1591,15 @@ Item {
 
     // ---- repeat modes ----
 
-    // MPD 0.24's repeat is a plain boolean and rejects "repeat 2" outright, so
-    // there is no playlist-or-album repeat to ask for. Mode 1 is therefore just
-    // MPD's flag, and mode 2 is a loop this player performs: the queue is narrowed
-    // to the playing album, and when MPD runs out of it the panel starts the album
-    // again. That leaves a fraction of a second of silence at the album boundary,
-    // which is the cost of not having the feature server-side.
+    // Three states, cycled as off -> repeat album -> repeat song.
+    //
+    // Repeat album is not MPD's "repeat all" narrowed down: MPD 0.24's repeat is
+    // a plain boolean over the whole queue and it rejects "repeat 2" outright,
+    // because a queue has no album in it to repeat. So it is a loop this player
+    // performs -- the queue is narrowed to the playing album and refilled when
+    // MPD runs out of it -- which costs a fraction of a second of silence at the
+    // album boundary. Repeat song is the one MPD can express: repeat plus single
+    // is documented as repeating the current song rather than the queue.
     //
     // The mode is stored in the config rather than read back from MPD, because in
     // album mode MPD's flag is deliberately off and would read as "off".
@@ -1619,7 +1641,7 @@ Item {
         var m = Math.round(Number(mode))
         if (isNaN(m)) return
         root.repeatMode = Math.max(0, Math.min(2, m))
-        if (root.repeatMode === 2 && root.connected) root.refreshState()
+        if (root.repeatMode === 1 && root.connected) root.refreshState()
     }
 
     function applyRepeatMode(mode) {
@@ -1629,28 +1651,29 @@ Item {
         // paused/playing state are read from MPD inside replaceQueueResuming.
         var loc = root.locateCurrent()
 
-        if (mode === 2) {
+        // Repeat album is not MPD's flag: narrow the queue to the playing album
+        // and remember where to restart it once MPD runs off the end.
+        if (mode === 1) {
             if (loc) {
                 root.albumLoopPoint = { artist: loc.artist, album: loc.album }
-                // replaceQueueResuming already appends "repeat 0" to the rebuilt
-                // queue; sending it again here would just be a redundant command.
-                root.replaceQueueResuming(root.albumFilesAfter(loc.artist, loc.album, loc.track), ["repeat 0"])
+                root.replaceQueueResuming(root.albumFilesAfter(loc.artist, loc.album, loc.track),
+                                          root.modeFlags(1))
             } else {
-                root.command("repeat 0")
+                root.albumLoopPoint = null
+                root.commandList(root.modeFlags(1))
             }
-            // MPD's own flag stays off: this mode is not MPD's to express.
-            root.repeatMode = 2
-            root.repeatModeSelected(2)
+            root.repeatMode = 1
+            root.repeatModeSelected(1)
             return
         }
 
-        // Leaving album mode puts the rest of the library back in the queue, so the
-        // list keeps running past the album the way it does in every other mode.
-        var trailing = ["repeat " + mode]
-        if (root.repeatMode === 2 && loc) {
-            root.replaceQueueResuming(root.filesFrom(loc.artist, loc.album, loc.track), trailing)
+        // Off and repeat song are both just MPD's flags. Stepping out of album
+        // mode has to widen the queue back to the rest of the library first, or
+        // the list would still stop at the album's end.
+        if (root.repeatMode === 1 && loc) {
+            root.replaceQueueResuming(root.filesFrom(loc.artist, loc.album, loc.track), root.modeFlags(mode))
         } else {
-            root.command("repeat " + mode)
+            root.commandList(root.modeFlags(mode))
         }
         root.repeatMode = mode
         root.repeatModeSelected(mode)
@@ -1664,7 +1687,7 @@ Item {
     // a person activates a track but wrong here -- it would quietly undo the
     // narrowing that makes this mode "album" and leave the queue library-wide.
     function maybeLoopAlbum() {
-        if (root.repeatMode !== 2 || !root.status || root.status.state === undefined) return
+        if (root.repeatMode !== 1 || !root.status || root.status.state === undefined) return
         if (root.status.state !== "stop") return
         // Only a natural end of the queue should replay the album. MPD leaves no
         // current song when the queue runs out -- status omits `song`/`songid`
@@ -1676,26 +1699,39 @@ Item {
         var point = root.albumLoopPoint
         if (!point) return
         root.albumLoopPoint = null
-        root.playFilesScoped(root.albumFilesAfter(point.artist, point.album, 0), 0, [])
+        root.playFilesScoped(root.albumFilesAfter(point.artist, point.album, 0), 0, root.modeFlags(1))
     }
 
-    // Keeps the stored mode honest if something else flips MPD's flag -- another
+    // Keeps the stored mode honest if something else moves MPD's flags -- another
     // client, or the shell's own media panel. Album mode is exempt because it
-    // leaves the flag off on purpose.
+    // leaves both flags off on purpose.
+    //
+    // Only the two unambiguous readings are adopted: repeat with single is
+    // repeat-song, and both off is off. A bare repeat (the whole queue) has no
+    // mode in this panel to name it, so it is left alone rather than relabelled
+    // onto repeat-song and then fought over by the next flag change.
     function syncRepeatModeFromMpd() {
-        if (root.repeatMode === 2 || !root.status || root.status.state === undefined) return
+        if (root.repeatMode === 1 || !root.status || root.status.state === undefined) return
         if (root.status.repeat === undefined) return
-        var flag = root.status.repeat ? 1 : 0
-        if (flag !== root.repeatMode) {
-            root.repeatMode = flag
-            root.repeatModeSelected(flag)
+        var repeatOn = root.status.repeat === 1
+        // `single` is only ever set to 1 here; a string like "oneshot" from
+        // another client parses as NaN and correctly does not match.
+        var singleOn = root.status.single === 1
+        if (repeatOn && singleOn) {
+            if (root.repeatMode !== 2) {
+                root.repeatMode = 2
+                root.repeatModeSelected(2)
+            }
+        } else if (!repeatOn && root.repeatMode !== 0) {
+            root.repeatMode = 0
+            root.repeatModeSelected(0)
         }
     }
 
     // Repopulates the restart point as the song changes, so it stays correct even
     // after a shell restart in the middle of an album.
     function rememberAlbumLoopPoint() {
-        if (root.repeatMode !== 2) return
+        if (root.repeatMode !== 1) return
         // Not while stopped. maybeLoopAlbum() clears the point and replays; this
         // runs from the currentsong half of the same refresh, so repopulating here
         // would immediately re-arm the loop. If the replay does not start playing

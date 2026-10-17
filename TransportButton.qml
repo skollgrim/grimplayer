@@ -33,8 +33,9 @@ Item {
     // A small marker naming which repeat mode is in force. Seated on the top edge of
     // the button rather than inside the glyph; see the comment at its declaration
     // for why. The convention is the familiar one: dim means off, lit means on,
-    // and the dot narrows it to the single-track case.
+    // the dot narrows it to the single-track case and the "A" to the whole album.
     property bool modeDot: false
+    property bool modeAlbum: false
 
     signal clicked()
 
@@ -185,6 +186,24 @@ Item {
         height: width
         radius: width / 2
         color: root.active ? root.colAccent : root.colForeground
+    }
+
+    // Repeat-album's marker sits in the same seat, as a letter. The dot works
+    // because a second, smaller state of the same thing has an obvious shorthand;
+    // "the whole album" does not, so it is named.
+    //
+    // Sized from iconSize rather than uiScale, unlike the dot, so it keeps its
+    // proportion to the button and clears the glyph by the same margin at every
+    // icon size.
+    Text {
+        visible: root.modeAlbum
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: 0
+        text: "A"
+        color: root.active ? root.colAccent : root.colForeground
+        font.family: Style.font.family
+        font.pixelSize: Math.max(8, Math.round(root.iconSize * 0.5 * root.uiScale))
+        font.weight: Font.DemiBold
     }
 
     HoverHandler { id: hover }
