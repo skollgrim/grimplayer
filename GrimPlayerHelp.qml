@@ -58,8 +58,7 @@ Item {
             title: "Screens",
             rows: [
                 { keys: "Alt + S", action: "Settings" },
-                { keys: "Alt + T", action: "Tag editor — edit the selection's tags and cover" },
-                { keys: "?", action: "This key reference" },
+                { keys: "Alt + T", action: "Tag editor — edit the selection's tags and cover" }
             ]
         }
     ]
@@ -187,7 +186,7 @@ Item {
             }
 
             Text {
-                text: "Esc / Q / ? closes"
+                text: "Esc / Q closes"
                 textFormat: Text.PlainText
                 color: root.colMuted
                 font.pixelSize: Math.round(Style.font.caption * root.uiScale)

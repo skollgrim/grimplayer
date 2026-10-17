@@ -132,6 +132,27 @@ Item {
     // previous candidate's cover looking like the new one's.
     property bool coverFromLookup: false
 
+    // The state a lookup is about to overwrite, kept so the fields can show what
+    // they held and so Revert can hand it back. Only the first lookup of an
+    // editing session snapshots: cycling candidates compares every one of them
+    // against the same "before" rather than against the previous candidate, and
+    // Revert always returns what the selection had before any match was applied.
+    property bool hasPreLookup: false
+    property var preLookupDraft: ({})
+    property var preLookupTouched: ({})
+    property string preLookupCoverAction: ""
+    property string preLookupCoverPath: ""
+    property bool preLookupCoverFromLookup: false
+
+    // Whether anything is staged for Save. A saved session with nothing staged
+    // reads as done, so the button turns into a Close instead of offering a Save
+    // that would only ever answer "Nothing changed".
+    property bool wroteThisSession: false
+    readonly property bool hasPendingEdits: Object.keys(root.touched).length > 0
+        || root.coverAction !== ""
+        || Object.keys(root.lookupPerFile).length > 0
+    readonly property bool saveIsClose: root.wroteThisSession && !root.hasPendingEdits
+
     readonly property bool matchFocused: root.rowIndex === root.matchStop()
 
     readonly property string matchSummary: {
@@ -172,6 +193,10 @@ Item {
         root.lookupPerFile = {}
         root.lookupBusy = false
         root.coverFromLookup = false
+        root.hasPreLookup = false
+        root.preLookupDraft = {}
+        root.preLookupTouched = {}
+        root.wroteThisSession = false
         root.previewSubject = root.songs.length > 0
             ? { file: String(root.songs[0].file), song: root.songs[0] } : null
         root.syncFields()
@@ -418,6 +443,9 @@ Item {
     }
 
     function applyLookup(result) {
+        // Taken before anything is overwritten, so it is the selection's own
+        // values, not the previous candidate's. A no-op after the first match.
+        root.snapshotLookupBase()
         var d = {}
         for (var k in root.draft) d[k] = root.draft[k]
         var t = {}
@@ -510,6 +538,70 @@ Item {
         return where
     }
 
+    // What a field held before the first match of the session, so the fields can
+    // show what they held and Revert can hand it back. Mixed is null, the same
+    // signal the fields already use, so it can read as "multiple" rather than
+    // empty and a genuine empty can read as such.
+    function snapshotLookupBase() {
+        if (root.hasPreLookup) return
+        var d = {}
+        for (var k in root.draft) d[k] = root.draft[k]
+        var t = {}
+        for (var k2 in root.touched) t[k2] = root.touched[k2]
+        root.preLookupDraft = d
+        root.preLookupTouched = t
+        root.preLookupCoverAction = root.coverAction
+        root.preLookupCoverPath = root.coverPath
+        root.preLookupCoverFromLookup = root.coverFromLookup
+        root.hasPreLookup = true
+    }
+
+    function baseValue(key) {
+        if (root.preLookupTouched[key]) {
+            return root.preLookupDraft[key] === undefined ? "" : root.preLookupDraft[key]
+        }
+        var agreed = root.agreed[key]
+        if (agreed === undefined) return ""
+        return agreed
+    }
+
+    // Whether the match (or a later edit) moved this field off its before value,
+    // which is what earns it a "was" line under the field.
+    function fieldChanged(key) {
+        if (!root.hasPreLookup) return false
+        var was = root.baseValue(key)
+        var now = root.currentText(key)
+        if (was === null) return String(now) !== ""
+        return String(was) !== String(now)
+    }
+
+    function baseLabel(key) {
+        var was = root.baseValue(key)
+        if (was === null) return "multiple"
+        if (String(was) === "") return "empty"
+        return String(was)
+    }
+
+    // Hands back what the selection had before the match, cover and all. Dropping
+    // hasPreLookup makes the next lookup snapshot afresh from what is on screen
+    // now; the candidates stay, so Next can still re-apply a match after a revert.
+    function revertLookup() {
+        if (root.busy || !root.hasPreLookup) return
+        var d = {}
+        for (var k in root.preLookupDraft) d[k] = root.preLookupDraft[k]
+        var t = {}
+        for (var k2 in root.preLookupTouched) t[k2] = root.preLookupTouched[k2]
+        root.draft = d
+        root.touched = t
+        root.coverAction = root.preLookupCoverAction
+        root.coverPath = root.preLookupCoverPath
+        root.coverFromLookup = root.preLookupCoverFromLookup
+        root.lookupPerFile = {}
+        root.hasPreLookup = false
+        root.syncFields()
+        root.status = "Match reverted"
+    }
+
     // The match buttons and the cover buttons each form one stop, and every key
     // that is not theirs falls through to here: Escape closes the editor,
     // Tab/Down/Up moves a row. Shared by both so the two paths cannot drift.
@@ -524,9 +616,28 @@ Item {
         event.accepted = true
     }
 
-    // The two match buttons are one stop, so Left/Right walks between them and
-    // everything else moves a row, the same as the cover row.
-    function onLookupKey(event) {
+    // The match row is one stop, and Left/Right walks its buttons in the order
+    // they are shown -- which ones exist depends on whether a match has landed
+    // and how many candidates there were, so the walk is built from what is
+    // visible rather than from a fixed chain.
+    function matchButtons() {
+        var list = [lookupButton]
+        if (prevButton.visible) list.push(prevButton)
+        if (nextButton.visible) list.push(nextButton)
+        if (revertButton.visible) list.push(revertButton)
+        return list
+    }
+
+    function shiftMatchFocus(from, delta) {
+        var list = root.matchButtons()
+        if (list.length < 2) return false
+        var i = list.indexOf(from)
+        if (i < 0) return false
+        list[(i + delta + list.length) % list.length].forceActiveFocus()
+        return true
+    }
+
+    function matchKey(event, source, action) {
         // Escape must reach the row handler even mid-lookup: the busy guard below
         // is about not queueing more work or moving focus, and closing the editor
         // is neither. Swallowing it left Escape dead while a lookup ran.
@@ -536,60 +647,22 @@ Item {
         }
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {
-            root.lookUp()
+            action()
             event.accepted = true
             return
         }
-        if (event.key === Qt.Key_Right && prevButton.visible) {
-            prevButton.forceActiveFocus()
-            event.accepted = true
-            return
-        }
-        root.rowKey(event)
-    }
-
-    function onPrevKey(event) {
-        if ((root.busy || root.lookupBusy) && event.key !== Qt.Key_Escape) {
-            event.accepted = true
-            return
-        }
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                || event.key === Qt.Key_Space) {
-            root.cycleMatch(-1)
-            event.accepted = true
-            return
-        }
-        if (event.key === Qt.Key_Left) {
-            lookupButton.forceActiveFocus()
-            event.accepted = true
-            return
-        }
-        if (event.key === Qt.Key_Right && nextButton.visible) {
-            nextButton.forceActiveFocus()
+        if ((event.key === Qt.Key_Right || event.key === Qt.Key_Left)
+                && root.shiftMatchFocus(source, event.key === Qt.Key_Right ? 1 : -1)) {
             event.accepted = true
             return
         }
         root.rowKey(event)
     }
 
-    function onNextKey(event) {
-        if ((root.busy || root.lookupBusy) && event.key !== Qt.Key_Escape) {
-            event.accepted = true
-            return
-        }
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                || event.key === Qt.Key_Space) {
-            root.cycleMatch(1)
-            event.accepted = true
-            return
-        }
-        if (event.key === Qt.Key_Left) {
-            prevButton.forceActiveFocus()
-            event.accepted = true
-            return
-        }
-        root.rowKey(event)
-    }
+    function onLookupKey(event) { root.matchKey(event, lookupButton, root.lookUp) }
+    function onPrevKey(event) { root.matchKey(event, prevButton, function () { root.cycleMatch(-1) }) }
+    function onNextKey(event) { root.matchKey(event, nextButton, function () { root.cycleMatch(1) }) }
+    function onRevertKey(event) { root.matchKey(event, revertButton, root.revertLookup) }
 
     // The two cover buttons are one stop in the cycle, so Left/Right walks between
     // them and everything else moves a row, the same as a field.
@@ -651,10 +724,15 @@ Item {
     function onSaveKey(event) {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {
-            root.save()
+            root.saveOrClose()
             event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
             root.dismissed()
+            event.accepted = true
+        } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+            // The two decision buttons are a ring of their own, so a Left off
+            // Save lands on Cancel rather than nowhere.
+            cancelButton.forceActiveFocus()
             event.accepted = true
         } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Down
                 || event.key === Qt.Key_Up) {
@@ -664,10 +742,45 @@ Item {
         }
     }
 
+    function onCancelKey(event) {
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space) {
+            root.cancel()
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+            saveButton.forceActiveFocus()
+            event.accepted = true
+            return
+        }
+        // Escape, Tab and the arrows are the editor's, not the button's.
+        root.onSaveKey(event)
+    }
+
     function scopeText() {
         if (root.songs.length === 0) return "Nothing selected"
         if (root.songs.length === 1) return "1 track"
         return root.songs.length + " tracks"
+    }
+
+    // Cancel and Esc do the same thing: close and throw the edits away. Nothing
+    // is written until Save, so nothing here needs a warning.
+    function cancel() {
+        if (root.busy) return
+        root.dismissed()
+    }
+
+    // The Save button becomes a Close once a save has landed and nothing new is
+    // staged, so the same key finishes the session rather than answering
+    // "Nothing changed".
+    function saveOrClose() {
+        if (root.busy) return
+        if (root.saveIsClose) {
+            root.dismissed()
+            return
+        }
+        root.save()
     }
 
     function save() {
@@ -735,6 +848,8 @@ Item {
             root.lookupIndex = 0
             root.lookupPerFile = {}
             root.coverFromLookup = false
+            root.hasPreLookup = false
+            root.wroteThisSession = true
             // The values to show come from what was just written, not from a
             // re-read of the selection: `songs` is the snapshot the editor was
             // opened with and the panel replaces its own objects when the library
@@ -891,13 +1006,16 @@ Item {
                 Repeater {
                     model: root.fields
 
-                    delegate: RowLayout {
+                    delegate: ColumnLayout {
                         id: row
                         required property var modelData
                         required property int index
 
                         readonly property string fieldKey: modelData.key
                         readonly property bool focused: root.rowIndex === index
+                        // Whether a lookup (or a later edit) moved this field off
+                        // what it held, which is what earns it a "was" line below.
+                        readonly property bool changed: root.fieldChanged(row.fieldKey)
 
                         // Handed to the panel's focus walk, which only knows how to
                         // address a row and not what is inside it.
@@ -913,103 +1031,126 @@ Item {
                         function setFieldText() { input.text = root.currentText(row.fieldKey) }
 
                         Layout.fillWidth: true
+                        // A field carrying a "was" line needs the extra height, or
+                        // the line would be drawn over the row below it.
                         Layout.preferredHeight: Math.round(34 * root.uiScale)
-                        spacing: Math.round(12 * root.uiScale)
+                            + (row.changed ? Math.round(18 * root.uiScale) : 0)
+                        spacing: Math.round(2 * root.uiScale)
 
-                        Text {
-                            Layout.preferredWidth: Math.round(130 * root.uiScale)
-                            text: row.modelData.label
-                            color: row.focused ? root.colForeground
-                                                 : Util.alpha(root.colMuted, 1.0)
-                            font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                            font.family: Style.font.family
-                        }
-
-                        Item {
+                        RowLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: Math.round(28 * root.uiScale)
+                            Layout.preferredHeight: Math.round(34 * root.uiScale)
+                            spacing: Math.round(12 * root.uiScale)
 
-                            TextField {
-                                id: input
-                                anchors.fill: parent
-                                // No `text` binding: the control writes this
-                                // property itself while typing, which drops a
-                                // binding and left the field showing the last
-                                // album's value. Text is pushed by setFieldText().
-                                // Only offered when the selection disagrees. A field
-                                // the tracks all left empty stays empty and reads as
-                                // empty, which is a different offer than "we differ".
-                                placeholderText: root.isMixed(row.modelData.key) ? "multiple" : ""
-                                placeholderTextColor: Util.alpha(root.colAccent, 0.75)
-                                color: root.colForeground
+                            Text {
+                                Layout.preferredWidth: Math.round(130 * root.uiScale)
+                                text: row.modelData.label
+                                color: row.focused ? root.colForeground
+                                                     : Util.alpha(root.colMuted, 1.0)
                                 font.pixelSize: Math.round(Style.font.body * root.uiScale)
                                 font.family: Style.font.family
-                                selectByMouse: true
-                                // The flag stands in for the field while typing so
-                                // there is room for it, rather than overlapping the
-                                // caret on whatever the user has typed.
-                                rightPadding: row.modelData.key === "country"
-                                    ? Math.round(34 * root.uiScale) : 0
+                            }
 
-                                background: Rectangle {
-                                    radius: Math.round(6 * root.uiScale)
-                                    color: Util.alpha(root.colForeground, row.focused ? 0.10 : 0.05)
-                                    border.width: 1
-                                    border.color: row.focused
-                                        ? Util.alpha(root.colAccent, 0.7)
-                                        : Util.alpha(root.colForeground, 0.12)
-                                }
+                            Item {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Math.round(28 * root.uiScale)
 
-                                onTextEdited: root.setText(row.modelData.key, text)
-                                onActiveFocusChanged: {
-                                    if (activeFocus) root.rowIndex = row.index
-                                }
+                                TextField {
+                                    id: input
+                                    anchors.fill: parent
+                                    // No `text` binding: the control writes this
+                                    // property itself while typing, which drops a
+                                    // binding and left the field showing the last
+                                    // album's value. Text is pushed by setFieldText().
+                                    // Only offered when the selection disagrees. A field
+                                    // the tracks all left empty stays empty and reads as
+                                    // empty, which is a different offer than "we differ".
+                                    placeholderText: root.isMixed(row.modelData.key) ? "multiple" : ""
+                                    placeholderTextColor: Util.alpha(root.colAccent, 0.75)
+                                    color: root.colForeground
+                                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                                    font.family: Style.font.family
+                                    selectByMouse: true
+                                    // The flag stands in for the field while typing so
+                                    // there is room for it, rather than overlapping the
+                                    // caret on whatever the user has typed.
+                                    rightPadding: row.modelData.key === "country"
+                                        ? Math.round(34 * root.uiScale) : 0
 
-                                // A focused text field eats arrows for caret movement
-                                // and Tab for focus traversal, which would strand the
-                                // keyboard in whichever field you happened to click.
-                                // Taking them here is what makes the up/down and Tab
-                                // in the card's handler reachable once a field has
-                                // focus -- the card never sees an event its focused
-                                // child already accepted.
-                                Keys.onPressed: function (event) {
-                                    if (event.key === Qt.Key_Up) {
-                                        root.moveRow(-1)
-                                        event.accepted = true
-                                    } else if (event.key === Qt.Key_Down) {
-                                        root.moveRow(1)
-                                        event.accepted = true
-                                    } else if (event.key === Qt.Key_Tab) {
-                                        root.moveRow(event.modifiers & Qt.ShiftModifier ? -1 : 1)
-                                        event.accepted = true
-                                    } else if (event.key === Qt.Key_Return
-                                            || event.key === Qt.Key_Enter) {
-                                        // A focused field would otherwise insert
-                                        // nothing and swallow the save.
-                                        root.save()
-                                        event.accepted = true
-                                    } else if (event.key === Qt.Key_Escape) {
-                                        root.dismissed()
-                                        event.accepted = true
+                                    background: Rectangle {
+                                        radius: Math.round(6 * root.uiScale)
+                                        color: Util.alpha(root.colForeground, row.focused ? 0.10 : 0.05)
+                                        border.width: 1
+                                        border.color: row.focused
+                                            ? Util.alpha(root.colAccent, 0.7)
+                                            : Util.alpha(root.colForeground, 0.12)
+                                    }
+
+                                    onTextEdited: root.setText(row.modelData.key, text)
+                                    onActiveFocusChanged: {
+                                        if (activeFocus) root.rowIndex = row.index
+                                    }
+
+                                    // A focused text field eats arrows for caret movement
+                                    // and Tab for focus traversal, which would strand the
+                                    // keyboard in whichever field you happened to click.
+                                    // Taking them here is what makes the up/down and Tab
+                                    // in the card's handler reachable once a field has
+                                    // focus -- the card never sees an event its focused
+                                    // child already accepted.
+                                    Keys.onPressed: function (event) {
+                                        if (event.key === Qt.Key_Up) {
+                                            root.moveRow(-1)
+                                            event.accepted = true
+                                        } else if (event.key === Qt.Key_Down) {
+                                            root.moveRow(1)
+                                            event.accepted = true
+                                        } else if (event.key === Qt.Key_Tab) {
+                                            root.moveRow(event.modifiers & Qt.ShiftModifier ? -1 : 1)
+                                            event.accepted = true
+                                        } else if (event.key === Qt.Key_Return
+                                                || event.key === Qt.Key_Enter) {
+                                            // A focused field would otherwise insert
+                                            // nothing and swallow the save.
+                                            root.saveOrClose()
+                                            event.accepted = true
+                                        } else if (event.key === Qt.Key_Escape) {
+                                            root.dismissed()
+                                            event.accepted = true
+                                        }
                                     }
                                 }
-                            }
 
-                            // The country tag holds an ISO 3166-1 alpha-2 code, and
-                            // the flag in the now-playing strip is derived from
-                            // exactly those two characters -- so the flag shown here
-                            // is what that strip will show. Appearing as the code is
-                            // typed is also the only hint that a code is wanted: a
-                            // country name has no way back to a code.
-                            Text {
-                                visible: row.modelData.key === "country"
-                                    && root.flagPreview(row.modelData.key) !== ""
-                                anchors.right: parent.right
-                                anchors.rightMargin: Math.round(8 * root.uiScale)
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: root.flagPreview(row.modelData.key)
-                                font.pixelSize: Math.round(16 * root.uiScale)
+                                // The country tag holds an ISO 3166-1 alpha-2 code, and
+                                // the flag in the now-playing strip is derived from
+                                // exactly those two characters -- so the flag shown here
+                                // is what that strip will show. Appearing as the code is
+                                // typed is also the only hint that a code is wanted: a
+                                // country name has no way back to a code.
+                                Text {
+                                    visible: row.modelData.key === "country"
+                                        && root.flagPreview(row.modelData.key) !== ""
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: Math.round(8 * root.uiScale)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: root.flagPreview(row.modelData.key)
+                                    font.pixelSize: Math.round(16 * root.uiScale)
+                                }
                             }
+                        }
+
+                        // What the field held before the match landed, so a lookup
+                        // can be judged rather than simply trusted. Shown only when
+                        // the match actually moved the field.
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: Math.round(142 * root.uiScale)
+                            visible: row.changed
+                            text: "was: " + root.baseLabel(row.fieldKey)
+                            color: Util.alpha(root.colMuted, 0.85)
+                            font.pixelSize: Math.round(Style.font.caption * root.uiScale)
+                            font.family: Style.font.family
+                            elide: Text.ElideRight
                         }
                     }
                 }
@@ -1127,6 +1268,40 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: root.cycleMatch(1)
+                    }
+                }
+
+                Rectangle {
+                    id: revertButton
+                    Layout.alignment: Qt.AlignVCenter
+                    // Only once a match has been applied: before that there is
+                    // nothing to hand back.
+                    visible: root.hasPreLookup
+                    width: revertLabel.implicitWidth + Math.round(24 * root.uiScale)
+                    height: Math.round(28 * root.uiScale)
+                    radius: Math.round(6 * root.uiScale)
+                    color: revertMouse.containsMouse || activeFocus
+                        ? Util.alpha(root.colForeground, 0.16)
+                        : Util.alpha(root.colForeground, 0.07)
+                    border.width: 1
+                    border.color: Util.alpha(root.colForeground, 0.30)
+                    activeFocusOnTab: false
+                    Keys.onPressed: (event) => root.onRevertKey(event)
+
+                    Text {
+                        id: revertLabel
+                        anchors.centerIn: parent
+                        text: "Revert"
+                        color: root.colForeground
+                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                        font.family: Style.font.family
+                    }
+
+                    MouseArea {
+                        id: revertMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.revertLookup()
                     }
                 }
 
@@ -1291,12 +1466,44 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     text: root.status !== "" ? root.status
-                        : "Enter saves · Esc cancels · L looks up · ← → cycle matches · Tab moves"
+                        : "Enter saves · Cancel discards · L looks up · ← → cycle matches · Tab moves"
                     color: root.status === "" ? Util.alpha(root.colMuted, 1.0)
                                                : Util.alpha(root.colAccent, 1.0)
                     elide: Text.ElideRight
                     font.pixelSize: Math.round(Style.font.caption * root.uiScale)
                     font.family: Style.font.family
+                }
+
+                Rectangle {
+                    id: cancelButton
+                    width: cancelLabel.implicitWidth + Math.round(28 * root.uiScale)
+                    height: Math.round(28 * root.uiScale)
+                    radius: Math.round(6 * root.uiScale)
+                    // Muted next to Save: discarding is the quiet choice, and the
+                    // accent belongs on the one that writes.
+                    color: cancelMouse.containsMouse || activeFocus
+                        ? Util.alpha(root.colForeground, 0.16)
+                        : Util.alpha(root.colForeground, 0.06)
+                    border.width: 1
+                    border.color: Util.alpha(root.colForeground, 0.25)
+                    activeFocusOnTab: false
+                    Keys.onPressed: (event) => root.onCancelKey(event)
+
+                    Text {
+                        id: cancelLabel
+                        anchors.centerIn: parent
+                        text: "Cancel"
+                        color: root.colForeground
+                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                        font.family: Style.font.family
+                    }
+
+                    MouseArea {
+                        id: cancelMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.cancel()
+                    }
                 }
 
                 Rectangle {
@@ -1322,7 +1529,7 @@ Item {
                     Text {
                         id: saveLabel
                         anchors.centerIn: parent
-                        text: root.busy ? "Writing…" : "Save"
+                        text: root.busy ? "Writing…" : (root.saveIsClose ? "Close" : "Save")
                         color: root.colForeground
                         font.pixelSize: Math.round(Style.font.body * root.uiScale)
                         font.family: Style.font.family
@@ -1332,7 +1539,7 @@ Item {
                         id: saveMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: root.save()
+                        onClicked: root.saveOrClose()
                     }
                 }
             }

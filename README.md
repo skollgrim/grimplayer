@@ -149,11 +149,14 @@ back.
 In the key reference: it lists the browser keys and how to reach each screen;
 `Esc`, `Q` or `?` closes it.
 
-In the tag editor: `Enter` saves, `Esc` cancels, `Tab` / `↑` `↓` move through the
-fields, the match row, the cover row and the Save button, wrapping at both ends.
-On the match row, `←` `→` move between Look up, Prev and Next; on
-the cover row, `←` `→` move between Browse and Remove. `L` runs a lookup from
-the card itself — a field that has focus just types the letter.
+In the tag editor: `Enter`, the **Save** button and **Close** all do the same
+thing (see below); `Esc` or **Cancel** discards and closes at once, with no
+confirmation, because nothing is written until Save; `Tab` / `↑` `↓` move
+through the fields, the match row, the cover row and the two decision buttons,
+wrapping at both ends. On the match row, `←` `→` move between Look up, Prev,
+Next and Revert; on the cover row, `←` `→` move between Browse and Remove. `L`
+runs a lookup from the card itself — a field that has focus just types the
+letter.
 
 ### Tag editor
 
@@ -169,7 +172,9 @@ Each field shows what the selected tracks agree on. A field they disagree about
 reads `multiple` and is **not written** — so retagging a genre across an album
 cannot quietly flatten the track titles with it. Change it and that one value is
 written to every selected track; clear it and the tag is removed. Opening the
-editor and saving without touching anything writes nothing.
+editor and saving without touching anything writes nothing. Once a save lands,
+the button reads **Close** until you edit again — so the same key finishes the
+session rather than answering “Nothing changed”.
 
 Fields: Title, Artist, Album artist, Album, Track, Disc, Year, Genre, Country.
 
@@ -199,7 +204,12 @@ sleeves (iTunes, then Deezer) are asked first, at up to 1200px, and the
 [Cover Art Archive](https://coverartarchive.org/) is used only when neither has
 a confident match. The status line says which source won and how big it is. It
 writes nothing on its own: the match is shown so it can be reviewed, corrected
-by hand, or stepped past with **Next** before Save commits it.
+by hand, or stepped past with **Next** before Save commits it. Every field the
+match moved shows a muted `was:` line with what it held before, so the change
+can be judged rather than trusted, and a **Revert** button beside the match
+buttons hands the selection back — every field and the cover — to what it held
+before the first lookup. Revert keeps the candidates, so **Next** can still
+re-apply a match afterwards.
 
 The search uses the selection's own Artist and Album tags; for a folder that has
 none, it falls back to the `Artist/Album` directory names. When several pressings
