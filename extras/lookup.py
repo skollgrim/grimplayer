@@ -32,6 +32,7 @@ import argparse
 import json
 import os
 import re
+import socket
 import sys
 import tempfile
 import unicodedata
@@ -91,6 +92,34 @@ MATCH_BAND = 0.12
 # largest of them a few megabytes; the cap only ever bites on a URL that would
 # otherwise stream forever.
 MAX_FETCH_BYTES = 16 * 1024 * 1024
+
+
+def state_dir():
+    """The plugin's own state directory, beside the settings the panel keeps.
+
+    Read from the environment per call rather than cached at import: the lookup
+    cover and the --cover-out containment check both resolve against it, and
+    nothing here should pin a value a caller might have just changed.
+    """
+    return os.path.join(
+        os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
+        "skollgrim.grimplayer",
+    )
+
+
+def checked_cover_out(path):
+    """The caller's --cover-out, refused unless it stays inside the state dir.
+
+    The player only ever writes under the state directory, so a path leading
+    elsewhere is a mistake or an attempt to have this helper overwrite a file it
+    has no business touching. A relative path is resolved against the working
+    directory first, so ".." cannot climb out before the containment test.
+    """
+    target = os.path.abspath(path)
+    root = os.path.abspath(state_dir())
+    if target != root and not target.startswith(root + os.sep):
+        fail("Cover output path is outside the state directory: %s" % path)
+    return target
 
 
 def out(payload):
@@ -501,11 +530,17 @@ def itunes_candidates(artist, album, year, tracks, size):
             )
             if score < 0:
                 continue
-            # The 100px thumbnail's size segment is all the CDN reads; asking
-            # for a larger one is a plain rewrite of "100x100bb".
+            # The size segment is all the CDN reads, and it is not always the
+            # documented "100x100bb": a search result can carry another thumbnail
+            # size, and rewriting only the literal would leave such a URL at
+            # whatever it came as -- a small picture that could still win purely
+            # because it was the only one fetched. Any "<w>x<h>bb" segment is
+            # resized instead. A URL with no such segment is left alone: the
+            # download is measured and the real dimensions decide, so an
+            # untouched URL only wins when it is the only artwork on offer.
             out.append({
                 "source": "iTunes",
-                "url": re.sub(r"100x100bb", "%dx%dbb" % (size, size), url),
+                "url": re.sub(r"\d+x\d+bb", "%dx%dbb" % (size, size), url, count=1),
                 "score": score,
             })
         if out:
@@ -655,6 +690,8 @@ def cover_only(args):
     album = (args.album or "").strip()
     if not artist and not album:
         fail("No artist or album to search from")
+    if args.cover_out:
+        args.cover_out = checked_cover_out(args.cover_out)
     year = (args.year or "").strip()[:4]
     try:
         cover = resolve_cover(artist, album, year, args.tracks, args.release,
@@ -688,6 +725,13 @@ def main():
 
     if _IMPORT_ERROR is not None:
         fail("Missing dependency: %s" % _IMPORT_ERROR)
+
+    # musicbrainzngs opens its sockets through urllib with no timeout of its own,
+    # so a black-holed connection blocks this process until the kernel gives up --
+    # which, for a silently dropped packet, is never. A process-wide default gives
+    # every one of those sockets an answer or an error inside the twenty seconds
+    # the store downloads already use; their own explicit timeouts still win.
+    socket.setdefaulttimeout(20)
 
     if not args.files:
         fail("No files given")
@@ -727,10 +771,7 @@ def main():
     if not year:
         year = folder_year(args.files[0])
 
-    cache_dir = os.path.join(
-        os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
-        "skollgrim.grimplayer", "lookup",
-    )
+    cache_dir = os.path.join(state_dir(), "lookup")
     try:
         os.makedirs(cache_dir, exist_ok=True)
     except OSError:

@@ -237,6 +237,13 @@ Item {
     property string queuedOnlineDir: ""
 
     property string extractingDir: ""
+    // Where the current ffmpeg run writes. The panel and the tag editor keep a
+    // CoverArt each, and both can want the same album at once; two runs writing
+    // the shared cache path interleave into a corrupt JPEG that no Image will
+    // load. Each run therefore writes its own temporary and is moved into the
+    // cache only once ffmpeg has exited cleanly, so the path an Image reads is
+    // always a whole picture -- the later of two runs simply wins the rename.
+    property string extractTemp: ""
     property string queuedDir: ""
     property var queuedFiles: []
 
@@ -288,7 +295,7 @@ Item {
         // ffmpeg at the wrong album's audio and cache its picture under this
         // album's name.
         if (files === undefined) files = root.currentFileCandidates()
-        if (extractor.running) {
+        if (extractor.running || extractMover.running) {
             queuedDir = dir
             queuedFiles = files
             return
@@ -312,13 +319,31 @@ Item {
 
     // Point ffmpeg at the current audio-name candidate. Split out so onExited can
     // advance to the next one without repeating the argument list.
+    //
+    // The output is a per-run temporary rather than the cache path itself (see
+    // extractTemp). The ".jpg" suffix is what tells ffmpeg which muxer to use;
+    // the random infix is what keeps two runs on the same album from meeting.
     function runExtraction() {
+        var stamp = Math.floor(Math.random() * 0xffffffff).toString(36)
+        root.extractTemp = root.cacheDir + "/." + Covers.fileName(root.extractingDir)
+            + "." + stamp + ".jpg"
         extractor.command = ["ffmpeg", "-v", "error", "-y",
                              "-i", root.extractFiles[root.extractIndex],
                              "-an", "-map", "0:v:0", "-frames:v", "1",
                              "-c:v", "mjpeg", "-q:v", "3",
-                             root.cachedCover(root.extractingDir)]
+                             root.extractTemp]
         extractor.running = true
+    }
+
+    // Serve the album that arrived while a run was in flight. Split out so the
+    // failure path and the rename that ends a success drain it the same way.
+    function drainEmbeddedQueue() {
+        if (!root.queuedDir) return
+        var queued = root.queuedDir
+        var queuedFiles = root.queuedFiles
+        root.queuedDir = ""
+        root.queuedFiles = []
+        root.requestEmbedded(queued, queuedFiles)
     }
 
     Process {
@@ -338,6 +363,7 @@ Item {
                     return
                 }
                 root.extractingDir = ""
+                root.extractTemp = ""
                 // ffmpeg exits non-zero on a track with no attached picture, which is
                 // the common case and not an error worth surfacing -- it just means this
                 // album keeps the placeholder, so remember it and stop asking.
@@ -348,17 +374,45 @@ Item {
                 // stores -- for the album on screen, and only while it is still
                 // the album on screen; requestOnline checks both.
                 root.requestOnline(dir)
-            } else {
-                root.extractingDir = ""
+                root.drainEmbeddedQueue()
+                return
+            }
+            // Clean exit: the picture is whole, in the temporary. Move it onto the
+            // cache path now, so the Image only ever opens a finished file.
+            extractMover.command = ["mv", "-f", root.extractTemp, root.cachedCover(dir)]
+            extractMover.running = true
+        }
+    }
+
+    // The rename that lands an extraction. Kept apart from ffmpeg because there is
+    // no atomic write-and-rename in one call; the two paths are in the same
+    // directory, so this is a plain rename(2) and no reader ever sees a partial
+    // cover.
+    Process {
+        id: extractMover
+        running: false
+        command: []
+        onExited: function (exitCode) {
+            var dir = root.extractingDir
+            root.extractingDir = ""
+            root.extractTemp = ""
+            if (exitCode === 0) {
+                // The picture landed while this album was still the one on screen.
+                // If the selection moved on, showCached's own loadedDir check makes
+                // this a no-op anyway.
                 if (dir === root.loadedDir) root.showCached(dir)
+            } else {
+                // The rename failed -- a permissions problem on the cache
+                // directory, or a full disk. The picture is unusable, so treat it
+                // as a track with nothing to extract and let the stores try.
+                if (dir) {
+                    var missing = root.noEmbedded
+                    missing[dir] = true
+                    root.noEmbedded = missing
+                }
+                root.requestOnline(dir)
             }
-            if (root.queuedDir) {
-                var queued = root.queuedDir
-                var queuedFiles = root.queuedFiles
-                root.queuedDir = ""
-                root.queuedFiles = []
-                root.requestEmbedded(queued, queuedFiles)
-            }
+            root.drainEmbeddedQueue()
         }
     }
 

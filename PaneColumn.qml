@@ -1,11 +1,13 @@
 pragma ComponentBehavior: Bound
 // One of the library's three list panes.
 //
-// Rows are drawn as plain rectangles rather than with ListView's delegate
-// recycling because the tallest pane holds at most a few hundred rows and the
-// browser is only ever open while someone is looking at it. The simplicity is
-// worth more here than the allocation, and it keeps the selection highlight and
-// the playing-track marker in one place.
+// Rows are drawn by a ListView so only the rows on screen -- and a margin either
+// side -- are ever created. The panel is mounted for the whole shell session and
+// its lists are filled as soon as MPD answers, so an artists pane of a few
+// hundred rows is a few hundred live delegates even while the window is closed;
+// recycling them is what keeps that cost off the session. The selected row and
+// the playing-track marker stay driven by currentIndex and isCurrent rather than
+// by the view's own current item, so the parent still owns the selection.
 import QtQuick
 import qs.Commons
 
@@ -141,7 +143,7 @@ Item {
             color: Util.alpha(root.colForeground, 0.08)
         }
 
-        Flickable {
+        ListView {
             id: flick
             anchors.top: root.showHeading ? heading.bottom : parent.top
             anchors.topMargin: root.showHeading ? 1 : 0
@@ -149,9 +151,12 @@ Item {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             clip: true
-            contentWidth: width
-            contentHeight: column.height
-            boundsBehavior: Flickable.StopAtBounds
+            model: root.model
+            // The gap between rows the rowSpacing setting promises. It counts
+            // towards contentHeight the same way the old Column spacing did, so
+            // the scroll extent and the follow math are unchanged.
+            spacing: root.rowGap
+            boundsBehavior: ListView.StopAtBounds
 
             // The parent's keyboard handling owns selection, so following the
             // caret is the whole job here: the pane scrolls only to keep the
@@ -168,132 +173,119 @@ Item {
                 function onModelChanged() { root.followCurrent() }
             }
 
-            Column {
-                id: column
+            delegate: Rectangle {
+                id: row
+                required property var modelData
+                required property int index
+
                 width: flick.width
-                // The gap between rows the rowSpacing setting promises. Column
-                // spacing is part of column.height, so contentHeight picks it up
-                // and the Flickable scrolls over it rather than clipping it.
-                spacing: root.rowGap
+                height: root.rowHeight
 
-                Repeater {
-                    model: root.model
+                // The caret row gets a thicker frame when the preference is
+                // on, so the selection reads even when the row fill is
+                // scrolled partly off or sitting next to a playing tint.
+                // Only the focused pane frames it: every pane has a selected
+                // row, and framing all three at once reads as noise.
+                readonly property bool framed: root.activeRowBorder && root.active && index === root.currentIndex
+                border.width: framed ? Math.max(2, Math.round(2 * root.uiScale)) : 0
+                border.color: root.colAccent
 
-                    Rectangle {
-                        id: row
-                        required property var modelData
-                        required property int index
+                // The track MPD is actually playing. Matching on the file is
+                // what keeps this honest: browsing any other album has no row
+                // whose file is the one MPD reports, so the highlight can only
+                // ever appear on the album the track actually belongs to.
+                readonly property bool playing: root.isCurrent !== null && root.isCurrent(modelData)
 
-                        width: flick.width
-                        height: root.rowHeight
+                // Selection still wins, then hover. The caret is what the user
+                // is about to act on, so it stays the strongest thing in the
+                // row -- but the playing tint below marks the track when the
+                // caret happens to be somewhere else, which is the usual case
+                // while browsing. Both tints are held back in an inactive pane
+                // to match rowOpacity, apart from the accent bar, which is
+                // meant to stay findable.
+                color: index === root.currentIndex
+                    ? (root.active ? root.colSelectedFill : Util.alpha(root.colForeground, 0.05))
+                    : (row.playing ? Util.alpha(root.colAccent, root.active ? 0.11 : 0.07)
+                       : (rowArea.containsMouse ? Util.alpha(root.colForeground, 0.03) : "transparent"))
 
-                        // The caret row gets a thicker frame when the preference is
-                        // on, so the selection reads even when the row fill is
-                        // scrolled partly off or sitting next to a playing tint.
-                        // Only the focused pane frames it: every pane has a selected
-                        // row, and framing all three at once reads as noise.
-                        readonly property bool framed: root.activeRowBorder && root.active && index === root.currentIndex
-                        border.width: framed ? Math.max(2, Math.round(2 * root.uiScale)) : 0
-                        border.color: root.colAccent
+                // The marker that goes with the tint. A 2px bar was too easy to
+                // miss against a list of rows, and it is the one part of the
+                // treatment that stays at full strength when the pane is not
+                // focused. Left and right are the same bar, sharing their width
+                // and colour, so the pair reads as one frame rather than two
+                // marks; the playingMarkerSides setting decides which show.
+                Rectangle {
+                    visible: row.playing && root.playingMarkerLeft
+                    x: 0
+                    width: root.playingMarkerWidth
+                    height: parent.height
+                    color: root.colAccent
+                }
 
-                        // The track MPD is actually playing. Matching on the file is
-                        // what keeps this honest: browsing any other album has no row
-                        // whose file is the one MPD reports, so the highlight can only
-                        // ever appear on the album the track actually belongs to.
-                        readonly property bool playing: root.isCurrent !== null && root.isCurrent(modelData)
+                Rectangle {
+                    visible: row.playing && root.playingMarkerRight
+                    // Placed from a floored x rather than anchored: the pane's
+                    // right edge can land on a fraction when the window is not
+                    // an even multiple of the UI scale, and an anchor there
+                    // smears the bar across two pixels and shades it lighter
+                    // than its left twin. Snapping keeps the two identical.
+                    x: Math.floor(parent.width - width)
+                    width: root.playingMarkerWidth
+                    height: parent.height
+                    color: root.colAccent
+                }
 
-                        // Selection still wins, then hover. The caret is what the user
-                        // is about to act on, so it stays the strongest thing in the
-                        // row -- but the playing tint below marks the track when the
-                        // caret happens to be somewhere else, which is the usual case
-                        // while browsing. Both tints are held back in an inactive pane
-                        // to match rowOpacity, apart from the accent bar, which is
-                        // meant to stay findable.
-                        color: index === root.currentIndex
-                            ? (root.active ? root.colSelectedFill : Util.alpha(root.colForeground, 0.05))
-                            : (row.playing ? Util.alpha(root.colAccent, root.active ? 0.11 : 0.07)
-                               : (rowArea.containsMouse ? Util.alpha(root.colForeground, 0.03) : "transparent"))
+                // Optional hairline between rows. Skipped on the last row so
+                // the list does not trail a line into empty space, and held
+                // below the row fill so a selected or playing row still reads
+                // as one solid block.
+                Rectangle {
+                    visible: root.rowSeparators && row.index < root.model.length - 1
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Math.round(16 * root.uiScale)
+                    anchors.rightMargin: root.rowRightMargin
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    color: Util.alpha(root.colForeground, 0.06)
+                }
 
-                        // The marker that goes with the tint. A 2px bar was too easy to
-                        // miss against a list of rows, and it is the one part of the
-                        // treatment that stays at full strength when the pane is not
-                        // focused. Left and right are the same bar, sharing their width
-                        // and colour, so the pair reads as one frame rather than two
-                        // marks; the playingMarkerSides setting decides which show.
-                        Rectangle {
-                            visible: row.playing && root.playingMarkerLeft
-                            x: 0
-                            width: root.playingMarkerWidth
-                            height: parent.height
-                            color: root.colAccent
-                        }
+                Text {
+                    anchors.fill: parent
+                    anchors.leftMargin: Math.round(16 * root.uiScale)
+                    anchors.rightMargin: root.rowRightMargin
+                    verticalAlignment: Text.AlignVCenter
+                    text: root.label ? root.label(row.modelData) : ""
+                    color: root.colForeground
+                    font.pixelSize: root.fontSizeRow
+                    opacity: root.rowOpacity
+                    elide: Text.ElideRight
+                }
 
-                        Rectangle {
-                            visible: row.playing && root.playingMarkerRight
-                            // Placed from a floored x rather than anchored: the pane's
-                            // right edge can land on a fraction when the window is not
-                            // an even multiple of the UI scale, and an anchor there
-                            // smears the bar across two pixels and shades it lighter
-                            // than its left twin. Snapping keeps the two identical.
-                            x: Math.floor(parent.width - width)
-                            width: root.playingMarkerWidth
-                            height: parent.height
-                            color: root.colAccent
-                        }
+                Text {
+                    anchors.fill: parent
+                    anchors.leftMargin: Math.round(16 * root.uiScale)
+                    anchors.rightMargin: root.rowRightMargin
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignRight
+                    text: root.sublabel ? root.sublabel(row.modelData) : ""
+                    color: root.colMuted
+                    font.pixelSize: root.fontSizeSublabel
+                    opacity: root.rowOpacity
+                    elide: Text.ElideRight
+                }
 
-                        // Optional hairline between rows. Skipped on the last row so
-                        // the list does not trail a line into empty space, and held
-                        // below the row fill so a selected or playing row still reads
-                        // as one solid block.
-                        Rectangle {
-                            visible: root.rowSeparators && row.index < root.model.length - 1
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.leftMargin: Math.round(16 * root.uiScale)
-                            anchors.rightMargin: root.rowRightMargin
-                            anchors.bottom: parent.bottom
-                            height: 1
-                            color: Util.alpha(root.colForeground, 0.06)
-                        }
-
-                        Text {
-                            anchors.fill: parent
-                            anchors.leftMargin: Math.round(16 * root.uiScale)
-                            anchors.rightMargin: root.rowRightMargin
-                            verticalAlignment: Text.AlignVCenter
-                            text: root.label ? root.label(parent.modelData) : ""
-                            color: root.colForeground
-                            font.pixelSize: root.fontSizeRow
-                            opacity: root.rowOpacity
-                            elide: Text.ElideRight
-                        }
-
-                        Text {
-                            anchors.fill: parent
-                            anchors.leftMargin: Math.round(16 * root.uiScale)
-                            anchors.rightMargin: root.rowRightMargin
-                            verticalAlignment: Text.AlignVCenter
-                            horizontalAlignment: Text.AlignRight
-                            text: root.sublabel ? root.sublabel(parent.modelData) : ""
-                            color: root.colMuted
-                            font.pixelSize: root.fontSizeSublabel
-                            opacity: root.rowOpacity
-                            elide: Text.ElideRight
-                        }
-
-                        MouseArea {
-                            id: rowArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            // Selection is owned by the parent, which is the only
-                            // thing that knows what the index means -- an artist
-                            // index, an album index or a track index select against
-                            // different lists. Assigning the local currentIndex here
-                            // would drop the binding the parent set up and leave the
-                            // parent still pointing at the old row.
-                            onClicked: root.activated(row.index)
-                        }
-                    }
+                MouseArea {
+                    id: rowArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    // Selection is owned by the parent, which is the only
+                    // thing that knows what the index means -- an artist
+                    // index, an album index or a track index select against
+                    // different lists. Assigning the local currentIndex here
+                    // would drop the binding the parent set up and leave the
+                    // parent still pointing at the old row.
+                    onClicked: root.activated(row.index)
                 }
             }
         }
