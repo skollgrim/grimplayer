@@ -169,18 +169,8 @@ Item {
         return String(mpd.current.file)
     }
 
-    // MPD presents a cue album as one virtual song per track, under a path that
-    // does not exist on disk: "<dir>/<album>.cue/track0001". Folding that back
-    // onto the cue file gives a real path whose parent is the album directory,
-    // which is where the artwork sits beside the cue and its audio. Without this
-    // the probe looked for a cover inside a "<album>.cue" directory that no
-    // filesystem has, so every single-file-with-cue album landed on the
-    // placeholder even when cover.jpg sat right next to it.
-    function cueRealFile(rel) {
-        var m = /\.cue\/track\d+$/i.exec(rel)
-        if (!m) return rel
-        return rel.substring(0, m.index + 4)
-    }
+    // The cue fold and the "." root key live in one shared implementation now,
+    // Covers.albumDir; this component reads it through currentAlbumDir below.
 
     // Absolute paths ffmpeg should try for embedded artwork, in order.
     //
@@ -563,10 +553,11 @@ Item {
     //
     // A cue album's reported path is folded back onto the cue first, so the
     // probe looks beside the cue and its audio rather than inside a "<album>.cue"
-    // directory that does not exist (see cueRealFile). Empty means "no track"; a
-    // track sitting directly in the music root gets "." instead, so it is still a
-    // real, distinguishable place to probe and refresh() can tell it apart from
-    // having nothing to show.
+    // directory that does not exist; that fold lives in Covers.albumDir, the one
+    // implementation the service keys its own maps on too. Empty means "no
+    // track"; a track sitting directly in the music root gets "." instead, so it
+    // is still a real, distinguishable place to probe and refresh() can tell it
+    // apart from having nothing to show.
     //
     // Computed imperatively rather than as a binding. The service is injected
     // after this component is created, and the handler that reacts to that
@@ -574,11 +565,7 @@ Item {
     // re-evaluated, so a bound property still read back as empty and the panel
     // never found the cover for a track that was already playing.
     function currentAlbumDir() {
-        var f = root.currentFile()
-        if (!f) return ""
-        var rel = root.cueRealFile(f)
-        var i = rel.lastIndexOf("/")
-        return i > 0 ? rel.substring(0, i) : "."
+        return Covers.albumDir(root.currentFile())
     }
 
     // Tag value for the current track, or "" when MPD has nothing loaded. Album

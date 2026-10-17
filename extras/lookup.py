@@ -286,6 +286,73 @@ def release_tracks(release):
     return tracks
 
 
+def match_tracks(metas, tracks, rels):
+    """Pair each selected file with the release track it identifies as.
+
+    A file's own disc/track is the key; a recording title is the fallback for a
+    file that carries no number, and position only when the whole release was
+    handed over in its own order. A file that matches nothing gets no per-track
+    values, so the editor leaves its tags alone rather than writing another
+    track's onto it.
+    """
+    by_number = {}
+    by_track = {}
+    ambiguous = set()
+    for track in tracks:
+        number = as_int(track["track"])
+        if not number:
+            continue
+        by_number.setdefault((as_int(track["disc"]), number), track)
+        if number in by_track:
+            ambiguous.add(number)
+        else:
+            by_track[number] = track
+    single_disc = len({as_int(t["disc"]) for t in tracks}) <= 1
+    by_title = {}
+    for track in tracks:
+        key = fold(track["title"])
+        if key and key not in by_title:
+            by_title[key] = track
+
+    # Position is only meaningful when the whole release was handed over in its
+    # own order; a subset has to be matched by number.
+    whole_release = len(metas) == len(tracks)
+
+    matched = []
+    for index, meta in enumerate(metas):
+        entry = {"file": rels.get(meta["path"], "")}
+        number = as_int(meta["track"]) if meta["track"] != "" else 0
+        found = None
+        if number:
+            if single_disc and number not in ambiguous:
+                found = by_track.get(number)
+            if found is None:
+                disc = as_int(meta["disc"]) if meta["disc"] != "" else 1
+                found = by_number.get((disc, number))
+            if found is None and meta["disc"] == "":
+                # A file with no disc tag against a multi-disc release: CD 1.
+                found = by_number.get((1, number))
+        if found is None and meta["title"]:
+            found = by_title.get(fold(meta["title"]))
+        # Position is the last resort, and only for a file with no number of
+        # its own: a number that matched nothing is evidence the file is not
+        # this release's track, and overriding it with whatever sits in that
+        # slot would resurrect the original bug.
+        if found is None and whole_release and not number:
+            found = tracks[index]
+        if found is not None:
+            # Empty fields are left out, not written blank: the editor reads a
+            # missing value as "leave this file's tag alone".
+            if found["title"]:
+                entry["title"] = found["title"]
+            if found["track"] != "":
+                entry["track"] = found["track"]
+            if found["disc"] != "":
+                entry["disc"] = found["disc"]
+        matched.append(entry)
+    return matched
+
+
 # ---- artwork sources ---------------------------------------------------------
 #
 # Everything below is about one question: which of the covers on offer is the
@@ -691,14 +758,7 @@ def main():
             fail("Release lookup failed: %s" % exc)
 
     tracks = release_tracks(best_release)
-    matched = []
-    for index, meta in enumerate(metas):
-        entry = {"file": rels.get(meta["path"], "")}
-        if index < len(tracks):
-            entry["title"] = tracks[index]["title"]
-            entry["track"] = tracks[index]["track"]
-            entry["disc"] = tracks[index]["disc"]
-        matched.append(entry)
+    matched = match_tracks(metas, tracks, rels)
 
     # Prefer the detailed release's own metadata for the fields; the search
     # result lacks the release country and can carry a shorter date.

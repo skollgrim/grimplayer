@@ -497,8 +497,10 @@ Item {
         }
         root.lookupPerFile = per
         if (root.songs.length === 1) {
+            // The lone track's own match, never the release's first track: a file
+            // the helper could not match to a number has to keep its own title
+            // and number rather than be handed another track's.
             var only = per[String(root.songs[0].file)]
-            if (!only && result.tracks && result.tracks.length > 0) only = result.tracks[0]
             if (only) {
                 put("title", only.title)
                 put("track", only.track)

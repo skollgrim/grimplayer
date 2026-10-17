@@ -248,19 +248,46 @@ Item {
         stateFile.setText(body)
     }
 
-    // Applies a stored object over the defaults. Unknown keys are ignored and
-    // keys of the wrong type are dropped by the try/catch, so a hand-edited or
-    // older file degrades to "that one setting is at its default" rather than
-    // taking the panel down with it.
+    // The settings-row entry behind a stored key, or null. repeatMode has no row
+    // (the repeat button writes it), so it is handled by range below.
+    function entryFor(key) {
+        for (var i = 0; i < entries.length; i++) {
+            if (entries[i].key === key) return entries[i]
+        }
+        return null
+    }
+
+    // Applies a stored object over the defaults. Unknown keys are ignored and a
+    // value that is not one this version offers -- the wrong type, or a number
+    // or name outside the entry's options -- is dropped, so a hand-edited,
+    // restored or older file degrades to "that one setting is at its default"
+    // rather than taking the panel down with it. The type check alone was not
+    // enough: a stored uiScale of 0 is a number, and it collapsed the settings
+    // card and the now-playing strip to nothing with no way back from inside
+    // the panel.
     function applyStored(obj) {
         if (!obj || typeof obj !== "object") return
         for (var k in obj) {
             if (store[k] === undefined) continue
             var v = obj[k]
             var current = store[k]
-            if (typeof current === "boolean" && typeof v === "boolean") store[k] = v
-            else if (typeof current === "number" && typeof v === "number") store[k] = v
-            else if (typeof current === "string" && typeof v === "string") store[k] = v
+            var entry = root.entryFor(k)
+            if (entry) {
+                var offered = entry.options || []
+                var accepted = false
+                for (var i = 0; i < offered.length; i++) {
+                    if (offered[i] === v && typeof offered[i] === typeof current) {
+                        accepted = true
+                        break
+                    }
+                }
+                if (accepted) store[k] = v
+                continue
+            }
+            // No settings row: only repeatMode, whose three modes are checked by
+            // range rather than against an options list.
+            if (k === "repeatMode" && typeof v === "number")
+                store[k] = Math.max(0, Math.min(2, Math.round(v)))
         }
     }
 

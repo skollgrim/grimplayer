@@ -48,6 +48,28 @@ function onlineFileName(dir) {
     return stem(dir) + ".online.jpg"
 }
 
+// The album directory a library-relative path belongs to. One implementation,
+// because two components key their caches on it and a second copy is a bug: the
+// reader, CoverArt.qml, decides where to look for artwork, and the writer,
+// GrimPlayerMpd.qml, decides which cache entry an override or a cover removal
+// addresses -- they have to agree on the string.
+//
+// Two shapes need care. A cue album is presented by MPD as one virtual track per
+// song under "<dir>/<album>.cue/trackNNNN", a directory that does not exist; the
+// fold back onto the cue file's own path gives the real album directory, so the
+// artwork beside the cue and its audio is found. And a track sitting directly in
+// the music root has no directory to name, so it is keyed on "." -- a real,
+// distinguishable place rather than the empty string, which every caller reads
+// as "no album" and refuses to store anything under.
+function albumDir(rel) {
+    var f = String(rel === undefined || rel === null ? "" : rel)
+    if (f === "") return ""
+    var m = /\.cue\/track\d+$/i.exec(f)
+    if (m) f = f.substring(0, m.index + 4)
+    var i = f.lastIndexOf("/")
+    return i > 0 ? f.substring(0, i) : "."
+}
+
 // A file:// URL for an arbitrary local path. Concatenating "file://" onto the
 // path is wrong for a name containing a space, '#', '?' or '%': the loader
 // reads those as separators or escapes and the image silently fails to load,

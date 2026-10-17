@@ -506,10 +506,15 @@ Item {
     property string playingCountry: ""
     property bool countriesDirty: false
 
+    // The album directory a file belongs to, from the one shared implementation
+    // in Covers.js: it folds a cue album's virtual track back onto the cue file's
+    // own directory and keys a track in the music root on ".", so the country,
+    // cover-override and cover-cache maps here use exactly the directory
+    // CoverArt probes. Keeping a second copy of this arithmetic here is what let
+    // the two drift, and a cover set or cleared on a cue album then wrote an
+    // override the reader never looked up.
     function albumDirOf(file) {
-        var rel = String(file === undefined || file === null ? "" : file)
-        var cut = rel.lastIndexOf("/")
-        return cut < 0 ? "" : rel.slice(0, cut)
+        return Covers.albumDir(file)
     }
 
     // What the editor shows for a song's country: the cached value if the album
