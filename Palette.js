@@ -162,6 +162,10 @@ function pickAccent(cs, light) {
 // (its channel spread) at the ground's new lightness, and the panel ends up as
 // blue -- or as grey -- as the sleeve actually is.
 function derive(colors, fallback) {
+    // Defensive: the caller always hands the live theme tokens, but this is a
+    // pure library and a missing fallback should not throw -- a null deref on the
+    // urgent token below took the whole palette derivation with it.
+    if (!fallback) fallback = {}
     var cs = sanitize(colors)
     if (!cs.length) return fallback
 
@@ -203,6 +207,11 @@ function derive(colors, fallback) {
     var foreground = toHex(hslToRgb(dh.h, clamp(dc * 1.1, 0, 0.14), fgL))
     var muted = toHex(hslToRgb(dh.h, clamp(dc * 1.6, 0, 0.22), muL))
 
+    // The fallback's urgent token, parsed rather than assumed: toHex() of a
+    // missing or unparseable colour would throw, so a fallback without one falls
+    // back to the derived background instead of taking the derivation down.
+    var urgent = toRgb(fallback.urgent)
     return { background: background, foreground: foreground, muted: muted,
-             accent: pickAccent(cs, light), urgent: toHex(toRgb(fallback.urgent)) }
+             accent: pickAccent(cs, light),
+             urgent: urgent ? toHex(urgent) : background }
 }

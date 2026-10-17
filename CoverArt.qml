@@ -81,15 +81,19 @@ Item {
 
     // ---- cover palette ----
     //
-    // The cover is already resolved by the time it is on screen, so the
-    // quantizer reads the same URL the Image shows -- including the ffmpeg
-    // extraction that lands in the cache directory. depth 3 is eight colours,
-    // which is enough to find a vivid one without giving the recursive split
-    // more work than it needs; rescaleSize is the recommended shrink that keeps
-    // the pass cheap. The panel watches `palette` and folds it into its theme.
+    // The quantizer reads the URL the Image has actually settled on, not the one
+    // it is currently loading: `imageSource` changes once per candidate, and
+    // quantizing each of those runs the colour pass on every name the walk tries
+    // -- most of which do not exist -- before the real cover is even reached.
+    // `resolvedSource` is set when a picture reaches Ready, so the pass runs once
+    // per resolved cover, including the ffmpeg extraction that lands in the cache
+    // directory. depth 3 is eight colours, which is enough to find a vivid one
+    // without giving the recursive split more work than it needs; rescaleSize is
+    // the recommended shrink that keeps the pass cheap. The panel watches
+    // `palette` and folds it into its theme.
     ColorQuantizer {
         id: quantizer
-        source: root.imageSource
+        source: root.resolvedSource
         depth: 3
         rescaleSize: 64
     }
@@ -119,6 +123,14 @@ Item {
     // gap before the last candidate had even been given its chance.
     property bool walkDone: false
 
+    // A picture is known to be in hand -- ffmpeg wrote it, or a tag editor set one
+    // -- but the Image has not loaded it yet. Holds noArt false across that gap
+    // (see noArt). Set by showCached, cleared when the Image reaches Ready or Error
+    // and whenever a new album is probed. The download path needs no flag of its
+    // own: onlineState stays non-empty from the probe until the picture is shown or
+    // abandoned, and that already holds noArt false.
+    property bool resolving: false
+
     // Definitively no artwork for this album: nothing was ever found, the
     // candidate walk has run off its end, and the embedded-picture fallback has
     // finished without producing one.
@@ -128,10 +140,17 @@ Item {
     // still working -- between candidates it sits in Error, and treating each of
     // those as "no art" reset the panel to the theme for a frame in the middle of
     // every album change, which is exactly the flash this replaces.
+    //
+    // `resolving` is the one gap the other terms miss: ffmpeg can exit having
+    // written a picture, and the Image has yet to load it. Walk-done is already
+    // true (the sidecars were all absent) and the extractor has stopped, so
+    // without this the frame between the extraction landing and the Image
+    // reaching Ready read as no art and flashed the theme.
     readonly property bool noArt: !foundArt
                                   && walkDone
                                   && !extractor.running
                                   && !extractingDir
+                                  && !resolving
                                   && root.onlineState === ""
 
     // MPD reports paths relative to its music_directory, which mpd.conf sets to
@@ -231,6 +250,16 @@ Item {
     // walking the candidate list again for an answer already in hand.
     function showCached(dir) {
         var target = Covers.fileUrl(root.cachedCover(dir))
+        // A picture is in hand as of now -- the extractor wrote it, or a tag editor
+        // set one -- so noArt has to stay false while it loads rather than flashing
+        // the theme in the gap (see the resolving property).
+        root.resolving = true
+        // The cover about to load may be a rewrite of the URL the quantizer has
+        // already read -- an edit re-extracts to the same cache path. Clearing the
+        // resolved source first is what makes the Ready assignment below a change
+        // the quantizer notices, so the palette is read from the new picture rather
+        // than kept from the one that was just replaced.
+        root.resolvedSource = ""
         // The Image is sitting in Error on this exact URL, and assigning a property
         // the value it already holds does not re-evaluate it. Clearing it first is
         // what makes the next assignment a change the Image reacts to.
@@ -479,6 +508,11 @@ Item {
     property var candidates: []
     property url imageSource: ""
 
+    // The URL the Image last turned Ready on. The quantizer reads this rather
+    // than imageSource, so the colour pass runs once per resolved cover instead of
+    // once per candidate name the walk tries (see the quantizer above).
+    property url resolvedSource: ""
+
     // The frame is sized by the parent (a share of the pane height); this only
     // carries the scale so the corner radius rides along with it.
     property real uiScale: 1.0
@@ -638,14 +672,21 @@ Item {
     }
 
     // Whether a directory name reads as one disc of a multi-disc release --
-    // "Disc 1", "CD2", "side 1", "Vol. 3", or a bare number. Only these look one
-    // level up for the cover (see candidateList): a normal "Artist/Album" wants
-    // the cover inside Album, and reaching into Artist unconditionally would let
-    // an artist image stand in for the album art.
+    // "Disc 1", "CD2", "side 1", "Vol. 3", or a bare small number. Only these look
+    // one level up for the cover (see candidateList): a normal "Artist/Album"
+    // wants the cover inside Album, and reaching into Artist unconditionally would
+    // let an artist image stand in for the album art.
+    //
+    // A bare number is only a disc when it is small. A folder named for a year
+    // ("1975") is an ordinary album directory -- often the only folder under the
+    // artist -- and reaching up from it would probe the artist folder for a cover,
+    // which is where an artist image sits. Discs are numbered in the low tens;
+    // years are four digits, so the cap separates them without a whitelist.
     function isDiscDir(dir) {
         if (!dir) return false
         var base = dir.substring(dir.lastIndexOf("/") + 1)
-        if (/^\d+$/.test(base)) return true
+        var bare = /^(\d+)$/.exec(base)
+        if (bare && Number(bare[1]) <= 99) return true
         return /^(disc|disk|cd|side|vol|volume|part|book)[\s\-._]*\d*$/i.test(base)
     }
 
@@ -688,7 +729,7 @@ Item {
         return out
     }
 
-    function probe() {
+    function probe(force) {
         // A change mid-fade abandons the fade: the incoming layer is about to be
         // pointed at a different album, and letting the old fade finish would
         // promote a cover that is no longer the one being shown.
@@ -700,7 +741,11 @@ Item {
         // showing anything.
         if (root.onlineState === "probe" || root.onlineState === "show") root.resetOnline()
         root.incoming = 0
-        candidates = candidateList(currentAlbumDir())
+        // A new album's resolution starts from nothing: the previous album's
+        // "picture in flight" answer does not apply to this one.
+        root.resolving = false
+        var dir = currentAlbumDir()
+        candidates = candidateList(dir)
         candidateIndex = 0
         // An empty list has no name to walk, so it is exhausted from the start:
         // the cleared album (override "none") lands here and must read as no art.
@@ -712,10 +757,25 @@ Item {
         // nothing held, so returning to the same album (the tag editor reopening
         // on it, or the panel coming back) would show an empty frame. If the Image
         // is already Ready on exactly this source, take the ready path again
-        // instead of assigning a value it will not react to.
-        if (first !== "" && art.status === Image.Ready && String(art.source) === first) {
+        // instead of assigning a value it will not react to. A forced probe skips
+        // this: it is only ever forced by a cover edit, and there what the Image
+        // holds Ready is the picture that edit just replaced.
+        if (!force && first !== "" && art.status === Image.Ready
+                && String(art.source) === first) {
             root.foundArt = true
             root.reveal()
+            return
+        }
+        // Pointed at the same URL but not showing it -- the file was deleted by a
+        // cover edit and ffmpeg has yet to rewrite it, or a previous walk left it
+        // in Error on a name it has since re-tried. An assignment of the value it
+        // holds changes nothing, so empty the source and re-point on the next tick
+        // to force the Image to re-stat the file.
+        if (first !== "" && String(art.source) === first) {
+            root.imageSource = ""
+            Qt.callLater(function () {
+                if (root.loadedDir === dir) root.imageSource = first
+            })
             return
         }
         imageSource = first
@@ -760,15 +820,17 @@ Item {
     // The same applies to moving within one album: every track change fires
     // currentChanged, but the cover lives in the album directory and is already
     // on screen. Keying on the directory skips both cases.
-    function refresh() {
+    function refresh(force) {
         // An off-screen instance does nothing and leaves loadedDir alone, so the
         // first refresh after it comes back does the probe rather than being
         // skipped as unchanged.
         if (!root.active) return
         var dir = currentAlbumDir()
-        if (dir === loadedDir) return
+        // `force` is the cover-edit path: the album directory has not changed but
+        // what is on disk has, so the same-directory skip must not apply.
+        if (!force && dir === loadedDir) return
         loadedDir = dir
-        probe()
+        probe(force)
     }
 
     // The selection being previewed changed -- the editor opened on a different
@@ -785,6 +847,7 @@ Item {
             root.incoming = 0
             root.heldSource = ""
             root.loadedDir = ""
+            root.resolving = false
             // The instance is off screen. Whatever the online machine was doing
             // for it is moot; a running helper is left to finish and its callback
             // no-ops against the now-empty loadedDir.
@@ -818,19 +881,31 @@ Item {
         // Setting a cover clears any such mark, since the album now has art of
         // its own and a later fallback is allowed again.
         function onCoversChanged() {
-            root.noEmbedded = {}
-            var missing = {}
-            for (var k in root.noOnline) missing[k] = root.noOnline[k]
+            // Only the albums this edit touched are re-armed: a set or a removal
+            // can change whether a file now holds a picture worth extracting, but
+            // every other album's answer still stands, and forgetting them all
+            // would re-run ffmpeg on each one's next visit for nothing.
             var dirs = (root.mpd && root.mpd.lastCoverDirs) ? root.mpd.lastCoverDirs : []
             var action = root.mpd ? root.mpd.lastCoverAction : ""
+            var embedded = {}
+            for (var k in root.noEmbedded) embedded[k] = root.noEmbedded[k]
+            var missing = {}
+            for (var k2 in root.noOnline) missing[k2] = root.noOnline[k2]
             for (var i = 0; i < dirs.length; i++) {
                 var d = String(dirs[i])
+                if (embedded[d] !== undefined) delete embedded[d]
                 if (action === "remove") missing[d] = true
                 else if (missing[d] !== undefined) delete missing[d]
             }
+            root.noEmbedded = embedded
             root.noOnline = missing
+            // The edit rewrote what is on disk without the album's directory
+            // changing, so the probe is forced rather than skipped, and the source
+            // is emptied so a much-held Ready image of the file that was just
+            // deleted does not survive as a stale picture (see probe()).
+            root.imageSource = ""
             root.loadedDir = ""
-            root.refresh()
+            root.refresh(true)
         }
     }
 
@@ -978,15 +1053,22 @@ Item {
 
             onStatusChanged: {
                 if (status === Image.Ready) {
+                    root.resolving = false
                     root.foundArt = true
+                    // The quantizer's cue to run: the picture it has to read is now
+                    // the one on screen. Set here rather than left on imageSource so
+                    // the colour pass is not run once per candidate the walk tries.
+                    root.resolvedSource = String(art.source)
                     root.resetOnline()
                     root.reveal()
                     return
                 }
+                if (status !== Image.Error) return
+                // An error settles whatever was in flight: no picture is coming.
+                root.resolving = false
                 // A previewed image is not part of the candidate walk: whatever it
                 // did, there is no next name to try.
                 if (root.overrideSource !== "") return
-                if (status !== Image.Error) return
                 // The cached download was being tested and is not there, so the
                 // stores are the next question.
                 if (root.onlineState === "probe") { root.startOnlineFetch(); return }

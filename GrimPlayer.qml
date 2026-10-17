@@ -852,6 +852,13 @@ Item {
             mpd: root.mpd
             uiScale: prefs.uiScale
             pixelRatio: root.pixelRatio
+            // Only work while the panel is on screen. The window is closed most of
+            // the time (the shell mounts this once and summons it on demand), and
+            // an instance left active probed every album change with nothing
+            // looking at it -- an ffmpeg extraction or a store fetch per untagged
+            // album, and the colour pass on each cover. Coming back re-probes from
+            // scratch, which is the same path a newly summoned panel already took.
+            active: window.visible
             coverBorder: prefs.coverBorder
             coverBorderWidth: prefs.coverBorderWidth
             rounded: prefs.coverRounded
@@ -1171,23 +1178,40 @@ Item {
 
         // Last child of the window, so it stacks over the panes and the key
         // catcher rather than under them.
-        Cfg.GrimPlayerSettings {
-            // Fill is what makes the card land in the middle of the window: an
-            // unanchored Item is 0x0, and the card centres inside it.
+        //
+        // Behind a Loader so the card's thirty-odd cells are only built while it
+        // is open: it is closed the overwhelming majority of the time, and each
+        // column is a Repeater that builds every control whether or not anything
+        // is looking at it. Destroying the card on close also drops its own
+        // scratch state, which is what the panel wants anyway -- the caret lives
+        // in settingIndex, so a reopened card comes back where it was left.
+        Loader {
             anchors.fill: parent
-            theme: theme
-            config: prefs
-            index: root.settingIndex
-            editMode: root.settingsEditMode
-            uiScale: prefs.uiScale
-            visible: root.settingsOpen
-            // The card asks, the panel decides. Assigning settingIndex back from
-            // onIndexChanged would only work until the first click inside the
-            // card, which rebinds nothing and leaves the keyboard driving a
-            // caret the card has stopped showing.
-            onIndexRequested: function (i) { root.settingIndex = i }
-            onEditModeRequested: function (on) { root.settingsEditMode = on }
-            onDismissed: { root.settingsOpen = false; root.settingsEditMode = false }
+            active: root.settingsOpen
+            sourceComponent: settingsCard
+        }
+
+        Component {
+            id: settingsCard
+
+            Cfg.GrimPlayerSettings {
+                // Fill is what makes the card land in the middle of the window: an
+                // unanchored Item is 0x0, and the card centres inside it.
+                anchors.fill: parent
+                theme: theme
+                config: prefs
+                index: root.settingIndex
+                editMode: root.settingsEditMode
+                uiScale: prefs.uiScale
+                visible: root.settingsOpen
+                // The card asks, the panel decides. Assigning settingIndex back
+                // from onIndexChanged would only work until the first click inside
+                // the card, which rebinds nothing and leaves the keyboard driving a
+                // caret the card has stopped showing.
+                onIndexRequested: function (i) { root.settingIndex = i }
+                onEditModeRequested: function (on) { root.settingsEditMode = on }
+                onDismissed: { root.settingsOpen = false; root.settingsEditMode = false }
+            }
         }
 
         // The key reference, above the settings card and the panes. Read-only, so

@@ -240,6 +240,11 @@ Item {
             var k = keys[i]
             if (store[k] !== undefined) out[k] = store[k]
         }
+        // The schema this file was written under. Bumped only when the meaning of
+        // a stored value changes rather than the value itself, so a load can tell
+        // an old file from a new one. The first such change renumbered the repeat
+        // modes (see Component.onCompleted).
+        out.version = 2
         var body = JSON.stringify(out, null, 2)
         // The same FileView that reads the file writes it back, so there is one
         // code path for persistence rather than a native read beside a shell
@@ -298,7 +303,20 @@ Item {
         var raw = stateFile.text()
         if (raw && raw.length > 0) {
             try {
-                applyStored(JSON.parse(raw))
+                var parsed = JSON.parse(raw)
+                // The repeat modes were renumbered once: a file written before that
+                // stored 1 for repeat song and 2 for repeat album, where the panel
+                // now numbers them the other way (1 album, 2 song). A file with no
+                // schema version predates the change, so its two non-zero modes are
+                // swapped before anything reads them; without this a stored repeat
+                // song would come back as repeat album. Writes from here on carry
+                // version 2 and take the values as they are.
+                if (parsed && typeof parsed === "object"
+                        && Number(parsed.version || 0) < 2) {
+                    if (parsed.repeatMode === 1) parsed.repeatMode = 2
+                    else if (parsed.repeatMode === 2) parsed.repeatMode = 1
+                }
+                applyStored(parsed)
             } catch (e) {
                 // Malformed file: keep the defaults rather than failing to start.
             }

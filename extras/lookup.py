@@ -33,6 +33,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -85,6 +86,11 @@ DEFAULT_SIZE = 1200
 # better picture between them wins. A candidate further down is a different
 # pressing and does not get to win on resolution alone.
 MATCH_BAND = 0.12
+
+# Ceiling on a single download. Every source here serves a scaled cover, the
+# largest of them a few megabytes; the cap only ever bites on a URL that would
+# otherwise stream forever.
+MAX_FETCH_BYTES = 16 * 1024 * 1024
 
 
 def out(payload):
@@ -367,7 +373,11 @@ def fetch_bytes(url, timeout=20):
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read()
+            # Capped, not read whole. A cover is at most a few megabytes and the
+            # stores serve scaled JPEGs well under this; the cap is a guard against
+            # a URL that streams without end, which read() would turn into an
+            # out-of-memory rather than the failed source it should be.
+            return response.read(MAX_FETCH_BYTES)
     except urllib.error.HTTPError as exc:
         if exc.code in (404, 403, 307):
             return None
@@ -684,7 +694,22 @@ def main():
 
     musicbrainzngs.set_useragent(APP, VERSION, CONTACT)
 
-    paths = [os.path.join(args.music_dir, rel) for rel in args.files]
+    # The names come from the service and are library-relative by construction, but
+    # they arrive on a command line, so they are checked rather than trusted: an
+    # absolute path or one that climbs out with ".." would otherwise have this
+    # script read a file the library does not contain. Compared lexically, not
+    # through realpath, so a symlink inside the library that points elsewhere still
+    # reads the way MPD itself lists it.
+    music_root = os.path.normpath(args.music_dir) if args.music_dir else ""
+    paths = []
+    for rel in args.files:
+        if os.path.isabs(rel):
+            fail("File path is not library-relative: %s" % rel)
+        joined = os.path.normpath(os.path.join(args.music_dir, rel))
+        if music_root and joined != music_root \
+                and not joined.startswith(music_root + os.sep):
+            fail("File path escapes the music directory: %s" % rel)
+        paths.append(joined)
     metas = [m for m in (read_file(p) for p in paths) if m is not None]
     if not metas:
         fail("Nothing to read tags from")
@@ -709,7 +734,12 @@ def main():
     try:
         os.makedirs(cache_dir, exist_ok=True)
     except OSError:
-        cache_dir = "/tmp"
+        # The usual directory could not be made. A shared /tmp is world-writable,
+        # so a fixed name there is a path another user can pre-create -- as a
+        # symlink, pointing the cover write anywhere they like. mkdtemp makes a
+        # private (0700) directory with an unguessable name instead, so the write
+        # stays inside it and nobody else can plant anything in its path.
+        cache_dir = tempfile.mkdtemp(prefix="grimplayer-covers-")
 
     candidates = []
     best_release = None

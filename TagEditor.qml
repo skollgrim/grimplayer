@@ -851,6 +851,20 @@ Item {
                 else parts.push(cover === "remove" ? "cover removed" : "cover set")
             }
             root.status = parts.length > 0 ? parts.join(" · ") : "Nothing changed"
+            // Part of the edit did not land. The files that did are written, but
+            // clearing the draft here would silently drop what did not and report
+            // it with a bare "3 failed". Keep the edit staged and say a retry is
+            // what it wants: `touched` still marks what was asked for, so the next
+            // Save sends the same tags again -- a no-op for the files that already
+            // took them. The agreed values are still settled from what was written,
+            // so the fields that succeeded read correctly behind the pending ones.
+            if ((tagResult && tagResult.failed > 0)
+                    || (coverResult && coverResult.failed > 0)) {
+                root.status += " — press Save to retry"
+                root.settleAgreed(tags, hasPerFile)
+                root.syncFields()
+                return
+            }
             // Everything the user just asked for has been dealt with, so the draft
             // is no longer pending. Clearing `touched` is what stops the next open
             // from offering the previous edit's values as if they were agreed on.
@@ -870,6 +884,12 @@ Item {
             // reloads, so commonValue() here would hand back the pre-edit values
             // and every field would visibly revert until the editor was reopened.
             root.settleAgreed(tags, hasPerFile)
+            // Push the settled values into the fields now that the draft is gone:
+            // the TextFields hold what was typed (they keep no binding), and with
+            // `touched` cleared that typing is no longer backed by anything. This
+            // is also what shows a lookup-filled title/track as "multiple" again,
+            // since those fields settle to null rather than to one shared value.
+            root.syncFields()
         }
 
         // Tags first, then the cover: both rewrite the same files, and the two
@@ -1094,6 +1114,13 @@ Item {
                                     font.pixelSize: Math.round(Style.font.body * root.uiScale)
                                     font.family: Style.font.family
                                     selectByMouse: true
+                                    // While a save is in flight the fields are
+                                    // frozen: the taggers are rewriting the very
+                                    // files this edit came from, and a keystroke
+                                    // landing now would be dropped unannounced when
+                                    // the save settles. readOnly rather than
+                                    // disabled so focus and the caret stay put.
+                                    readOnly: root.busy
                                     // The flag stands in for the field while typing so
                                     // there is room for it, rather than overlapping the
                                     // caret on whatever the user has typed.

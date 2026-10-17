@@ -1034,18 +1034,45 @@ Item {
         if (opts.tracks) args.push("--tracks", String(opts.tracks))
         coverFetch.command = args
         coverFetch.running = true
+        // The helper reaches the stores over the network, and a black-holed
+        // connection would leave this process running forever -- with it the whole
+        // queue, so every later album's cover waits behind a fetch that will never
+        // answer, and the album that asked is held off the placeholder for good.
+        // Kill it and fail the job; that album keeps its placeholder and the queue
+        // moves on to the next.
+        coverFetchTimeout.restart()
     }
 
     function finishCoverFetch(result) {
+        // A timeout kills the process and finishes the job; the process's own
+        // onExited may still fire afterwards. The job being gone is what makes that
+        // second call a no-op rather than stepping the queue twice.
         var job = root.coverFetchCurrent
+        if (!job) return
+        coverFetchTimeout.stop()
         root.coverFetchCurrent = null
-        var cb = job ? job.onDone : null
+        var cb = job.onDone
         if (cb) cb(result)
         // Deferred, like the tagger queue: a callback can ask for the next fetch
         // synchronously while this process still reads as running, and stepping
         // the queue here would then find it busy and stop. Handing it to the
         // event loop lets `running` settle first.
         Qt.callLater(root.runNextCoverFetch)
+    }
+
+    // Bounds a fetch that would otherwise run forever. A store that accepts the
+    // connection and then never answers would leave the process alive and the
+    // queue blocked behind it; this is the only thing that can end it. Generous
+    // on purpose: a slow but honest fetch may make several requests in one run.
+    Timer {
+        id: coverFetchTimeout
+        interval: 60000
+        repeat: false
+        onTriggered: {
+            if (!root.coverFetchCurrent) return
+            coverFetch.running = false
+            root.finishCoverFetch({ status: "error", message: "Cover fetch timed out" })
+        }
     }
 
     Process {
@@ -1147,12 +1174,22 @@ Item {
         return root.coverCacheDir + "/" + Covers.fileName(dir)
     }
 
+    // The downloaded counterpart of the extraction, named by the same shared stem
+    // with its own suffix. A cover edit has to drop this too: the override that
+    // says "show the embedded picture" (or "show nothing") makes the cached
+    // download unreachable, and leaving it behind is a file no probe will ever
+    // load again.
+    function onlineCover(dir) {
+        return root.coverCacheDir + "/" + Covers.onlineFileName(dir)
+    }
+
     // The probe caches an extraction of a track's embedded picture and falls back
     // to it before extracting again, so a cover changed here would otherwise keep
     // showing the picture the file had before. Dropping the cache is what makes the
-    // probe look again.
+    // probe look again. Both derived files go: the extraction and the store
+    // download, each a stale claim about artwork the edit has just replaced.
     function clearCachedCoverCommand(dir) {
-        return ["rm", "-f", root.cachedCover(dir)]
+        return ["rm", "-f", root.cachedCover(dir), root.onlineCover(dir)]
     }
 
     // The picture frames, per format: a list of commands, or null when the file is
@@ -1317,7 +1354,27 @@ Item {
             // write off; flush it now rather than losing the answer for the
             // session.
             if (root.countriesSavePending) root.saveCountries()
+            // The state directory exists, so the covers directory under it is now
+            // worth pruning (see coverPrune).
+            coverPrune.running = true
         }
+    }
+
+    // Cached covers accumulate one file per album played -- an ffmpeg extraction,
+    // a store download, or both -- and nothing removes one but a deliberate cover
+    // edit, so an album played once and never revisited leaves its files behind
+    // for good. Pruned here by age: an album unplayed for half a year regenerates
+    // its cover in a moment if it comes back, and until then the directory stays
+    // bounded. `find` in argv form and scoped to the plugin's own cache directory,
+    // so there is nothing to quote and nowhere else it can reach. Best-effort: a
+    // missing directory (nothing cached yet) just makes it a no-op.
+    //
+    // The extraction and the download share a stem and differ only by suffix, so
+    // one age test drops both.
+    Process {
+        id: coverPrune
+        running: false
+        command: ["find", root.coverCacheDir, "-type", "f", "-mtime", "+180", "-delete"]
     }
 
     function loadCountries() {
@@ -1621,30 +1678,57 @@ Item {
     // Narrows the queue to the playing album in place, by deleting the entries
     // after it, and leaves the mode's flags behind in the same transaction.
     //
-    // The queue is the library from the track that started playing, so the album
-    // the playing song belongs to is one run of entries and the rest of the
-    // library is everything past it; the length of that run, from the playing
-    // track to the album's end, comes from the tree. delete only removes entries
-    // and shifts the positions under the playing song -- playback itself carries
-    // on -- where the clear+add this replaces stopped and restarted the track,
-    // which is heard as a hiccup. Returns false when the queue's shape cannot be
-    // reasoned about this way, so the caller can fall back to a rebuild.
+    // The delete works by queue position: the album's own remainder is expected to
+    // occupy the entries from the playing song to the album's end, with the rest
+    // of the library behind them. That is the shape playArtistAndBelow builds, but
+    // it is not guaranteed -- another client's queue, or one rearranged since, can
+    // differ, and deleting by position would then cut tracks that are not the
+    // album's and leave the album's own behind the cut. So the shape is confirmed
+    // against MPD's own `playlistinfo` first; when it does not hold, the album is
+    // rebuilt around the playing song instead. delete only removes entries and
+    // shifts the positions under the playing song -- playback itself carries on --
+    // where the clear+add the fallback uses stops and restarts the track.
     function trimQueueToAlbum(loc) {
         var song = Number(root.status.song)
         var length = Number(root.status.playlistlength)
-        if (isNaN(song) || isNaN(length) || song < 0 || length <= 0) return false
-        var remaining = root.albumFilesAfter(loc.artist, loc.album, loc.track).length
-        if (remaining === 0) return false
-        // The album runs to song + remaining, exclusive, so everything from there
-        // to the last entry is the rest of the library. MPD ranges are end-exclusive
-        // (START:END deletes up to but not including END), so END is the queue
-        // length; when that start is already past the end there is nothing to take
-        // away.
-        var first = song + remaining
-        var commands = root.modeFlags(1)
-        if (first <= length - 1) commands.unshift("delete " + first + ":" + length)
-        root.commandList(commands)
-        return true
+        var albumFiles = root.albumFilesAfter(loc.artist, loc.album, loc.track)
+        if (isNaN(song) || isNaN(length) || song < 0 || length <= 0
+                || albumFiles.length === 0 || song + albumFiles.length > length) {
+            root.replaceQueueResuming(albumFiles, root.modeFlags(1))
+            return
+        }
+        root.send("playlistinfo", function (lines, error) {
+            if (error) {
+                root.replaceQueueResuming(albumFiles, root.modeFlags(1))
+                return
+            }
+            var files = []
+            for (var i = 0; i < lines.length; i++) {
+                if (lines[i].indexOf("file: ") === 0) files.push(lines[i].slice(6))
+            }
+            // The run of entries from the playing song must be exactly the album's
+            // remainder. A shorter queue, or a mismatch anywhere in the run, is the
+            // queue not being in library order from the playing track -- the
+            // position this delete trusts -- so the rebuild takes over.
+            var ok = files.length > song
+            for (var j = 0; ok && j < albumFiles.length; j++) {
+                if (files[song + j] !== albumFiles[j]) ok = false
+            }
+            if (!ok) {
+                root.replaceQueueResuming(albumFiles, root.modeFlags(1))
+                return
+            }
+            // MPD ranges are end-exclusive (START:END deletes up to but not
+            // including END), so END is the queue length; when the album already
+            // runs to the last entry there is nothing to take away. The flags go
+            // in the same transaction as the delete so a refresh cannot read the
+            // queue mid-change.
+            var first = song + albumFiles.length
+            var commands = root.modeFlags(1)
+            if (first <= files.length - 1)
+                commands = ["delete " + first + ":" + files.length].concat(commands)
+            root.commandList(commands)
+        })
     }
 
     // ---- repeat modes ----
@@ -1722,10 +1806,7 @@ Item {
         if (mode === 1) {
             if (loc) {
                 root.albumLoopPoint = { artist: loc.artist, album: loc.album }
-                if (!root.trimQueueToAlbum(loc)) {
-                    root.replaceQueueResuming(root.albumFilesAfter(loc.artist, loc.album, loc.track),
-                                              root.modeFlags(1))
-                }
+                root.trimQueueToAlbum(loc)
             } else {
                 root.albumLoopPoint = null
                 root.commandList(root.modeFlags(1))
