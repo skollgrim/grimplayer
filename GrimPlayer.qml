@@ -856,9 +856,14 @@ Item {
             // the time (the shell mounts this once and summons it on demand), and
             // an instance left active probed every album change with nothing
             // looking at it -- an ffmpeg extraction or a store fetch per untagged
-            // album, and the colour pass on each cover. Coming back re-probes from
-            // scratch, which is the same path a newly summoned panel already took.
+            // album, and the colour pass on each cover.
             active: window.visible
+            // The cover belongs to the album that is playing, so hiding the panel
+            // keeps it rather than re-finding it: re-probing on the next summon
+            // walked the candidate list from the top with the placeholder up in
+            // the meantime, which looked like the artwork reloading (and, for a
+            // name further down the list, briefly going missing).
+            keepCoverWhileHidden: true
             coverBorder: prefs.coverBorder
             coverBorderWidth: prefs.coverBorderWidth
             rounded: prefs.coverRounded

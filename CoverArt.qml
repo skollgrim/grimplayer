@@ -65,6 +65,15 @@ Item {
     // no business probing the playing album while the editor is closed.
     property bool active: true
 
+    // Whether going off screen keeps the cover this instance settled on. The
+    // panel's copy does, because its cover belongs to the album that is playing:
+    // dropping it meant the next summon walked the candidate list from the top
+    // again, with the placeholder up for as long as that took, which read as the
+    // artwork reloading every time the panel was shown. The tag editor's preview
+    // does not -- its selection can carry a cover the user chose and never saved,
+    // so it starts clean rather than reopening on that preview.
+    property bool keepCoverWhileHidden: false
+
     // Whether an album with no artwork on disk or in the files may have one
     // fetched from the stores. On by default; off keeps the player entirely
     // offline and such albums on the placeholder. Injected from the settings,
@@ -892,23 +901,36 @@ Item {
     // never fires this.
     onSubjectChanged: refresh()
 
-    // Coming back on screen re-probes. Going off it drops the held cover and the
-    // memory of the loaded directory, so the editor's preview starts clean rather
-    // than fading in from the album it happened to show when it was last open.
+    // Coming back on screen re-probes, but going off it is not a teardown. The
+    // held cover, the album directory it belongs to, the palette and any fade or
+    // fetch in flight all stay as they were, so showing the panel again is not a
+    // fresh probe -- which is what it used to be, and what made the artwork
+    // visibly reload and briefly vanish on every summon.
     onActiveChanged: {
         if (!root.active) {
+            // The panel's own copy keeps everything (see keepCoverWhileHidden).
+            if (root.keepCoverWhileHidden) return
+            // The editor's preview starts clean: stopping the fade and dropping
+            // the held cover is what stops it reopening on a chosen cover the
+            // user never saved, and clearing the album directory makes the first
+            // refresh after it comes back probe rather than be skipped.
             if (fade.running) fade.stop()
             root.incoming = 0
             root.heldSource = ""
             root.loadedDir = ""
             root.resolving = false
-            // The instance is off screen. Whatever the online machine was doing
-            // for it is moot; a running helper is left to finish and its callback
-            // no-ops against the now-empty loadedDir.
+            // Whatever the online machine was doing for it is moot; a running
+            // helper is left to finish and its callback no-ops against the
+            // now-empty loadedDir.
             root.resetOnline()
             root.queuedOnlineDir = ""
             return
         }
+        // Nothing is on screen for the album that is current, so ask again rather
+        // than leave the frame empty: the panel was closed while the first cover
+        // was still being found, or the album has no art at all. refresh() skips
+        // this case on its own, the album directory having not changed.
+        if (root.keepCoverWhileHidden && !root.foundArt) root.loadedDir = ""
         refresh()
     }
 
