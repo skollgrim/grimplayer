@@ -153,6 +153,18 @@ Item {
         || Object.keys(root.lookupPerFile).length > 0
     readonly property bool saveIsClose: root.wroteThisSession && !root.hasPendingEdits
 
+    // How many fields are currently carrying a "was" line. A field grows by one
+    // line when it has one (see the delegate), so the card has to grow with it:
+    // the card's height is fixed, and a lookup that moves five fields would
+    // otherwise squeeze every field to make room for the extra lines.
+    readonly property int changedFieldCount: {
+        var n = 0
+        for (var i = 0; i < root.fields.length; i++) {
+            if (root.fieldChanged(root.fields[i].key)) n++
+        }
+        return n
+    }
+
     readonly property bool matchFocused: root.rowIndex === root.matchStop()
 
     readonly property string matchSummary: {
@@ -908,7 +920,14 @@ Item {
         id: card
         anchors.centerIn: parent
         width: Math.round(620 * root.uiScale)
-        height: Math.round(560 * root.uiScale)
+        // Tall enough for the fields as they stand, and taller as "was" lines
+        // appear; never taller than the room the panel gives it, so it stays on
+        // screen. 560 is the height the fields alone need.
+        readonly property real maxCardHeight: Math.max(
+            Math.round(320 * root.uiScale),
+            root.height - Math.round(32 * root.uiScale))
+        height: Math.min(Math.round((560 + root.changedFieldCount * 18) * root.uiScale),
+                         card.maxCardHeight)
         radius: Math.round(12 * root.uiScale)
         color: root.colBackground
         border.width: 1
