@@ -55,11 +55,11 @@ RowLayout {
         iconSize: root.iconSize
         uiScale: root.uiScale
         // Three modes, cycled off -> repeat album -> repeat song. Lit for both
-        // repeat modes; the "A" above names the album and the dot the single
-        // track, which is the read every other player trains you on.
+        // repeat modes, with a letter above naming which: "A" the album and "S"
+        // the single track.
         active: root.mpd && root.mpd.repeatMode > 0
-        modeDot: root.mpd && root.mpd.repeatMode === 2
-        modeAlbum: root.mpd && root.mpd.repeatMode === 1
+        modeBadge: root.mpd && root.mpd.repeatMode === 1 ? "A"
+                 : root.mpd && root.mpd.repeatMode === 2 ? "S" : ""
         onClicked: root.mpd && root.mpd.cycleRepeatMode()
     }
 }

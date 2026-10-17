@@ -30,12 +30,11 @@ Item {
     property bool prominent: false
     property bool active: false
 
-    // A small marker naming which repeat mode is in force. Seated on the top edge of
-    // the button rather than inside the glyph; see the comment at its declaration
-    // for why. The convention is the familiar one: dim means off, lit means on,
-    // the dot narrows it to the single-track case and the "A" to the whole album.
-    property bool modeDot: false
-    property bool modeAlbum: false
+    // Which repeat mode is in force, shown as a letter on the top edge of the
+    // button rather than inside the glyph; see the comment at its declaration for
+    // why. Empty means off, and the letters name the two on states: "A" the whole
+    // album, "S" the single track.
+    property string modeBadge: ""
 
     signal clicked()
 
@@ -161,45 +160,29 @@ Item {
         }
     }
 
-    // Mode marker, as a filled dot rather than a stroked path: at this size a 2px
-    // stroke on a tiny circle closes up into a blob anyway, and a plain rectangle
-    // is honest about what it is drawing.
+    // The mode's letter sits on the top edge of the button rather than inside the
+    // glyph. The repeat path already runs its top rail and arrowhead through the
+    // middle of the box, so a marker placed there overlapped the stroke and read as
+    // a smudge -- and being a child of the button's Rectangle, it inherited that
+    // Rectangle's resting opacity, so at rest it was barely distinguishable from
+    // the dimmed glyph it was supposed to annotate. Both problems are solved by the
+    // same move: outside the glyph box it has clear background, and outside the
+    // opacity Rectangle it is drawn at full strength whether the button is engaged
+    // or not.
     //
-    // It sits on the top edge of the button rather than inside the glyph. The
-    // repeat path already runs its top rail and arrowhead through the middle of
-    // the box, so a dot placed there overlapped the stroke and read as a smudge
-    // rather than a marker -- and being a child of the button's Rectangle, it
-    // inherited that Rectangle's resting opacity, so at rest the dot was
-    // barely distinguishable from the dimmed glyph it was supposed to annotate.
-    // Both problems are solved by the same move: outside the glyph box it has
-    // clear background, and outside the opacity Rectangle it is drawn at full
-    // strength whether the button is engaged or not.
-    Rectangle {
-        visible: root.modeDot
-        anchors.horizontalCenter: parent.horizontalCenter
-        // Seated on the top edge, so it reads as a badge on the button. The glyph
-        // box is inset by half the difference between the circle and the glyph,
-        // and the glyph's own topmost stroke is a little below that, so the dot
-        // clears the artwork at every icon size.
-        y: 0
-        width: Math.max(3, Math.round(4 * root.uiScale))
-        height: width
-        radius: width / 2
-        color: root.active ? root.colAccent : root.colForeground
-    }
-
-    // Repeat-album's marker sits in the same seat, as a letter. The dot works
-    // because a second, smaller state of the same thing has an obvious shorthand;
-    // "the whole album" does not, so it is named.
+    // A letter for the single track as well as the album: "album" and "song" are
+    // two equally-named things, and a bare dot only told you the mode was narrower
+    // than the album if you already knew the convention.
     //
-    // Sized from iconSize rather than uiScale, unlike the dot, so it keeps its
-    // proportion to the button and clears the glyph by the same margin at every
+    // Sized from iconSize rather than uiScale, unlike the glyph, so it keeps its
+    // proportion to the button and clears the artwork by the same margin at every
     // icon size.
     Text {
-        visible: root.modeAlbum
+        visible: root.modeBadge !== ""
         anchors.horizontalCenter: parent.horizontalCenter
+        // Seated on the top edge, so it reads as a badge on the button.
         y: 0
-        text: "A"
+        text: root.modeBadge
         color: root.active ? root.colAccent : root.colForeground
         font.family: Style.font.family
         font.pixelSize: Math.max(8, Math.round(root.iconSize * 0.5 * root.uiScale))

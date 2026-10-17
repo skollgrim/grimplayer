@@ -29,7 +29,7 @@ With **Recolor from cover art** on, the panel follows the playing album's sleeve
   player's own loop -- MPD's repeat flag repeats whatever the queue holds, so
   the mode narrows the queue to the playing album and starts it again when it
   runs out. Song repeat is MPD's `repeat` with `single`, and does what it says.
-  The button carries the mode: a small `A` above it for the album, a dot for the
+  The button carries the mode: a small `A` above it for the album, an `S` for the
   song.
 - **Cover art** is looked for in the album's own directory first, with a probe
   list (`cover.jpg`, `folder.jpg`, `cover.png`, `front.jpg`, `album.jpg`, the

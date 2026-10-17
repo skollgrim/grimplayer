@@ -1455,6 +1455,16 @@ Item {
         return out
     }
 
+    // The tracks that follow the playing album. Stepping out of album mode has to
+    // put the rest of the library back on the queue, and this is the part that was
+    // trimmed away: filesFrom starts at the playing track, so its first
+    // albumFilesAfter entries are the album's own remainder -- already in the queue
+    // -- and everything past them is what has to be appended.
+    function filesAfterAlbum(artistIndex, albumIndex, trackIndex) {
+        var all = root.filesFrom(artistIndex, albumIndex, trackIndex)
+        return all.slice(root.albumFilesAfter(artistIndex, albumIndex, trackIndex).length)
+    }
+
     // Where the playing song sits in the tree, so a queue can be rebuilt around
     // it. The panel's own caret can point somewhere else entirely, so this
     // always works from what MPD is actually playing rather than from the
@@ -1589,6 +1599,49 @@ Item {
         return true
     }
 
+    // Adds files to the end of the queue, then runs whatever trailing commands
+    // were appended, without rebuilding anything. Appending to a queue that is
+    // playing does not interrupt the current song, which is what makes leaving
+    // album mode silent; playFilesScoped's clear+add+play would restart it.
+    function appendFiles(files, trailing) {
+        var commands = []
+        for (var i = 0; i < files.length; i++) commands.push("add " + root.quote(files[i]))
+        for (var j = 0; j < trailing.length; j++) commands.push(trailing[j])
+        root.sendList(commands, function (lines, error) {
+            if (error) root.setError("queue: " + error)
+            else root.refreshState()
+        })
+    }
+
+    // Narrows the queue to the playing album in place, by deleting the entries
+    // after it, and leaves the mode's flags behind in the same transaction.
+    //
+    // The queue is the library from the track that started playing, so the album
+    // the playing song belongs to is one run of entries and the rest of the
+    // library is everything past it; the length of that run, from the playing
+    // track to the album's end, comes from the tree. delete only removes entries
+    // and shifts the positions under the playing song -- playback itself carries
+    // on -- where the clear+add this replaces stopped and restarted the track,
+    // which is heard as a hiccup. Returns false when the queue's shape cannot be
+    // reasoned about this way, so the caller can fall back to a rebuild.
+    function trimQueueToAlbum(loc) {
+        var song = Number(root.status.song)
+        var length = Number(root.status.playlistlength)
+        if (isNaN(song) || isNaN(length) || song < 0 || length <= 0) return false
+        var remaining = root.albumFilesAfter(loc.artist, loc.album, loc.track).length
+        if (remaining === 0) return false
+        // The album runs to song + remaining, exclusive, so everything from there
+        // to the last entry is the rest of the library. MPD ranges are end-exclusive
+        // (START:END deletes up to but not including END), so END is the queue
+        // length; when that start is already past the end there is nothing to take
+        // away.
+        var first = song + remaining
+        var commands = root.modeFlags(1)
+        if (first <= length - 1) commands.unshift("delete " + first + ":" + length)
+        root.commandList(commands)
+        return true
+    }
+
     // ---- repeat modes ----
 
     // Three states, cycled as off -> repeat album -> repeat song.
@@ -1600,6 +1653,12 @@ Item {
     // MPD runs out of it -- which costs a fraction of a second of silence at the
     // album boundary. Repeat song is the one MPD can express: repeat plus single
     // is documented as repeating the current song rather than the queue.
+    //
+    // Narrowing and refilling are edits to the live queue -- delete the entries
+    // past the album, append them back on the way out -- rather than a clear and
+    // rebuild. A rebuild has to restart the playing song to put it back where it
+    // was, which is audible as a hiccup when the button is pressed; a delete and
+    // an append leave the song running.
     //
     // The mode is stored in the config rather than read back from MPD, because in
     // album mode MPD's flag is deliberately off and would read as "off".
@@ -1647,17 +1706,21 @@ Item {
     function applyRepeatMode(mode) {
         if (!root.status || root.status.state === undefined) return
         // Located from what MPD is playing, not from the panel's caret, which may be
-        // pointing at a different album entirely. The resume point and the
-        // paused/playing state are read from MPD inside replaceQueueResuming.
+        // pointing at a different album entirely.
         var loc = root.locateCurrent()
 
-        // Repeat album is not MPD's flag: narrow the queue to the playing album
-        // and remember where to restart it once MPD runs off the end.
+        // Repeat album is not MPD's flag: narrow the queue to the playing album and
+        // remember where to restart it once MPD runs off the end. The narrowing is a
+        // delete of the entries past the album rather than a rebuild, so the song
+        // now playing carries straight on; if the queue is not in the shape that
+        // allows it, fall back to rebuilding around the song.
         if (mode === 1) {
             if (loc) {
                 root.albumLoopPoint = { artist: loc.artist, album: loc.album }
-                root.replaceQueueResuming(root.albumFilesAfter(loc.artist, loc.album, loc.track),
-                                          root.modeFlags(1))
+                if (!root.trimQueueToAlbum(loc)) {
+                    root.replaceQueueResuming(root.albumFilesAfter(loc.artist, loc.album, loc.track),
+                                              root.modeFlags(1))
+                }
             } else {
                 root.albumLoopPoint = null
                 root.commandList(root.modeFlags(1))
@@ -1668,10 +1731,12 @@ Item {
         }
 
         // Off and repeat song are both just MPD's flags. Stepping out of album
-        // mode has to widen the queue back to the rest of the library first, or
-        // the list would still stop at the album's end.
+        // mode has to put the rest of the library back on the queue first, or the
+        // list would still stop at the album's end -- and that is an append, which
+        // likewise leaves the playing song alone instead of restarting it.
         if (root.repeatMode === 1 && loc) {
-            root.replaceQueueResuming(root.filesFrom(loc.artist, loc.album, loc.track), root.modeFlags(mode))
+            root.appendFiles(root.filesAfterAlbum(loc.artist, loc.album, loc.track),
+                             root.modeFlags(mode))
         } else {
             root.commandList(root.modeFlags(mode))
         }
