@@ -299,8 +299,11 @@ bar or the volume slider, click the volume icon to mute.
 
 The plugin is two entry points: `GrimPlayerMpd.qml` (the service — socket,
 protocol, library tree, queue policy) and `GrimPlayer.qml` (the panel). The
-socket has to outlive the panel, hence `kinds: ["service", "panel"]` with
-`keepLoaded`.
+socket has to outlive the panel, hence `kinds: ["service", "panel"]`: a service
+is created at shell start and lives for the session whatever the panel does. The
+manifest also sets `keepLoaded`, which keeps the panel mounted while it is closed
+so that opening it again comes back to the same artist, album and scroll
+position rather than re-summoning from the top.
 
 Adaptive colouring is two more files: [`GrimTheme.qml`](GrimTheme.qml) holds the
 panel's own colour tokens and folds a cover's palette into them, and
@@ -309,12 +312,22 @@ panel's own colour tokens and folds a cover's palette into them, and
 copy instead. `CoverArt.qml`'s `ColorQuantizer` exposes the palette the panel
 reads.
 
+`Covers.js` and `Palette.js` are deliberately plain scripts rather than
+`.pragma library`: a library is compiled once per engine and cached across
+reloads, so a library edit would never be picked up, while a plain script is
+recompiled with the component that imports it.
+
 Edit the files under `~/.config/omarchy/plugins/skollgrim.grimplayer/` and the
-shell reloads the panel on save. The service is `keepLoaded`, so changes to
-`GrimPlayerMpd.qml` only take effect after a shell restart (`omarchy restart
-shell`). `Palette.js` is a `.pragma library`, which the engine caches across
-plugin reloads, so colour-maths changes also need a full shell restart rather
-than just a save.
+shell notices on save — but in practice a save still does not swap the running
+code, and that is Omarchy's, not this plugin's. Omarchy's plugin reload finishes
+by clearing the QML component cache with `Qt.clearComponentCache()`, which is not
+part of the QML `Qt` object, so the guarded call never runs and a reload
+re-instantiates the previously compiled QML. Until that is fixed upstream
+(omarchy#6981) an edit to any plugin file — service, panel or script — needs
+`omarchy restart shell` to take effect. `keepLoaded` compounds this for the
+service alone: a kept service instance is not rebuilt at all, so no reload fix
+short of dropping the flag can reach it, and dropping the flag gives up the warm
+panel described above.
 
 Check a manifest before pushing it out:
 

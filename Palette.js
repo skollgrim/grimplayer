@@ -1,12 +1,15 @@
-.pragma library
-
 // Colour maths for the album-art palette.
 //
 // Everything here is pure: colours in, hex strings out. Kept out of
 // GrimTheme.qml because the arithmetic -- HSL conversion, the luminance term the
 // contrast guard leans on -- reads more clearly on its own than wrapped in
-// property bindings, and because a library is the one place QML will not
-// re-evaluate it on every unrelated change.
+// property bindings, and because explicit function calls are not re-run on every
+// unrelated change the way a binding would be.
+//
+// Deliberately not a `.pragma library`: a library script is compiled once per
+// engine and cached across reloads, so an edit to one would be stuck behind that
+// cache as well as the shell's, while a plain script is recompiled with the
+// component that imports it.
 //
 // Colour values arrive either as a QColor handed over by ColorQuantizer or as a
 // `color` token from the theme singletons; both expose r/g/b/a in 0..1, which is

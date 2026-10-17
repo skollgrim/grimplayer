@@ -1,5 +1,3 @@
-.pragma library
-
 // Where the artwork pulled out of a file is cached, and how its name is derived.
 //
 // The name has to be agreed on by two places that never talk to each other: the
@@ -9,9 +7,15 @@
 // alternative, a second copy of the arithmetic, is a bug waiting for whichever
 // one gets edited.
 //
-// Pure on purpose: a .pragma library script cannot be relied on to see the
+// Pure on purpose: a hash of a path in, a name out, with no dependency on the
 // Quickshell singleton, so the base directory is composed at each call site and
 // only the filename is computed here.
+//
+// Deliberately not a `.pragma library`: a library script is compiled once per
+// engine and cached across reloads, so an edit to one would be stuck behind that
+// cache as well as the shell's, while a plain script is recompiled with the
+// component that imports it. The price is a copy per importing component, which
+// costs nothing for pure functions.
 
 // FNV-1a. Only has to be stable and well spread, not cryptographic: a collision
 // would mean one album showing another's artwork, which is vanishingly unlikely
