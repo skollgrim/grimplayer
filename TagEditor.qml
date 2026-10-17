@@ -947,7 +947,9 @@ Item {
                 root.dismissed()
                 event.accepted = true
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                root.save()
+                // Same decision as the button: after a save with nothing staged,
+                // Enter closes rather than writing nothing a second time.
+                root.saveOrClose()
                 event.accepted = true
             } else if (event.key === Qt.Key_Tab) {
                 root.moveRow(event.modifiers & Qt.ShiftModifier ? -1 : 1)
