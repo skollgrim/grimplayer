@@ -67,13 +67,16 @@ install -Dm644 extras/GrimPlayer.desktop ~/.local/share/applications/GrimPlayer.
 
 ### Opening it
 
-GrimPlayer can be summoned by the window manager. With Omarchy, the default is
-`Alt` + `M`.
+The shell exposes three verbs to summon GrimPlayer:
 
-*Optional:* Change the summon keybinding in `~/.config/hypr/bindings.lua` to
-summon `skollgrim.grimplayer`.
+```bash
+omarchy-shell -q shell summon skollgrim.grimplayer   # open, or do nothing if open
+omarchy-shell -q shell toggle skollgrim.grimplayer   # open if closed, close if open
+omarchy-shell -q shell hide   skollgrim.grimplayer   # close
+```
 
-The shell exposes three verbs if you want to call it manually:
+*Optional:* Add a keybinding in `~/.config/hypr/bindings.lua` to call the
+`summon` command, e.g. `ALT + M`: `o.bind("ALT + M", "GrimPlayer", "omarchy-shell -q shell summon skollgrim.grimplayer")`
 
 ```bash
 omarchy-shell -q shell summon skollgrim.grimplayer   # open, or do nothing if open
