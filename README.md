@@ -78,12 +78,6 @@ omarchy-shell -q shell hide   skollgrim.grimplayer   # close
 *Optional:* Add a keybinding in `~/.config/hypr/bindings.lua` to call the
 `summon` command, e.g. `ALT + M`: `o.bind("ALT + M", "GrimPlayer", "omarchy-shell -q shell summon skollgrim.grimplayer")`
 
-```bash
-omarchy-shell -q shell summon skollgrim.grimplayer   # open, or do nothing if open
-omarchy-shell -q shell toggle skollgrim.grimplayer   # open if closed, close if open
-omarchy-shell -q shell hide   skollgrim.grimplayer   # close
-```
-
 `summon` is the one to reach for from a launcher or a script: it is idempotent, so
 binding it to a key cannot accidentally toggle the panel shut. A keybinding is
 then a one-liner around whichever of the three you prefer.
