@@ -13,52 +13,14 @@ With **Recolor from cover art** on, the panel follows the playing album's sleeve
 
 ## What it does
 
-- **Simple and minimal.** Three lists and a strip, nothing to import or index:
-  point it at the library, press `Enter` and it plays.
-- **Three panes** — artists, albums for the selected artist, tracks for the
-  selected album, with the playing track marked by an accent bar on either or both
-  sides of its row (a setting picks none, left, right or both). Each pane is topped
-  by a heading — the pane's name over a rule — which a setting can turn off so the
-  lists start at the very top of their panes, and the rules between the panes are a
-  setting too.
-- **The queue is derived, not managed.** Activating a track plays it and
-  everything below it in view order: simply the next song in the album, and on
-  into the next album when that album runs out. There is no queue screen to keep
-  in sync and no stored playlists.
-- **Repeat** cycles off, repeat album, repeat song. Album repeat is this
-  player's own loop -- MPD's repeat flag repeats whatever the queue holds, so
-  the mode narrows the queue to the playing album and starts it again when it
-  runs out. Song repeat is MPD's `repeat` with `single`, and does what it says.
-  The button carries the mode: a small `A` above it for the album, an `S` for the
-  song.
-- **Cover art** is looked for in the album's own directory first, with a probe
-  list (`cover.jpg`, `folder.jpg`, `cover.png`, `front.jpg`, `album.jpg`, the
-  capitalised spellings, and the tag-derived `<artist> - <album>` / `<album>`
-  names). A single-file album played through a cue sheet resolves to the folder
-  beside the cue, not to MPD's virtual `<album>.cue/track0001` path, so artwork
-  sitting next to the rip is found. An album with nothing beside the tracks falls
-  back to the artwork embedded in the file itself, extracted once with `ffmpeg`
-  and cached under `~/.local/state/skollgrim.grimplayer/covers/`. An album with
-  nothing anywhere can have a cover **looked up online** instead — iTunes,
-  then Deezer — and cached the same way, so a clean online sleeve shows where a
-  scan or a blank square would. This is on by default and turned off with
-  **Fetch missing cover art** under *Optional features* in the settings; off,
-  such albums keep the placeholder and the player stays entirely offline.
-  Changing album keeps the current cover on screen until the next one is
-  loaded, so the art never blinks through the placeholder; a setting can fade
-  the new cover in over the old one (instant by default).
-- **Recolor from cover art** — a setting that recolours the whole panel
-  (background, text and accent) from the sleeve of the album that is playing,
-  with the alert colour kept semantic. Off, it follows the shell theme.
-- **Typeahead** — typing letters jumps the caret to the first matching row.
-- **A settings card for all of it** (`Alt` + `S`) — row height and spacing,
-  fonts and scale, borders and dividers, pane headings, the playing marker,
-  cover art, and the optional extras, laid out as four columns and persisted to
-  `~/.local/state/skollgrim.grimplayer/settings.json`.
-- **Vim motions** — `j` `k` `h` `l` `g` `G` alongside the arrows (a setting);
-  with them on, `Shift` + `h`/`l` seek like `Shift` + `←`/`→`.
-- **Key reference** (`?`) — a cheat sheet of the browser keys, plus how to
-  reach the settings card, the tag editor and the reference itself.
+- **Simple, minimal, three-pane layout** for browsing artists, albums and tracks.
+- **Album-focused** — plays albums locally and offline with no queue management or saved playlists.
+- **Cover art** — finds covers in the album folder, falls back to embedded art (extracted with `ffmpeg` and cached), and can optionally fetch missing covers online.
+- **Recolor from cover art** — optionally matches the panel's colors to the playing album.
+- **Typeahead** — jump to matching rows by typing.
+- **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, themes and optional features.
+- **Vim motions (optional)** — `j` `k` `h` `l` `g` `G` alongside arrows; with them on, `Shift` + `h`/`l` seek.
+- **Key reference** (`?`) — quick overview of keys.
 
 ## Optional features
 
