@@ -67,8 +67,13 @@ install -Dm644 extras/GrimPlayer.desktop ~/.local/share/applications/GrimPlayer.
 
 ### Opening it
 
-GrimPlayer ships no keybinding, because which key opens it is a matter of taste.
-The shell exposes three verbs for it:
+GrimPlayer can be summoned by the window manager. With Omarchy, the default is
+`Alt` + `M`.
+
+*Optional:* Change the summon keybinding in `~/.config/hypr/bindings.lua` to
+summon `skollgrim.grimplayer`.
+
+The shell exposes three verbs if you want to call it manually:
 
 ```bash
 omarchy-shell -q shell summon skollgrim.grimplayer   # open, or do nothing if open
@@ -127,11 +132,7 @@ letter.
 
 `Alt` + `T` edits the tags of whatever the caret is on: one track in the tracks
 pane, the whole album in the albums pane, or everything by that artist in the
-artists pane. It can also be opened without focusing the panel:
-
-```sh
-omarchy-shell skollgrim.grimplayer editTags
-```
+artists pane. The panel must be open for the keybinding to work.
 
 Each field shows what the selected tracks agree on. A field they disagree about
 reads `multiple` and is **not written** — so retagging a genre across an album
