@@ -120,19 +120,47 @@ Item {
         // window keeps whatever placement it had until the new numbers land.
         root.frameRead = false
         root.frameParts = 0
+        root.frameFailed = false
+        root.frameAnswered = ({})
         gapReader.running = true
         borderReader.running = true
         monitorReader.running = true
     }
     // One of the three frame reads came back. Arm frameRead when the last of them
-    // lands; each Process fires this once per run, and readFrame resets the count,
-    // so a re-read re-arms from scratch. frameReading clears on the last answer,
-    // letting the next readFrame start a fresh run.
-    function framePartArrived() {
+    // lands; each reader reports once per run (see framePartArrived), and readFrame
+    // resets the count, so a re-read re-arms from scratch. frameReading clears on
+    // the last answer, letting the next readFrame start a fresh run.
+    //
+    // A reader reports twice per successful run -- once when its collector hands
+    // over the text, once when the process exits -- so the first report for a
+    // reader is the one that counts. Without the per-reader guard the count would
+    // run to six and the run would never arm. Guarding by name rather than by a
+    // shared counter keeps the count honest however the two events interleave.
+    function framePartArrived(name) {
+        if (root.frameAnswered[name]) return
+        root.frameAnswered[name] = true
         root.frameParts += 1
         if (root.frameParts < 3) return
         root.frameReading = false
-        if (root.physicalScreenWidth > 0) root.frameRead = true
+        // A run the watchdog had to close out may be missing readings entirely, so
+        // the figures could be at their zero defaults. Arming on it would compute
+        // the inset from two zeroes and misfile every window size, so a failed run
+        // holds the pane instead -- the same "unanswered is a reason to wait" rule
+        // frameRead follows. The next open tries again.
+        if (!root.frameFailed && root.physicalScreenWidth > 0) root.frameRead = true
+    }
+    // The watchdog fired: the run has had long enough. A process that could not be
+    // spawned reports nothing at all (see the note on frameWatchdog), so the parts
+    // still outstanding are written off as failed and the count is closed out.
+    // Marking the run failed keeps it from arming frameRead on zeroes, and clearing
+    // frameReading lets the next open start a fresh read rather than the threshold
+    // staying frozen for the session.
+    function frameRunExpired() {
+        if (!root.frameReading) return
+        root.frameFailed = true
+        root.frameAnswered = ({})
+        root.frameParts = 3
+        root.frameReading = false
     }
 
     Connections {
@@ -260,6 +288,14 @@ Item {
     // Whether a read is in flight, so a second readFrame cannot restart the count
     // under the answers still arriving (see readFrame).
     property bool frameReading: false
+    // Whether this run has seen a reader fail to start. A failed run must not arm
+    // frameRead, or the inset would be computed from zeroes.
+    property bool frameFailed: false
+    // Which of the three readers have reported this run, keyed by name. Each
+    // reader has two chances to report -- the collector's stream-finished and the
+    // process's exited -- and only the first of them counts (see
+    // framePartArrived).
+    property var frameAnswered: ({})
     readonly property int windowInset: root.screenWidth > 0 && root.physicalScreenWidth > 0
         ? Math.round((root.frameGap + root.frameBorder) * root.screenWidth / root.physicalScreenWidth)
         : 0
@@ -299,9 +335,15 @@ Item {
             waitForEnd: true
             onStreamFinished: {
                 root.frameGap = root.gapsOutHorizontal(text)
-                root.framePartArrived()
+                root.framePartArrived("gap")
             }
         }
+        // A process that starts but exits before its collector reports -- a
+        // hyprctl that ran and failed, say -- still fires this, and only the first
+        // report for a reader counts (see framePartArrived). The handler takes no
+        // arguments deliberately: onExited carries an exit code, and a parameter
+        // here would shadow the reader name this is reporting for.
+        onExited: function () { root.framePartArrived("gap") }
     }
     Process {
         id: borderReader
@@ -310,9 +352,10 @@ Item {
             waitForEnd: true
             onStreamFinished: {
                 root.frameBorder = root.optionInt(text)
-                root.framePartArrived()
+                root.framePartArrived("border")
             }
         }
+        onExited: function () { root.framePartArrived("border") }
     }
     Process {
         id: monitorReader
@@ -322,9 +365,25 @@ Item {
             onStreamFinished: {
                 root.physicalScreenWidth =
                     root.monitorWidthFor(text, root.activeScreen ? root.activeScreen.name : "")
-                root.framePartArrived()
+                root.framePartArrived("monitor")
             }
         }
+        onExited: function () { root.framePartArrived("monitor") }
+    }
+    // The reader reports above only cover a process that started. A command that
+    // could not be spawned at all -- hyprctl missing -- fires neither the
+    // collector nor onExited, so nothing would ever finish the run and
+    // frameReading would stay true for the session, freezing the threshold and
+    // blocking every later read. This watchdog closes that gap: it allows the
+    // three commands what any of them could reasonably need, then writes off the
+    // ones that never answered. A run that did answer has already cleared
+    // frameReading by then, so the timer finds nothing to do.
+    Timer {
+        id: frameWatchdog
+        interval: 4000
+        repeat: false
+        running: root.frameReading
+        onTriggered: root.frameRunExpired()
     }
     // The single integer an option carries. border_size is a plain int, so it is
     // read from `int`; a value given as CSS would still parse through the same
@@ -711,11 +770,14 @@ Item {
         }
     }
 
-    // Left/right crosses to the neighbouring column at the same height. It clamps
-    // to the column's last row when that column is shorter, so stepping sideways
-    // into a shorter section lands on its bottom. A column whose row at that
-    // height is greyed is stepped past in the same direction, so crossing never
-    // strands the caret on a row that cannot be changed.
+    // Left/right crosses to the neighbouring column at the same height, clamping
+    // to the column's last row when it is shorter, so stepping sideways into a
+    // shorter section lands on its bottom. If the row at that height is greyed,
+    // the nearest active row in that same column is taken before moving on to the
+    // next column: a column with any live row should be reachable, and skipping
+    // the whole column because its row four happens to be greyed would jump the
+    // caret two sections across. Only a column with nothing live in it at all is
+    // passed over.
     function moveSettingColumns(delta) {
         if (prefs.visibleEntries.length === 0) return
         var step = delta < 0 ? -1 : 1
@@ -724,12 +786,20 @@ Item {
         for (var c = column + step; c >= 0 && c < prefs.columns.length; c += step) {
             var list = prefs.columnEntries(c)
             if (list.length === 0) continue
-            var r = Math.max(0, Math.min(row, list.length - 1))
-            var next = prefs.visibleEntries.indexOf(list[r])
-            if (next >= 0 && prefs.isActive(list[r])) {
-                settingIndex = next
-                settingsEditMode = false
-                return
+            // Walk outward from the same height so the landing row is the closest
+            // live one to where the caret already is.
+            var start = Math.max(0, Math.min(row, list.length - 1))
+            for (var d = 0; d < list.length; d++) {
+                for (var k = 0; k < 2; k++) {
+                    var i = k === 0 ? start + d : start - d
+                    if (i < 0 || i >= list.length) continue
+                    var entry = list[i]
+                    if (prefs.isActive(entry)) {
+                        settingIndex = prefs.visibleEntries.indexOf(entry)
+                        settingsEditMode = false
+                        return
+                    }
+                }
             }
         }
     }

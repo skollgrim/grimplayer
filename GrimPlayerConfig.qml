@@ -926,16 +926,16 @@ Item {
         { tag: "wide", name: "Player wide", fill: false }
     ]
 
-    // The entries behind a section, in table order.
-    function sectionEntries(tag) {
-        return visibleEntries.filter(function (e) { return e.section === tag })
-    }
-
-    // Each row carries its entry, that entry's index into visibleEntries, and
-    // whether the entry is currently active. The index is the caret's currency:
-    // an object identity does not survive the trip through a Repeater's model --
-    // the delegate's modelData hands back a copy, so comparing references never
+    // Each row carries its entry, that entry's index into the table, and whether
+    // the entry is currently active. The index is the caret's currency: an object
+    // identity does not survive the trip through a Repeater's model -- the
+    // delegate's modelData hands back a copy, so comparing references never
     // matched and nothing ever read as selected -- while a plain integer does.
+    //
+    // The index comes from the entry's own position rather than an indexOf scan:
+    // visibleEntries is the entries table itself now, so the row's index is the
+    // table index, and stamping it here is what lets the Repeater hand it back as
+    // a plain number.
     function indexed(list) {
         var out = []
         for (var i = 0; i < list.length; i++)
@@ -947,14 +947,28 @@ Item {
         return out
     }
 
+    // The entries behind each section, worked out once and read by the card, the
+    // navigation and the caret's column lookup alike. Filtering the table five
+    // times over on every read would be five passes over every entry each time
+    // the caret moves a row, for a list that only changes when a dependent flips.
+    readonly property var sectionLists: {
+        var out = {}
+        for (var i = 0; i < sections.length; i++) out[sections[i].tag] = []
+        for (var e = 0; e < visibleEntries.length; e++) {
+            var tag = visibleEntries[e].section
+            if (out[tag] !== undefined) out[tag].push(visibleEntries[e])
+        }
+        return out
+    }
+
     readonly property var columns: sections.map(function (s) {
-        return { name: s.name, items: indexed(sectionEntries(s.tag)), fill: s.fill }
+        return { name: s.name, items: indexed(sectionLists[s.tag] || []), fill: s.fill }
     })
 
     // The entries behind a column, for the panel's navigation.
     function columnEntries(column) {
         var s = sections[column]
-        return s ? sectionEntries(s.tag) : []
+        return s ? (sectionLists[s.tag] || []) : []
     }
 
     // Which column an entry sits in, from its section tag. An entry with no tag
