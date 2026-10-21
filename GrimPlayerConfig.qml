@@ -66,6 +66,20 @@ Item {
         // Typing letters jumps the caret to the first matching row.
         property bool typeaheadSearch: true
 
+        // Where the typeahead readout sits: "corner" tucks it into the artists
+        // pane's lower corner, clear of the caret and the cover art, and
+        // "center" floats it in the middle of the window, where the eye already
+        // is when the lists are long enough that a corner readout is easy to
+        // miss. Kept as a named choice rather than a flag so a third position
+        // has somewhere to land without another boolean.
+        property string typeaheadPlace: "corner"
+
+        // The readout's font size as an offset from the theme, like the font-size
+        // settings. The corner readout is a glanceable aside and the centred one
+        // has to hold the eye from across the window, so it starts two steps up
+        // rather than matching the panel's body text.
+        property int typeaheadScale: 2
+
         // A faint line between rows. Off is the cleaner, flatter look.
         property bool rowSeparators: false
 
@@ -109,11 +123,13 @@ Item {
         // that region from the very top of the player to the strip at any window
         // size, and a smaller value scales with the window instead of meaning one
         // thing on a laptop and another on a large screen. Drives both placements:
-        // the floating corner cover and the artwork pane. The default is the one
-        // that suits the placement in use -- see the artwork-pane toggle below,
-        // which moves it between 100% (pane, where the art is the point) and 30%
-        // (floating, where it is a corner accent), so toggling the pane lands on a
-        // sensible size without a second slider to visit.
+        // the floating corner cover and the artwork pane. The stored value is used
+        // when the artwork pane is pinned on or off; under "auto" the window picks
+        // the placement and the panel derives the share to match, so the card hides
+        // this slider there. Pinning still moves it between 100% (pane, where the
+        // art is the point) and 30% (floating, where it is a corner accent), so
+        // toggling the pane lands on a sensible size without a second slider to
+        // visit.
         property int coverScale: 30
 
         // How long a cover takes to fade in when the album changes, in
@@ -122,19 +138,32 @@ Item {
         // this only decides whether the swap is visibly animated.
         property int coverTransition: 0
 
-        // Draw the now-playing footer as a tall hero band: a large cover sits
-        // on the left with the track details and controls beside it, instead of
-        // the thin strip with the art floating in the corner. The three panes
-        // are untouched either way.
-        property bool coverBand: false
+        // Where the cover art sits: pinned in its own pane on the right ("on"),
+        // pinned as the small floating corner cover ("off"), or left to "auto",
+        // which shows the pane on a window with room for it beside the three
+        // lists and falls back to the floating cover when the window is small.
+        property string coverBandMode: "auto"
+
+        // The smallest the panel may get, as a share of the usable width of the
+        // screen it is on, and still keep the artwork pane. At or above that share
+        // the pane shows; smaller than it the art folds into the floating corner
+        // cover. A share of the screen rather than a pixel count, so the same
+        // tiled half makes the same call on a small laptop and a large desktop
+        // instead of the figure meaning one thing on one panel and another on the
+        // next. The usable width is the screen less the compositor's own frame
+        // (see the panel), which is what a maximised window actually measures, so
+        // 100% means "fills the screen" rather than a figure nothing can reach.
+        // 100% is the strictest end -- only a window filling the whole screen
+        // keeps the pane -- and each step down admits smaller windows.
+        property int coverBandMinPct: 100
 
         // Where the cover sits vertically inside the artwork pane: "top",
-        // "middle" or "bottom". Only meaningful while coverBand is on.
+        // "middle" or "bottom". Only meaningful while cover band is active.
         property string coverBandAlign: "bottom"
 
         // Keep a margin between the cover and the pane edges in the artwork pane.
         // Off runs the cover flush to the edges, filling the pane; on restores the
-        // original inset on all four sides. Only meaningful while coverBand is on.
+        // original inset on all four sides. Only meaningful while cover band is active.
         property bool coverPadding: false
 
         // Interface sizing. uiScale is a single multiplier over every derived size --
@@ -229,10 +258,12 @@ Item {
         // Only real properties, not the id or the functions hanging off it.
         var keys = ["wrapAround", "seekThickness", "albumYears", "playingHighlight",
                     "playingMarkerSides", "adaptiveColors", "fetchCovers",
-                    "vimKeys", "rowSpacing", "typeaheadSearch", "rowSeparators",
+                    "vimKeys", "rowSpacing", "typeaheadSearch", "typeaheadPlace",
+                    "typeaheadScale", "rowSeparators",
                     "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "coverBorder", "coverPlaceholder",
                     "coverBorderWidth", "coverRounded", "activeRowBorder", "repeatMode", "coverScale",
-                    "coverTransition", "coverBand", "coverBandAlign", "coverPadding",
+                    "coverTransition", "coverBandMode", "coverBandAlign", "coverPadding",
+                    "coverBandMinPct",
                     "uiScale", "iconSize",
                     "fontTitle", "fontSubtitle", "fontBody", "fontBodySmall",
                     "fontCaption"]
@@ -272,6 +303,10 @@ Item {
     // the panel.
     function applyStored(obj) {
         if (!obj || typeof obj !== "object") return
+        // Migrate legacy coverBand boolean to coverBandMode
+        if (obj && typeof obj.coverBand === "boolean" && obj.coverBandMode === undefined) {
+            obj.coverBandMode = obj.coverBand ? "on" : "off"
+        }
         for (var k in obj) {
             if (store[k] === undefined) continue
             var v = obj[k]
@@ -333,6 +368,8 @@ Item {
     readonly property bool vimKeys: store.vimKeys
     readonly property int rowSpacing: store.rowSpacing
     readonly property bool typeaheadSearch: store.typeaheadSearch
+    readonly property string typeaheadPlace: store.typeaheadPlace
+    readonly property int typeaheadScale: store.typeaheadScale
     readonly property bool rowSeparators: store.rowSeparators
     readonly property bool focusGlow: store.focusGlow
     readonly property bool paneHeadings: store.paneHeadings
@@ -353,9 +390,10 @@ Item {
     }
     readonly property int coverScale: store.coverScale
     readonly property int coverTransition: store.coverTransition
-    readonly property bool coverBand: store.coverBand
+    readonly property string coverBandMode: store.coverBandMode
     readonly property string coverBandAlign: store.coverBandAlign
     readonly property bool coverPadding: store.coverPadding
+    readonly property int coverBandMinPct: store.coverBandMinPct
     readonly property real uiScale: store.uiScale
     readonly property int iconSize: store.iconSize
     readonly property int fontTitle: store.fontTitle
@@ -518,6 +556,31 @@ Item {
             set: function (v) { store.typeaheadSearch = v },
             format: root.boolText
         },
+        {
+            key: "typeaheadPlace",
+            label: "Typeahead readout",
+            hint: "Where the typed letters appear: tucked in the artists pane's corner, or centred in the middle of the window",
+            options: ["corner", "center"],
+            defaultValue: "corner",
+            dependsOn: function () { return store.typeaheadSearch },
+            get: function () { return store.typeaheadPlace },
+            set: function (v) { store.typeaheadPlace = v },
+            format: root.titleText
+        },
+        {
+            key: "typeaheadScale",
+            label: "Typeahead size",
+            hint: "The readout's text size, as an offset from the theme",
+            // Bias large: the readout is a transient overlay read at a glance from
+            // wherever the eye happens to be, so the useful half of the range is
+            // the upper one and +2 is the resting size.
+            options: [-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
+            defaultValue: 2,
+            dependsOn: function () { return store.typeaheadSearch },
+            get: function () { return store.typeaheadScale },
+            set: function (v) { store.typeaheadScale = v },
+            format: root.deltaText
+        },
 
         // ---- Appearance ----
         {
@@ -649,22 +712,6 @@ Item {
             format: root.boolText
         },
         {
-            key: "coverScale",
-            group: "artwork",
-            label: "Artwork size",
-            hint: "Height of the artwork as a share of the space above the now-playing bar; 100% fills it top to bottom",
-            // Even ten-step rungs, rather than the old fives low down and tens up
-            // top, so a nudge moves the cover the same amount wherever the knob is.
-            options: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-            // The floating placement's resting size; the pane's 100% is applied by
-            // the artwork-pane toggle below. This is what reset() lands on, and the
-            // pane is off by default.
-            defaultValue: 30,
-            get: function () { return store.coverScale },
-            set: function (v) { store.coverScale = v },
-            format: function (v) { return v + "%" }
-        },
-        {
             key: "coverTransition",
             group: "artwork",
             label: "Cover change transition",
@@ -698,24 +745,36 @@ Item {
             set: function (v) { store.coverPlaceholder = v },
             format: root.boolText
         },
+
+        // The three pane settings sit together, the mode row first. The mode owns
+        // two dependents below it, so putting it above them means switching it
+        // cannot shift its own row: the rows that appear and disappear are all
+        // underneath. The size slider has a dependency of its own and sits below
+        // those, so it lands in the pane rows' group too.
         {
-            key: "coverBand",
+            key: "coverBandMode",
             group: "artwork",
             label: "Artwork pane",
-            hint: "Give the album art its own pane on the right instead of the corner",
-            options: [true, false],
-            defaultValue: false,
-            get: function () { return store.coverBand },
+            hint: "Give the album art its own pane on the right, or let it follow window size",
+            options: ["off", "on", "auto"],
+            defaultValue: "auto",
+            get: function () { return store.coverBandMode },
             set: function (v) {
-                store.coverBand = v
-                // The two placements want different sizes: the pane is the point of
-                // its layout, so it opens at 100%, while the corner cover is an
-                // accent and rests at 30%. Toggling moves the artwork size to match
-                // rather than carrying the other placement's value across, so the
-                // pane always arrives full and the corner cover arrives small.
-                store.coverScale = v ? 100 : 30
+                store.coverBandMode = v
+                // Pinning the placement moves the artwork size to match it: the
+                // pane wants to be full, the floating cover small. Auto reads the
+                // size from the window instead, so it leaves the stored value
+                // alone rather than writing a number auto will ignore.
+                //
+                // No save here: every caller of set already persists (cycle for a
+                // keypress, reset for the reset key, the slider's own pick), so a
+                // save in here would only restart the same debounce. The write it
+                // does is a second property on the same store, which the caller's
+                // save then covers along with this one.
+                if (v === "on") store.coverScale = 100
+                else if (v === "off") store.coverScale = 30
             },
-            format: root.boolText
+            format: root.titleText
         },
         {
             key: "coverBandAlign",
@@ -724,7 +783,7 @@ Item {
             hint: "Where the cover sits vertically in the artwork pane",
             options: ["top", "middle", "bottom"],
             defaultValue: "bottom",
-            dependsOn: function () { return store.coverBand },
+            dependsOn: function () { return store.coverBandMode !== "off" },
             get: function () { return store.coverBandAlign },
             set: function (v) { store.coverBandAlign = v },
             format: root.titleText
@@ -736,10 +795,44 @@ Item {
             hint: "Keep a margin between the cover and the pane edges; off runs it flush",
             options: [true, false],
             defaultValue: false,
-            dependsOn: function () { return store.coverBand },
+            dependsOn: function () { return store.coverBandMode !== "off" },
             get: function () { return store.coverPadding },
             set: function (v) { store.coverPadding = v },
             format: root.boolText
+        },
+        {
+            key: "coverScale",
+            group: "artwork",
+            label: "Artwork size",
+            hint: "Height of the artwork as a share of the space above the now-playing bar; 100% fills it top to bottom",
+            // Even ten-step rungs, rather than the old fives low down and tens up
+            // top, so a nudge moves the cover the same amount wherever the knob is.
+            options: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+            // The floating placement's resting size; the pane's 100% is applied by
+            // the artwork-pane toggle above. This is what reset() lands on. It is
+            // only offered when the pane is pinned on or off: under "auto" the
+            // window picks the placement and the size that goes with it.
+            defaultValue: 30,
+            dependsOn: function () { return store.coverBandMode !== "auto" },
+            get: function () { return store.coverScale },
+            set: function (v) { store.coverScale = v },
+            format: function (v) { return v + "%" }
+        },
+        {
+            key: "coverBandMinPct",
+            group: "artwork",
+            label: "Artwork pane at or above",
+            hint: "Show the pane while the window is at least this share of the screen's width; smaller than that the cover floats instead",
+            // The experiment knob: the size floor the panel measures the window
+            // against, as a share of the screen it is on. 100% keeps the pane only
+            // while the window fills the screen; lower it to admit smaller windows.
+            // Five-step rungs so a nudge is visible without walking a long ramp.
+            options: [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+            defaultValue: 100,
+            dependsOn: function () { return store.coverBandMode === "auto" },
+            get: function () { return store.coverBandMinPct },
+            set: function (v) { store.coverBandMinPct = v },
+            format: function (v) { return v + "%" }
         },
 
         // ---- Optional features ----

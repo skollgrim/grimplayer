@@ -16,8 +16,9 @@ With **Recolor from cover art** on, the panel follows the playing album's sleeve
 - **Simple, minimal, three-pane layout** for browsing artists, albums and tracks.
 - **Album-focused** — plays albums locally and offline with no queue management or saved playlists.
 - **Cover art** — finds covers in the album folder, falls back to embedded art (extracted with `ffmpeg` and cached), and can optionally fetch missing covers online.
+- **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Artwork pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Artwork pane at or above` tunes the window size floor the pane is kept to.
 - **Recolor from cover art** — optionally matches the panel's colors to the playing album.
-- **Typeahead** — jump to matching rows by typing.
+- **Typeahead** — jump to matching rows by typing, with the readout placed in the corner or centred, at a size of your choosing.
 - **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, themes and optional features.
 - **Vim motions (optional)** — `j` `k` `h` `l` `g` `G` alongside arrows; with them on, `Shift` + `h`/`l` seek.
 - **Key reference** (`?`) — quick overview of keys.
