@@ -1,13 +1,17 @@
 pragma ComponentBehavior: Bound
 // The settings card, modal over the browser.
 //
-// The settings are laid out as four fixed columns, each a single list under its
-// own heading: the switches and named choices, then the sizes and sliders, then
-// the artwork settings, then the optional extras. Keeping a column to one kind of
-// control means most rows in it have the same shape, so there are no half-empty
-// rows to read past, and a setting is always in the same place every time the
-// card opens. The artwork column is the deliberate exception: it gathers every
-// cover setting, switch and slider alike, so they sit together.
+// The settings are laid out as columns cut by topic, each a single list under its
+// own heading: the list and what plays it, the panes and their rules, the text
+// and its scale, the cover art, and the player-wide extras. A column is one
+// subject rather than one kind of control, so a slider and a switch sit together
+// in a column where the thing they share says they should, and a setting is
+// always in the same place every time the card opens.
+//
+// A setting that waits on another is drawn greyed rather than hidden, with a
+// line under its name saying what it needs. Keeping the row in place means a hunt
+// for it always finds it, and a row that greys while the caret is on it does not
+// move the thing under the caret.
 //
 // Within a cell the label sits on the left and a fixed-width control block on the
 // right, so every value in a column lines up on the same vertical edge. That fixed
@@ -51,11 +55,11 @@ Item {
     signal editModeRequested(bool on)
     signal dismissed()
 
-    // The card renders the config's four columns directly. Each column arrives
-    // as a name plus its entries, and each entry carries its own index into the
-    // visible list -- that index, not the entry object, is what the caret compares
-    // against, because an object identity does not survive the trip through the
-    // Repeater's model.
+    // The card renders the config's columns directly. Each column arrives as a
+    // name plus its entries, and each entry carries its own index into the
+    // visible list along with whether it is currently active -- that index, not
+    // the entry object, is what the caret compares against, because an object
+    // identity does not survive the trip through the Repeater's model.
     readonly property var columns: config ? config.columns : []
 
     // Slider plus value, in one fixed-width block, so the values line up down the
@@ -95,9 +99,16 @@ Item {
             // The caret's currency is this integer, straight from the model.
             readonly property int visIndex: modelData.index
             readonly property bool selected: visIndex === root.index
+            // A dependent whose parent is off. It is drawn, but greyed and kept
+            // out of the caret's way, and it says what it is waiting on instead of
+            // changing a value nothing reads.
+            readonly property bool active: modelData.active !== false
+            readonly property string needNote: entryData.needs || ""
 
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.round(36 * root.uiScale)
+            // A row with a "needs ..." note is taller, so the second line has room
+            // without the label sliding off its own baseline.
+            Layout.preferredHeight: Math.round((row.needNote !== "" && !row.active ? 50 : 36) * root.uiScale)
             // The row's own content width, exposed so a column that hugs its
             // content (see the columns' fill flag) has something to size to. The
             // inner RowLayout is anchored, so it does not feed the implicit width
@@ -107,6 +118,12 @@ Item {
                 + Math.round(12 * root.uiScale) + Math.round(10 * root.uiScale)
             radius: Math.round(6 * root.uiScale)
             color: selected ? root.colSelectedFill : "transparent"
+
+            // A greyed dependent stays visible but reads as switched off: the
+            // whole row fades, and the value ink stops being the accent it is on a
+            // live row. The caret fill is left alone so a row that greys while the
+            // caret is already on it does not change under the eye.
+            opacity: active ? 1.0 : 0.4
 
             // Keep the caret's row on screen as it moves, and once more when the
             // cell is created, since a cell that appears already selected never
@@ -136,6 +153,10 @@ Item {
                         root.caretAt(row.visIndex)
                         return
                     }
+                    // A greyed row does nothing but hold the caret: its value has
+                    // no effect until the setting it waits on is on, and the card
+                    // says so right there on the row.
+                    if (!row.active) return
                     // Clicking the row you are already on does what Enter does: a
                     // plain switch flips, a slider opens for editing.
                     if (row.numeric) {
@@ -160,14 +181,34 @@ Item {
                 // would shift a pixel or two each time the caret reached the
                 // longest label. The accent ink, the filled row and the bar down
                 // its edge already carry the selection.
-                Text {
+                //
+                // A greyed dependent adds a second line saying what it waits on,
+                // rather than putting the note inline with the name: inline would
+                // widen this cell, and the cell's width is what the columns divide
+                // by, so every column would jump the moment a row greyed.
+                ColumnLayout {
                     Layout.fillWidth: true
-                    text: row.entryData.label
-                    textFormat: Text.PlainText
-                    color: row.selected ? root.colAccent : root.colForeground
-                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                    opacity: row.selected ? 1.0 : 0.72
-                    elide: Text.ElideRight
+                    spacing: 0
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: row.entryData.label
+                        textFormat: Text.PlainText
+                        color: row.selected ? root.colAccent : root.colForeground
+                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                        opacity: row.selected ? 1.0 : 0.72
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: !row.active && row.needNote !== ""
+                        text: "needs " + row.needNote
+                        textFormat: Text.PlainText
+                        color: root.colMuted
+                        font.pixelSize: Math.round(Style.font.caption * root.uiScale)
+                        elide: Text.ElideRight
+                    }
                 }
 
                 // Only a slider row reserves the track. A switch only needs the
@@ -217,6 +258,9 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             function pick(mx) {
+                                // A greyed row's track is drawn but inert; the only
+                                // thing a click may do is park the caret on it.
+                                if (!row.active) return
                                 if (row.opts.length === 0) return
                                 var f = Math.max(0, Math.min(1, mx / width))
                                 var i = Math.round(f * (row.opts.length - 1))
@@ -237,7 +281,10 @@ Item {
                     Text {
                         text: root.config ? root.config.textOf(row.entryData) : ""
                         textFormat: Text.PlainText
-                        color: root.colAccent
+                        // The accent marks a live value; a greyed row's value is
+                        // muted so it reads as held-but-inactive rather than
+                        // current.
+                        color: row.active ? root.colAccent : root.colMuted
                         font.pixelSize: Math.round(Style.font.body * root.uiScale)
                         horizontalAlignment: Text.AlignRight
                         Layout.preferredWidth: root.valueWidth
@@ -259,11 +306,18 @@ Item {
     Rectangle {
         id: card
         anchors.centerIn: parent
-        // Wide enough for four columns of label-left / control-right without the
+        // Wide enough for five columns of label-left / control-right without the
         // labels having to elide, and no wider than the window allows: on a panel
         // too small for the full width this falls back to the panel width less its
         // margin rather than overflowing it.
-        width: Math.min(Math.round(1480 * root.uiScale), parent.width - Math.round(32 * root.uiScale))
+        //
+        // Five rather than four columns is what the topic cut costs: splitting by
+        // subject needs somewhere for the panes and the text to each live on their
+        // own, and the widest labels ("Font size: playing song", "Artwork pane at
+        // or above") need the room. The width is still a fixed figure, so on a
+        // narrow panel the columns share what there is and the labels elide rather
+        // than the card overflowing.
+        width: Math.min(Math.round(1700 * root.uiScale), parent.width - Math.round(32 * root.uiScale))
         // Fixed rather than window-relative: the list scrolls inside a Flickable,
         // so the card has no reason to grow with the panel.
         height: Math.min(Math.round(700 * root.uiScale), parent.height - Math.round(32 * root.uiScale))
@@ -333,9 +387,9 @@ Item {
                         delegate: ColumnLayout {
                             id: columnBlock
                             required property var modelData
-                            // Columns fill the card unless the config says otherwise;
-                            // the optional column hugs its content so it stops
-                            // squeezing the artwork beside it.
+                            // A column fills the card unless the config says
+                            // otherwise; the last section hugs its content so it
+                            // stops squeezing the wider columns beside it.
                             Layout.fillWidth: modelData.fill !== false
                             Layout.alignment: Qt.AlignTop
                             spacing: Math.round(2 * root.uiScale)

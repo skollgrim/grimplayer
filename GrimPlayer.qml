@@ -644,9 +644,9 @@ Item {
     // thing" survives having scrolled somewhere else last time.
     //
     // settingIndex is an index into prefs.visibleEntries -- the settings the card
-    // is actually showing. Hidden dependents are not in that list, so navigation
-    // never lands on a row nobody can see. The card is four columns; up/down
-    // walks the caret down its own column, left/right crosses to the neighbouring
+    // is showing. Every entry is in that list now, greyed ones included, so the
+    // index numbers every row on the card. Up/down walks the caret down its own
+    // column (stepping over greyed rows), left/right crosses to the neighbouring
     // column at the same height. The config owns that geometry, keyed on the bare
     // index, so the panel and the card cannot disagree about where anything is.
     //
@@ -689,39 +689,61 @@ Item {
         }
     }
 
+    // Up/down walks the caret down its own column, stepping over any greyed
+    // dependent rows on the way. It keeps moving in the direction asked for until
+    // it finds a row that is actually editable, or runs off the end -- in which
+    // case it stays where it was rather than parking the caret on a row that
+    // refuses every key. The panel's own movement and the card's clicks both
+    // check isActive, so a greyed row is never the resting place of the caret.
     function moveSettingRows(delta) {
         if (prefs.visibleEntries.length === 0) return
-        var next = prefs.indexAt(prefs.columnOf(settingIndex), prefs.rowOf(settingIndex) + delta)
-        if (next < 0 || next === settingIndex) return
-        settingIndex = next
-        settingsEditMode = false
+        var column = prefs.columnOf(settingIndex)
+        var row = prefs.rowOf(settingIndex)
+        var step = delta < 0 ? -1 : 1
+        var count = prefs.columnEntries(column).length
+        for (var i = row + step; i >= 0 && i < count; i += step) {
+            var next = prefs.indexAt(column, i)
+            if (next >= 0 && prefs.isActive(prefs.visibleEntries[next])) {
+                settingIndex = next
+                settingsEditMode = false
+                return
+            }
+        }
     }
 
+    // Left/right crosses to the neighbouring column at the same height. It clamps
+    // to the column's last row when that column is shorter, so stepping sideways
+    // into a shorter section lands on its bottom. A column whose row at that
+    // height is greyed is stepped past in the same direction, so crossing never
+    // strands the caret on a row that cannot be changed.
     function moveSettingColumns(delta) {
         if (prefs.visibleEntries.length === 0) return
-        var column = prefs.columnOf(settingIndex) + delta
-        if (column < 0 || column >= prefs.columns.length) return
-        var next = prefs.indexAt(column, prefs.rowOf(settingIndex))
-        if (next < 0 || next === settingIndex) return
-        settingIndex = next
-        settingsEditMode = false
+        var step = delta < 0 ? -1 : 1
+        var column = prefs.columnOf(settingIndex)
+        var row = prefs.rowOf(settingIndex)
+        for (var c = column + step; c >= 0 && c < prefs.columns.length; c += step) {
+            var list = prefs.columnEntries(c)
+            if (list.length === 0) continue
+            var r = Math.max(0, Math.min(row, list.length - 1))
+            var next = prefs.visibleEntries.indexOf(list[r])
+            if (next >= 0 && prefs.isActive(list[r])) {
+                settingIndex = next
+                settingsEditMode = false
+                return
+            }
+        }
     }
 
-    // A dependent setting disappears the moment its parent is switched off, which
-    // renumbers the visible list, so the caret's index no longer means what it
-    // did. Re-find the setting it was on by key and move the index with it; only
-    // fall back to clamping when there is no key to follow. This is what keeps the
-    // caret -- and the highlighted row -- parked on "Artwork pane" while its size
-    // and position rows appear and disappear beside it.
+    // Every entry now stays in the card, so the list the caret indexes into is
+    // fixed for the life of the panel and the index cannot drift on its own. A
+    // dependent that goes inactive only greys: the row stays, the caret stays on
+    // it, and the row simply refuses to be edited, which is why nothing jumps.
     //
-    // The key cannot save a setting that hides *itself*, only one whose dependents
-    // changed. That happens when the parent is changed by mouse: the caret sits on
-    // "Artwork size" and the pane-mode slider is clicked to auto, so the size row
-    // leaving the list takes the caret's key with it. Clamping to the list's end
-    // would jump the caret to the bottom row; clamping to the index it already had
-    // keeps it in place -- the row that slid up into that slot is the neighbour it
-    // was already beside -- which is the same "nothing moved under the caret"
-    // promise the key lookup keeps for the other case.
+    // What is left to guard is the list itself changing length, which can only
+    // happen when the table is edited while the shell is running. The caret
+    // re-finds its row by key when that happens, and clamps to its previous index
+    // when the key is gone. settingIndexBefore is the index from before the
+    // change, since the handler runs once the list has already reshaped.
     property int settingIndexBefore: 0
     Connections {
         target: prefs
@@ -1401,7 +1423,12 @@ Item {
                 if (root.settingsOpen) {
                     var count = prefs.visibleEntries.length
                     var entry = count > 0 ? prefs.visibleEntries[Math.max(0, Math.min(root.settingIndex, count - 1))] : null
-                    var isNumeric = !!(entry && entry.options && entry.options.length > 0 && typeof entry.options[0] === "number")
+                    // A greyed row answers to none of the editing keys: it has no
+                    // track to open and nothing to toggle. It can still hold the
+                    // caret -- the row is on the card -- so the shape test is
+                    // gated on active rather than the row being refused outright.
+                    var editable = entry && prefs.isActive(entry)
+                    var isNumeric = !!(editable && entry.options && entry.options.length > 0 && typeof entry.options[0] === "number")
 
                     switch (event.key) {
                     case Qt.Key_Escape:

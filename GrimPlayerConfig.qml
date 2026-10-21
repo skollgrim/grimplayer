@@ -427,19 +427,25 @@ Item {
     // store[key] because dynamic property access on a typed QObject is not
     // something to lean on from QML.
     //
-    // The card draws four fixed columns. By default which one an entry lands in
-    // follows from its shape: a numeric entry is a slider, anything else is a
-    // switch or a named choice, and an entry flagged `optional` is an extra that
-    // needs something outside the player. An entry carrying `group` is pulled out
-    // of the shape-based columns into its own column regardless of its control
-    // type -- that is how the artwork settings keep one home. An entry with
-    // `dependsOn` is hidden -- and skipped by navigation -- until its predicate is
-    // true, so a setting that only matters once another is on does not sit in the
-    // list looking live when it is not. Its value is kept either way.
+    // Which column an entry lands in follows from a single `section` tag, and
+    // table order is the order each section shows its rows. Sections are cut by
+    // topic -- what part of the player the setting is about -- and not by the
+    // kind of control it is, so a slider and a switch sit side by side wherever
+    // the subject they share says they should. Sorting by shape instead (as this
+    // table did before) put a list setting next to a font size and left every
+    // new entry needing to be told which of the four columns it "was".
+    //
+    // An entry with `dependsOn` is greyed and non-navigable until its predicate
+    // is true, rather than being hidden. Keeping the row in place means a hunt
+    // for a setting always finds it, and says what it is waiting on (a row
+    // standing behind a switch reads "needs Playing track marker" rather than
+    // being missing). Its value is kept either way, so switching the parent back
+    // on restores it exactly as it was, and reset() still restores it too.
     readonly property var entries: [
-        // ---- Lists & playback ----
+        // ---- List & playing ----
         {
             key: "wrapAround",
+            section: "list",
             label: "Wrap around lists",
             hint: "Down on the last row goes to the top, up on the first goes to the last",
             options: [true, false],
@@ -449,6 +455,7 @@ Item {
         },
         {
             key: "playingHighlight",
+            section: "list",
             label: "Playing track marker",
             hint: "Tint and mark the current track while browsing its album",
             options: [true, false],
@@ -458,27 +465,20 @@ Item {
         },
         {
             key: "playingMarkerSides",
+            section: "list",
             label: "Playing marker sides",
             hint: "Which edges of the playing row carry the accent bar; the tint stays either way",
             options: ["none", "left", "right", "both"],
             defaultValue: "both",
             dependsOn: function () { return store.playingHighlight },
+            needs: "Playing track marker",
             get: function () { return store.playingMarkerSides },
             set: function (v) { store.playingMarkerSides = v },
             format: root.titleText
         },
         {
-            key: "seekThickness",
-            label: "Seeker thickness",
-            hint: "How thick the bar above the transport is drawn",
-            options: [3, 5, 7, 9],
-            defaultValue: 7,
-            get: function () { return store.seekThickness },
-            set: function (v) { store.seekThickness = v },
-            format: function (v) { return v + " px" }
-        },
-        {
             key: "rowSpacing",
+            section: "list",
             label: "Row height",
             hint: "Height of each list row; the gap between rows follows it",
             options: [24, 28, 32, 36, 40],
@@ -489,6 +489,7 @@ Item {
         },
         {
             key: "rowSeparators",
+            section: "list",
             label: "Row separator lines",
             hint: "Draw a faint line between rows in each pane",
             options: [true, false],
@@ -498,7 +499,19 @@ Item {
             format: root.boolText
         },
         {
+            key: "seekThickness",
+            section: "list",
+            label: "Seeker thickness",
+            hint: "How thick the bar above the transport is drawn",
+            options: [3, 5, 7, 9],
+            defaultValue: 7,
+            get: function () { return store.seekThickness },
+            set: function (v) { store.seekThickness = v },
+            format: function (v) { return v + " px" }
+        },
+        {
             key: "paneHeadings",
+            section: "panes",
             label: "Pane headings",
             hint: "Show the pane name over a rule at the top; off starts the lists at the very top",
             options: [true, false],
@@ -509,6 +522,7 @@ Item {
         },
         {
             key: "paneSeparators",
+            section: "panes",
             label: "Column separators",
             hint: "Draw the rules between the list panes and the artwork pane",
             options: [true, false],
@@ -519,6 +533,7 @@ Item {
         },
         {
             key: "focusGlow",
+            section: "panes",
             label: "Dim inactive panes",
             hint: "Fade the two unfocused panes so the active one stands out",
             options: [true, false],
@@ -528,6 +543,7 @@ Item {
         },
         {
             key: "activeRowBorder",
+            section: "panes",
             label: "Bold cursor frame",
             hint: "Draw a heavier frame around the caret row in the focused pane",
             options: [true, false],
@@ -536,10 +552,21 @@ Item {
             set: function (v) { store.activeRowBorder = v },
             format: root.boolText
         },
+        {
+            key: "borderWidth",
+            section: "panes",
+            label: "Pane border width",
+            hint: "Thickness of the outline around each pane",
+            options: [1, 2, 3, 4],
+            get: function () { return store.borderWidth },
+            set: function (v) { store.borderWidth = v },
+            format: function (v) { return v + " px" }
+        },
 
         // ---- Navigation ----
         {
             key: "vimKeys",
+            section: "list",
             label: "Vim keys",
             hint: "Use j/k/h/l/g/G for navigation",
             options: [true, false],
@@ -549,6 +576,7 @@ Item {
         },
         {
             key: "typeaheadSearch",
+            section: "list",
             label: "Typeahead search",
             hint: "Jump by typing first letters of names",
             options: [true, false],
@@ -558,17 +586,20 @@ Item {
         },
         {
             key: "typeaheadPlace",
+            section: "list",
             label: "Typeahead readout",
             hint: "Where the typed letters appear: tucked in the artists pane's corner, or centred in the middle of the window",
             options: ["corner", "center"],
             defaultValue: "corner",
             dependsOn: function () { return store.typeaheadSearch },
+            needs: "Typeahead search",
             get: function () { return store.typeaheadPlace },
             set: function (v) { store.typeaheadPlace = v },
             format: root.titleText
         },
         {
             key: "typeaheadScale",
+            section: "list",
             label: "Typeahead size",
             hint: "The readout's text size, as an offset from the theme",
             // Bias large: the readout is a transient overlay read at a glance from
@@ -577,42 +608,16 @@ Item {
             options: [-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
             defaultValue: 2,
             dependsOn: function () { return store.typeaheadSearch },
+            needs: "Typeahead search",
             get: function () { return store.typeaheadScale },
             set: function (v) { store.typeaheadScale = v },
             format: root.deltaText
         },
 
-        // ---- Appearance ----
-        {
-            key: "adaptiveColors",
-            label: "Recolor from cover art",
-            hint: "Follow the current album cover instead of the shell theme",
-            options: [true, false],
-            defaultValue: false,
-            get: function () { return store.adaptiveColors },
-            set: function (v) { store.adaptiveColors = v },
-            format: root.boolText
-        },
-        {
-            key: "albumYears",
-            label: "Album years",
-            hint: "Prefix each album with its release year, read from the Date tag",
-            options: [true, false],
-            get: function () { return store.albumYears },
-            set: function (v) { store.albumYears = v },
-            format: root.boolText
-        },
-        {
-            key: "borderWidth",
-            label: "Pane border width",
-            hint: "Thickness of the outline around each pane",
-            options: [1, 2, 3, 4],
-            get: function () { return store.borderWidth },
-            set: function (v) { store.borderWidth = v },
-            format: function (v) { return v + " px" }
-        },
+        // ---- Text & scale ----
         {
             key: "uiScale",
+            section: "text",
             label: "UI scale",
             hint: "Scales rows, spacing, fonts, icons and cover art together",
             options: [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5],
@@ -623,6 +628,7 @@ Item {
         },
         {
             key: "iconSize",
+            section: "text",
             label: "Icon size",
             hint: "Transport and UI icons",
             options: [12, 14, 16, 18, 20],
@@ -631,10 +637,9 @@ Item {
             set: function (v) { store.iconSize = v },
             format: function (v) { return v + " px" }
         },
-
-        // ---- Typography ----
         {
             key: "fontTitle",
+            section: "text",
             label: "Font size: playing song",
             hint: "Now playing title, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
@@ -645,6 +650,7 @@ Item {
         },
         {
             key: "fontSubtitle",
+            section: "text",
             label: "Font size: rows",
             hint: "Album and track rows, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
@@ -655,6 +661,7 @@ Item {
         },
         {
             key: "fontBody",
+            section: "text",
             label: "Font size: artist & time",
             hint: "Artist and the elapsed/total time, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
@@ -665,6 +672,7 @@ Item {
         },
         {
             key: "fontBodySmall",
+            section: "text",
             label: "Font size: headings",
             hint: "Pane headings and secondary text, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
@@ -675,6 +683,7 @@ Item {
         },
         {
             key: "fontCaption",
+            section: "text",
             label: "Font size: status banner",
             hint: "The MPD error banner, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
@@ -683,15 +692,36 @@ Item {
             set: function (v) { store.fontCaption = v },
             format: root.deltaText
         },
+        {
+            key: "adaptiveColors",
+            section: "text",
+            label: "Recolor from cover art",
+            hint: "Follow the current album cover instead of the shell theme",
+            options: [true, false],
+            defaultValue: false,
+            get: function () { return store.adaptiveColors },
+            set: function (v) { store.adaptiveColors = v },
+            format: root.boolText
+        },
+        {
+            key: "albumYears",
+            section: "text",
+            label: "Album years",
+            hint: "Prefix each album with its release year, read from the Date tag",
+            options: [true, false],
+            get: function () { return store.albumYears },
+            set: function (v) { store.albumYears = v },
+            format: root.boolText
+        },
 
         // ---- Cover art ----
         //
-        // Every entry in this section carries group: "artwork". That tag is what
-        // the card groups into its own Artwork column, so the cover settings sit
-        // together in one place rather than split across the type-based columns.
+        // Every entry in this section carries section: "artwork". That is what
+        // the card gathers into its own Artwork column, so the cover settings sit
+        // together in one place rather than split across the other topics.
         {
             key: "coverBorder",
-            group: "artwork",
+            section: "artwork",
             label: "Cover art border",
             hint: "Ring around the cover art, separate from the pane rules",
             options: [true, false],
@@ -702,7 +732,7 @@ Item {
         },
         {
             key: "coverRounded",
-            group: "artwork",
+            section: "artwork",
             label: "Round artwork corners",
             hint: "Round the artwork's corners; off draws it as a plain square",
             options: [true, false],
@@ -713,7 +743,7 @@ Item {
         },
         {
             key: "coverTransition",
-            group: "artwork",
+            section: "artwork",
             label: "Cover change transition",
             hint: "Fade the new album cover in over the old one; instant is a plain swap",
             options: [0, 100, 200, 300, 400, 500, 600],
@@ -724,19 +754,20 @@ Item {
         },
         {
             key: "coverBorderWidth",
-            group: "artwork",
+            section: "artwork",
             label: "Cover art border width",
             hint: "Thickness of the ring around the cover art",
             options: [1, 2, 3, 4, 6, 8],
             defaultValue: 1,
             dependsOn: function () { return store.coverBorder },
+            needs: "Cover art border",
             get: function () { return store.coverBorderWidth },
             set: function (v) { store.coverBorderWidth = v },
             format: function (v) { return v + " px" }
         },
         {
             key: "coverPlaceholder",
-            group: "artwork",
+            section: "artwork",
             label: "Placeholder art",
             hint: "Show a CD when the album has no artwork, or leave the space empty",
             options: [true, false],
@@ -746,14 +777,12 @@ Item {
             format: root.boolText
         },
 
-        // The three pane settings sit together, the mode row first. The mode owns
-        // two dependents below it, so putting it above them means switching it
-        // cannot shift its own row: the rows that appear and disappear are all
-        // underneath. The size slider has a dependency of its own and sits below
-        // those, so it lands in the pane rows' group too.
+        // The pane settings sit together, the mode row first, and each dependent
+        // row sits under the row it waits on so the "needs ..." note points at a
+        // setting directly above it rather than one elsewhere in the column.
         {
             key: "coverBandMode",
-            group: "artwork",
+            section: "artwork",
             label: "Artwork pane",
             hint: "Give the album art its own pane on the right, or let it follow window size",
             options: ["off", "on", "auto"],
@@ -778,31 +807,33 @@ Item {
         },
         {
             key: "coverBandAlign",
-            group: "artwork",
+            section: "artwork",
             label: "Artwork pane position",
             hint: "Where the cover sits vertically in the artwork pane",
             options: ["top", "middle", "bottom"],
             defaultValue: "bottom",
             dependsOn: function () { return store.coverBandMode !== "off" },
+            needs: "Artwork pane",
             get: function () { return store.coverBandAlign },
             set: function (v) { store.coverBandAlign = v },
             format: root.titleText
         },
         {
             key: "coverPadding",
-            group: "artwork",
+            section: "artwork",
             label: "Cover art padding",
             hint: "Keep a margin between the cover and the pane edges; off runs it flush",
             options: [true, false],
             defaultValue: false,
             dependsOn: function () { return store.coverBandMode !== "off" },
+            needs: "Artwork pane",
             get: function () { return store.coverPadding },
             set: function (v) { store.coverPadding = v },
             format: root.boolText
         },
         {
             key: "coverScale",
-            group: "artwork",
+            section: "artwork",
             label: "Artwork size",
             hint: "Height of the artwork as a share of the space above the now-playing bar; 100% fills it top to bottom",
             // Even ten-step rungs, rather than the old fives low down and tens up
@@ -810,39 +841,41 @@ Item {
             options: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
             // The floating placement's resting size; the pane's 100% is applied by
             // the artwork-pane toggle above. This is what reset() lands on. It is
-            // only offered when the pane is pinned on or off: under "auto" the
+            // only editable when the pane is pinned on or off: under "auto" the
             // window picks the placement and the size that goes with it.
             defaultValue: 30,
             dependsOn: function () { return store.coverBandMode !== "auto" },
+            needs: "Artwork pane pinned on or off",
             get: function () { return store.coverScale },
             set: function (v) { store.coverScale = v },
             format: function (v) { return v + "%" }
         },
         {
             key: "coverBandMinPct",
-            group: "artwork",
+            section: "artwork",
             label: "Artwork pane at or above",
             hint: "Show the pane while the window is at least this share of the screen's width; smaller than that the cover floats instead",
-            // The experiment knob: the size floor the panel measures the window
-            // against, as a share of the screen it is on. 100% keeps the pane only
-            // while the window fills the screen; lower it to admit smaller windows.
-            // Five-step rungs so a nudge is visible without walking a long ramp.
+            // The size floor the panel measures the window against, as a share of
+            // the screen it is on. 100% keeps the pane only while the window fills
+            // the screen; lower it to admit smaller windows. Five-step rungs so a
+            // nudge is visible without walking a long ramp.
             options: [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
             defaultValue: 100,
             dependsOn: function () { return store.coverBandMode === "auto" },
+            needs: "Artwork pane set to auto",
             get: function () { return store.coverBandMinPct },
             set: function (v) { store.coverBandMinPct = v },
             format: function (v) { return v + "%" }
         },
 
-        // ---- Optional features ----
+        // ---- Player wide ----
         {
             key: "fetchCovers",
+            section: "wide",
             label: "Fetch missing cover art",
             hint: "Look a cover up on iTunes or Deezer when an album has none, and cache it",
             options: [true, false],
             defaultValue: true,
-            optional: true,
             get: function () { return store.fetchCovers },
             set: function (v) { store.fetchCovers = v },
             format: root.boolText
@@ -854,85 +887,86 @@ Item {
     }
 
     // A slider is anything numeric; everything else is a switch or a named
-    // choice.
+    // choice. This no longer decides which column an entry lands in -- topic
+    // does -- but the card still needs it to know whether a row draws a track.
     function isSlider(entry) {
         var o = entry ? entry.options : null
         return !!(o && o.length > 0 && typeof o[0] === "number")
     }
 
-    // An entry whose dependsOn is false is out of the list entirely: not drawn,
-    // not navigable, not counted. Its value is untouched, so switching the
-    // parent back on restores it exactly as it was, and reset() still restores
-    // it too. This is what keeps a dependent setting (a border width, a pane
-    // position) from sitting in the card looking live while its parent is off.
-    readonly property var visibleEntries: entries.filter(function (e) {
-        return !e.dependsOn || e.dependsOn()
-    })
+    // Whether a dependent setting's parent is satisfied. Every entry is in the
+    // card either way; this is what the row is greyed and made non-navigable on
+    // while it is false, and what the row's "needs ..." note sits beside.
+    function isActive(entry) {
+        return !entry || !entry.dependsOn || entry.dependsOn()
+    }
 
-    // The card is four fixed columns, each a single vertical list: switches and
-    // named choices, then sizes and sliders, then the artwork settings, then the
-    // optional extras. A column is just a filtered view of the visible entries,
-    // in table order.
+    // Every entry the card draws, in table order. Nothing is filtered out any
+    // more: a dependent whose parent is off stays in the list, greyed, so a hunt
+    // for a setting always finds the row and the row can say what it is waiting
+    // on. It is not navigable and not editable in that state (see isActive, which
+    // the panel's movement and the card's clicks both check), but its stored
+    // value is untouched and reset() still restores it.
+    readonly property var visibleEntries: entries
+
+    // The sections the card draws, in column order, each a name and the tag its
+    // entries carry. A section is one topic -- the lists and what plays them, the
+    // panes and their rules, the text and scale, the cover art, the extras --
+    // rather than one kind of control, so a slider and a switch sit together
+    // wherever their subject says they should.
     //
-    // The artwork column is the one exception to "a column is one kind of
-    // control": it gathers every cover setting by its group tag, so a switch and
-    // a slider sit side by side there. Keeping the cover settings together is
-    // what the column is for, and they are few enough that the mix still reads
-    // as a single block.
-    readonly property var toggleEntries: visibleEntries.filter(function (e) {
-        return !e.optional && !isSlider(e) && e.group !== "artwork"
-    })
-    readonly property var sliderEntries: visibleEntries.filter(function (e) {
-        return !e.optional && isSlider(e) && e.group !== "artwork"
-    })
-    readonly property var artworkEntries: visibleEntries.filter(function (e) {
-        return e.group === "artwork"
-    })
-    readonly property var optionalEntries: visibleEntries.filter(function (e) {
-        return !!e.optional && e.group !== "artwork"
-    })
+    // The last section hugs its content instead of taking an equal share: it
+    // holds a single row with a short label, so filling a full column with it
+    // only starved the sections beside it.
+    readonly property var sections: [
+        { tag: "list", name: "List & playing" },
+        { tag: "panes", name: "Panes & layout" },
+        { tag: "text", name: "Text & scale" },
+        { tag: "artwork", name: "Artwork" },
+        { tag: "wide", name: "Player wide", fill: false }
+    ]
 
-    // Each column carries its entries and, next to each, that entry's index into
-    // visibleEntries. The index is the caret's currency: an object identity does
-    // not survive the trip through a Repeater's model -- the delegate's modelData
-    // hands back a copy, so comparing references never matched and nothing ever
-    // read as selected -- while a plain integer does.
+    // The entries behind a section, in table order.
+    function sectionEntries(tag) {
+        return visibleEntries.filter(function (e) { return e.section === tag })
+    }
+
+    // Each row carries its entry, that entry's index into visibleEntries, and
+    // whether the entry is currently active. The index is the caret's currency:
+    // an object identity does not survive the trip through a Repeater's model --
+    // the delegate's modelData hands back a copy, so comparing references never
+    // matched and nothing ever read as selected -- while a plain integer does.
     function indexed(list) {
         var out = []
         for (var i = 0; i < list.length; i++)
-            out.push({ entry: list[i], index: visibleEntries.indexOf(list[i]) })
+            out.push({
+                entry: list[i],
+                index: visibleEntries.indexOf(list[i]),
+                active: isActive(list[i])
+            })
         return out
     }
 
-    readonly property var columns: [
-        { name: "Toggles", items: indexed(toggleEntries) },
-        { name: "Sizes / sliders", items: indexed(sliderEntries) },
-        { name: "Artwork", items: indexed(artworkEntries) },
-        // The optional column hugs its content instead of taking an equal share.
-        // It holds a couple of rows with short labels, so filling a quarter of the
-        // card only starved the columns beside it -- the artwork labels came out
-        // elided while this one sat half empty.
-        { name: "Optional features", items: indexed(optionalEntries), fill: false }
-    ]
+    readonly property var columns: sections.map(function (s) {
+        return { name: s.name, items: indexed(sectionEntries(s.tag)), fill: s.fill }
+    })
 
     // The entries behind a column, for the panel's navigation.
     function columnEntries(column) {
-        if (column <= 0) return toggleEntries
-        if (column === 1) return sliderEntries
-        if (column === 2) return artworkEntries
-        return optionalEntries
+        var s = sections[column]
+        return s ? sectionEntries(s.tag) : []
     }
 
-    // Which column an entry sits in and how far down it. rowOf answers by
-    // position rather than identity, so the panel can ask with a bare index.
-    // Group wins over the shape test, so a grouped entry lands in its own column
-    // whatever kind of control it is.
+    // Which column an entry sits in, from its section tag. An entry with no tag
+    // -- one added without reading the note above -- falls to the first section
+    // rather than vanishing, so the card still shows it.
     function columnOf(index) {
         var e = visibleEntries[index]
         if (!e) return 0
-        if (e.group === "artwork") return 2
-        if (e.optional) return 3
-        return isSlider(e) ? 1 : 0
+        for (var i = 0; i < sections.length; i++) {
+            if (sections[i].tag === e.section) return i
+        }
+        return 0
     }
 
     function rowOf(index) {
@@ -957,7 +991,12 @@ Item {
     // value takes the first option whichever way the user steps: the bare
     // arithmetic wraps -1 past the end on a step back and would land on the
     // second-to-last option instead.
+    //
+    // An inactive entry refuses outright. The row is visible but parked behind
+    // the setting it waits on, so changing it from the card would edit something
+    // with no effect and no way to see that it is doing anything.
     function cycle(entry, delta) {
+        if (!isActive(entry)) return
         var options = entry.options
         var i = options.indexOf(entry.get())
         if (i === -1) {

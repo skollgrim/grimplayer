@@ -36,7 +36,7 @@ with a job of its own reports the failure there. The table says which is which.
 | Embedded cover art | `ffmpeg` | Albums whose artwork is inside the file fall back to the placeholder; sidecar and fetched art are unaffected. |
 | Tag and cover editing, country flags | `mid3v2` (MP3) or `metaflac` (FLAC), and `zenity` to pick a cover file | The tag editor opens and shows what the files hold, but saving writes nothing and Browse cannot choose a cover file. |
 | Look up | `python3` with [`mutagen`](https://mutagen.readthedocs.io/) and [`musicbrainzngs`](https://python-musicbrainzngs.readthedocs.io/), and network access | The Match row reports the failure; editing by hand still works. |
-| Fetch missing cover art | `python3` (standard library only) and network access | Albums with no artwork keep the placeholder. On by default; turned off under **Optional features** in the settings. |
+| Fetch missing cover art | `python3` (standard library only) and network access | Albums with no artwork keep the placeholder. On by default; turned off under **Player wide** in the settings. |
 
 ## Requirements
 
@@ -102,17 +102,19 @@ then a one-liner around whichever of the three you prefer.
 | `?` | Key reference |
 
 In the settings card: arrows or `hjkl` move — up/down moves within a column,
-left/right crosses the four columns — `Enter` (or `Space`) toggles a switch or
+left/right crosses the columns — `Enter` (or `Space`) toggles a switch or
 opens a slider, `←` `→` (or `h` `l`) adjust the open slider, `g` / `G` jump to the
 first or last setting, `R` resets everything, `?` switches to the key reference,
 `Esc` steps back out and `Q` closes.
 
-The card shows the switches and named choices in one column, the sizes and
-sliders in the next, every artwork setting together in a third, and the optional
-extras last, so a setting is always in the same place. A setting that only matters
-while another is on — a cover border's width, the artwork pane's position — stays
-hidden until its parent is switched on, and its value is kept for when it comes
-back.
+The card is cut into columns by topic — the list and what plays it, the panes and
+their rules, the text and its scale, the cover art, and the player-wide extras —
+so a slider and a switch sit together where their subject says they should, and a
+setting is always in the same place. A setting that only matters while another is
+on — a cover border's width, the artwork pane's position — stays on the card but
+is greyed, with a line under its name saying what it needs, so you can always find
+it and never edit a value nothing reads. Its value is kept for when the parent
+comes back.
 
 In the key reference: it lists the browser keys and how to reach each screen;
 `Esc`, `Q` or `?` closes it.
