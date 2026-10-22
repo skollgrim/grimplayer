@@ -167,7 +167,7 @@ Item {
 
         // Where the cover sits vertically inside the artwork pane: "top",
         // "middle" or "bottom". Only meaningful while cover band is active.
-        property string coverBandAlign: "bottom"
+        property string coverBandAlign: "middle"
 
         // Keep a margin between the cover and the pane edges in the artwork pane.
         // Off runs the cover flush to the edges, filling the pane; on restores the
@@ -717,7 +717,7 @@ Item {
         },
         {
             key: "adaptiveColors",
-            section: "text",
+            section: "wide",
             label: "Recolor from cover art",
             hint: "Follow the current album cover instead of the shell theme",
             options: [true, false],
@@ -834,7 +834,7 @@ Item {
             label: "Artwork pane position",
             hint: "Where the cover sits vertically in the artwork pane",
             options: ["top", "middle", "bottom"],
-            defaultValue: "bottom",
+            defaultValue: "middle",
             dependsOn: function () { return store.coverBandMode !== "off" },
             after: "coverBandMode",
             get: function () { return store.coverBandAlign },
