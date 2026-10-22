@@ -104,9 +104,15 @@ Item {
         // between.
         property bool paneSeparators: true
 
-        // Rules. borderWidth drives both the heading underline and the rule
-        // between panes, so the two are always the same weight. The cover art
-        // ring has its own slider so the two never drag each other along.
+        // Rule width: the vertical rules between the panes and the underline
+        // beneath each pane heading. One setting for both, so the two are always
+        // the same weight -- a divider and a heading underline that disagreed
+        // would read as two different sorts of line. The cover art's ring is
+        // deliberately not one of them: it has its own width (coverBorderWidth)
+        // so the art's frame and the pane rules never drag each other along.
+        // This is greyed only while both of a rule's homes are off (see the
+        // entry), which is the one state where nothing on screen is drawn with
+        // it.
         property int borderWidth: 1
         property bool coverBorder: false
         property bool coverPlaceholder: true
@@ -562,6 +568,23 @@ Item {
             format: root.boolText
         },
         {
+            key: "borderWidth",
+            section: "panes",
+            label: "Rule width",
+            hint: "Thickness of the pane dividers and the heading underlines",
+            // One width for both rules, so it only stops meaning anything when
+            // neither rule is drawn: the dividers are off and so are the
+            // headings, which leaves nothing on screen using it. While either
+            // one is on the setting is live -- greying it under Pane dividers
+            // alone would hide the knob that still sizes the heading underline.
+            options: [1, 2, 3, 4],
+            dependsOn: function () { return store.paneSeparators || store.paneHeadings },
+            after: "paneSeparators",
+            get: function () { return store.borderWidth },
+            set: function (v) { store.borderWidth = v },
+            format: function (v) { return v + " px" }
+        },
+        {
             key: "focusGlow",
             section: "panes",
             label: "Dim unfocused",
@@ -581,16 +604,6 @@ Item {
             get: function () { return store.activeRowBorder },
             set: function (v) { store.activeRowBorder = v },
             format: root.boolText
-        },
-        {
-            key: "borderWidth",
-            section: "panes",
-            label: "Border width",
-            hint: "Thickness of the outline around each pane",
-            options: [1, 2, 3, 4],
-            get: function () { return store.borderWidth },
-            set: function (v) { store.borderWidth = v },
-            format: function (v) { return v + " px" }
         },
 
         // ---- Navigation ----
@@ -718,7 +731,7 @@ Item {
         {
             key: "adaptiveColors",
             section: "wide",
-            label: "Cover recolour",
+            label: "Adaptive colours",
             hint: "Follow the current album cover instead of the shell theme",
             options: [true, false],
             defaultValue: false,
