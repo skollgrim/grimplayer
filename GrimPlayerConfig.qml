@@ -437,10 +437,11 @@ Item {
     //
     // An entry with `dependsOn` is greyed and non-navigable until its predicate
     // is true, rather than being hidden. Keeping the row in place means a hunt
-    // for a setting always finds it, and says what it is waiting on (a row
-    // standing behind a switch reads "needs Playing track marker" rather than
-    // being missing). Its value is kept either way, so switching the parent back
-    // on restores it exactly as it was, and reset() still restores it too.
+    // for a setting always finds it. A dependent also names the row it waits on
+    // in `after`, and the card sits it directly beneath that row, so the row
+    // above a greyed setting is why it is greyed. Its value is kept either way,
+    // so switching the parent back on restores it exactly as it was, and reset()
+    // still restores it too.
     readonly property var entries: [
         // ---- List & playing ----
         {
@@ -471,7 +472,6 @@ Item {
             options: ["none", "left", "right", "both"],
             defaultValue: "both",
             dependsOn: function () { return store.playingHighlight },
-            needs: "Playing track marker",
             after: "playingHighlight",
             get: function () { return store.playingMarkerSides },
             set: function (v) { store.playingMarkerSides = v },
@@ -593,7 +593,6 @@ Item {
             options: ["corner", "center"],
             defaultValue: "corner",
             dependsOn: function () { return store.typeaheadSearch },
-            needs: "Typeahead search",
             after: "typeaheadSearch",
             get: function () { return store.typeaheadPlace },
             set: function (v) { store.typeaheadPlace = v },
@@ -610,7 +609,6 @@ Item {
             options: [-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
             defaultValue: 2,
             dependsOn: function () { return store.typeaheadSearch },
-            needs: "Typeahead search",
             after: "typeaheadSearch",
             get: function () { return store.typeaheadScale },
             set: function (v) { store.typeaheadScale = v },
@@ -741,7 +739,6 @@ Item {
             options: [1, 2, 3, 4, 6, 8],
             defaultValue: 1,
             dependsOn: function () { return store.coverBorder },
-            needs: "Cover art border",
             after: "coverBorder",
             get: function () { return store.coverBorderWidth },
             set: function (v) { store.coverBorderWidth = v },
@@ -781,9 +778,9 @@ Item {
             format: root.boolText
         },
 
-        // The pane settings sit together, the mode row first, and each dependent
-        // row sits under the row it waits on so the "needs ..." note points at a
-        // setting directly above it rather than one elsewhere in the column.
+        // The pane settings sit together, the mode row first, with its dependents
+        // grouped under it: the card sits each one directly beneath the row it
+        // waits on, so the mode reads as the head of its own little block.
         {
             key: "coverBandMode",
             section: "artwork",
@@ -817,7 +814,6 @@ Item {
             options: ["top", "middle", "bottom"],
             defaultValue: "bottom",
             dependsOn: function () { return store.coverBandMode !== "off" },
-            needs: "Artwork pane",
             after: "coverBandMode",
             get: function () { return store.coverBandAlign },
             set: function (v) { store.coverBandAlign = v },
@@ -831,7 +827,6 @@ Item {
             options: [true, false],
             defaultValue: false,
             dependsOn: function () { return store.coverBandMode !== "off" },
-            needs: "Artwork pane",
             after: "coverBandMode",
             get: function () { return store.coverPadding },
             set: function (v) { store.coverPadding = v },
@@ -855,7 +850,6 @@ Item {
             // offering to undo the choice that was just made.
             defaultValue: 30,
             dependsOn: function () { return store.coverBandMode === "off" },
-            needs: "Artwork pane pinned off",
             after: "coverBandMode",
             get: function () { return store.coverScale },
             set: function (v) { store.coverScale = v },
@@ -873,7 +867,6 @@ Item {
             options: [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
             defaultValue: 100,
             dependsOn: function () { return store.coverBandMode === "auto" },
-            needs: "Artwork pane set to auto",
             after: "coverBandMode",
             get: function () { return store.coverBandMinPct },
             set: function (v) { store.coverBandMinPct = v },
@@ -908,7 +901,7 @@ Item {
 
     // Whether a dependent setting's parent is satisfied. Every entry is in the
     // card either way; this is what the row is greyed and made non-navigable on
-    // while it is false, and what the row's "needs ..." note sits beside.
+    // while it is false.
     function isActive(entry) {
         return !entry || !entry.dependsOn || entry.dependsOn()
     }

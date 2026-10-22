@@ -8,10 +8,10 @@ pragma ComponentBehavior: Bound
 // in a column where the thing they share says they should, and a setting is
 // always in the same place every time the card opens.
 //
-// A setting that waits on another is drawn greyed rather than hidden, with a
-// line under its name saying what it needs. Keeping the row in place means a hunt
-// for it always finds it, and a row that greys while the caret is on it does not
-// move the thing under the caret.
+// A setting that waits on another is drawn greyed rather than hidden, and sits
+// directly beneath the row it waits on, so the row above is why it is greyed.
+// Keeping the row in place means a hunt for it always finds it, and a row that
+// greys while the caret is on it does not move the thing under the caret.
 //
 // Within a cell the label sits on the left and a fixed-width control block on the
 // right, so every value in a column lines up on the same vertical edge. That fixed
@@ -100,15 +100,11 @@ Item {
             readonly property int visIndex: modelData.index
             readonly property bool selected: visIndex === root.index
             // A dependent whose parent is off. It is drawn, but greyed and kept
-            // out of the caret's way, and it says what it is waiting on instead of
-            // changing a value nothing reads.
+            // out of the caret's way, so it cannot change a value nothing reads.
             readonly property bool active: modelData.active !== false
-            readonly property string needNote: entryData.needs || ""
 
             Layout.fillWidth: true
-            // A row with a "needs ..." note is taller, so the second line has room
-            // without the label sliding off its own baseline.
-            Layout.preferredHeight: Math.round((row.needNote !== "" && !row.active ? 50 : 36) * root.uiScale)
+            Layout.preferredHeight: Math.round(36 * root.uiScale)
             // The row's own content width, exposed so a column that hugs its
             // content (see the columns' fill flag) has something to size to. The
             // inner RowLayout is anchored, so it does not feed the implicit width
@@ -182,33 +178,16 @@ Item {
                 // longest label. The accent ink, the filled row and the bar down
                 // its edge already carry the selection.
                 //
-                // A greyed dependent adds a second line saying what it waits on,
-                // rather than putting the note inline with the name: inline would
-                // widen this cell, and the cell's width is what the columns divide
-                // by, so every column would jump the moment a row greyed.
-                ColumnLayout {
+                // A greyed dependent carries no note of its own: it sits directly
+                // under the setting it waits on, so the row above is the note.
+                Text {
                     Layout.fillWidth: true
-                    spacing: 0
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: row.entryData.label
-                        textFormat: Text.PlainText
-                        color: row.selected ? root.colAccent : root.colForeground
-                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                        opacity: row.selected ? 1.0 : 0.72
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        visible: !row.active && row.needNote !== ""
-                        text: "needs " + row.needNote
-                        textFormat: Text.PlainText
-                        color: root.colMuted
-                        font.pixelSize: Math.round(Style.font.caption * root.uiScale)
-                        elide: Text.ElideRight
-                    }
+                    text: row.entryData.label
+                    textFormat: Text.PlainText
+                    color: row.selected ? root.colAccent : root.colForeground
+                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                    opacity: row.selected ? 1.0 : 0.72
+                    elide: Text.ElideRight
                 }
 
                 // Only a slider row reserves the track. A switch only needs the

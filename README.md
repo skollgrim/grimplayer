@@ -112,10 +112,9 @@ their rules, the text and its scale, the cover art, and the player-wide extras �
 so a slider and a switch sit together where their subject says they should, and a
 setting is always in the same place. A setting that only matters while another is
 on — a cover border's width, the artwork pane's position — stays on the card but
-is greyed, with a line under its name saying what it needs, so you always find it
-and never edit a value nothing reads. Each one sits directly beneath the setting
-it waits on, so the row that greys out and the row that greyed it are never apart.
-Its value is kept for when the parent comes back.
+is greyed, sitting directly beneath the setting it waits on, so the row above is
+why it is greyed and you never edit a value nothing reads. Its value is kept for
+when the parent comes back.
 
 In the key reference: it lists the browser keys and how to reach each screen;
 `Esc`, `Q` or `?` closes it.
