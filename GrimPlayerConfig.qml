@@ -472,6 +472,7 @@ Item {
             defaultValue: "both",
             dependsOn: function () { return store.playingHighlight },
             needs: "Playing track marker",
+            after: "playingHighlight",
             get: function () { return store.playingMarkerSides },
             set: function (v) { store.playingMarkerSides = v },
             format: root.titleText
@@ -593,6 +594,7 @@ Item {
             defaultValue: "corner",
             dependsOn: function () { return store.typeaheadSearch },
             needs: "Typeahead search",
+            after: "typeaheadSearch",
             get: function () { return store.typeaheadPlace },
             set: function (v) { store.typeaheadPlace = v },
             format: root.titleText
@@ -609,6 +611,7 @@ Item {
             defaultValue: 2,
             dependsOn: function () { return store.typeaheadSearch },
             needs: "Typeahead search",
+            after: "typeaheadSearch",
             get: function () { return store.typeaheadScale },
             set: function (v) { store.typeaheadScale = v },
             format: root.deltaText
@@ -731,6 +734,20 @@ Item {
             format: root.boolText
         },
         {
+            key: "coverBorderWidth",
+            section: "artwork",
+            label: "Cover art border width",
+            hint: "Thickness of the ring around the cover art",
+            options: [1, 2, 3, 4, 6, 8],
+            defaultValue: 1,
+            dependsOn: function () { return store.coverBorder },
+            needs: "Cover art border",
+            after: "coverBorder",
+            get: function () { return store.coverBorderWidth },
+            set: function (v) { store.coverBorderWidth = v },
+            format: function (v) { return v + " px" }
+        },
+        {
             key: "coverRounded",
             section: "artwork",
             label: "Round artwork corners",
@@ -751,19 +768,6 @@ Item {
             get: function () { return store.coverTransition },
             set: function (v) { store.coverTransition = v },
             format: function (v) { return v === 0 ? "instant" : v + " ms" }
-        },
-        {
-            key: "coverBorderWidth",
-            section: "artwork",
-            label: "Cover art border width",
-            hint: "Thickness of the ring around the cover art",
-            options: [1, 2, 3, 4, 6, 8],
-            defaultValue: 1,
-            dependsOn: function () { return store.coverBorder },
-            needs: "Cover art border",
-            get: function () { return store.coverBorderWidth },
-            set: function (v) { store.coverBorderWidth = v },
-            format: function (v) { return v + " px" }
         },
         {
             key: "coverPlaceholder",
@@ -814,6 +818,7 @@ Item {
             defaultValue: "bottom",
             dependsOn: function () { return store.coverBandMode !== "off" },
             needs: "Artwork pane",
+            after: "coverBandMode",
             get: function () { return store.coverBandAlign },
             set: function (v) { store.coverBandAlign = v },
             format: root.titleText
@@ -827,6 +832,7 @@ Item {
             defaultValue: false,
             dependsOn: function () { return store.coverBandMode !== "off" },
             needs: "Artwork pane",
+            after: "coverBandMode",
             get: function () { return store.coverPadding },
             set: function (v) { store.coverPadding = v },
             format: root.boolText
@@ -841,11 +847,16 @@ Item {
             options: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
             // The floating placement's resting size; the pane's 100% is applied by
             // the artwork-pane toggle above. This is what reset() lands on. It is
-            // only editable when the pane is pinned on or off: under "auto" the
-            // window picks the placement and the size that goes with it.
+            // only editable while the pane is pinned off, where the floating cover
+            // is the arrangement and its size is genuinely the user's to set: under
+            // "auto" the window picks the placement and the size that goes with it,
+            // and pinned "on" the pane's own full height is what the toggle above
+            // just wrote into this value, so offering the slider there would be
+            // offering to undo the choice that was just made.
             defaultValue: 30,
-            dependsOn: function () { return store.coverBandMode !== "auto" },
-            needs: "Artwork pane pinned on or off",
+            dependsOn: function () { return store.coverBandMode === "off" },
+            needs: "Artwork pane pinned off",
+            after: "coverBandMode",
             get: function () { return store.coverScale },
             set: function (v) { store.coverScale = v },
             format: function (v) { return v + "%" }
@@ -863,6 +874,7 @@ Item {
             defaultValue: 100,
             dependsOn: function () { return store.coverBandMode === "auto" },
             needs: "Artwork pane set to auto",
+            after: "coverBandMode",
             get: function () { return store.coverBandMinPct },
             set: function (v) { store.coverBandMinPct = v },
             format: function (v) { return v + "%" }
@@ -947,6 +959,38 @@ Item {
         return out
     }
 
+    // The table order, arranged so every dependent sits directly under the row it
+    // waits on. An entry naming a parent in `after` is pulled up beside it; one
+    // without keeps its table position. The arrangement is done here rather than
+    // left to the table's written order so that "a dependent sits under its
+    // parent" is a property of the list the card draws, not a thing a later edit
+    // to the table can quietly break -- and so a parent's dependents keep their
+    // own order among themselves.
+    //
+    // Each parent is walked once, emitting the parent and then everything that
+    // names it, in table order. Entries are only emitted once, so a table written
+    // in any order comes out the same way.
+    function arranged() {
+        var out = []
+        var used = {}
+        for (var i = 0; i < visibleEntries.length; i++) {
+            var e = visibleEntries[i]
+            if (used[e.key]) continue
+            out.push(e)
+            used[e.key] = true
+            // Everything waiting on this row, in table order, goes directly
+            // beneath it.
+            for (var j = 0; j < visibleEntries.length; j++) {
+                var d = visibleEntries[j]
+                if (d.after === e.key && !used[d.key]) {
+                    out.push(d)
+                    used[d.key] = true
+                }
+            }
+        }
+        return out
+    }
+
     // The entries behind each section, worked out once and read by the card, the
     // navigation and the caret's column lookup alike. Filtering the table five
     // times over on every read would be five passes over every entry each time
@@ -954,9 +998,10 @@ Item {
     readonly property var sectionLists: {
         var out = {}
         for (var i = 0; i < sections.length; i++) out[sections[i].tag] = []
-        for (var e = 0; e < visibleEntries.length; e++) {
-            var tag = visibleEntries[e].section
-            if (out[tag] !== undefined) out[tag].push(visibleEntries[e])
+        var rows = arranged()
+        for (var e = 0; e < rows.length; e++) {
+            var tag = rows[e].section
+            if (out[tag] !== undefined) out[tag].push(rows[e])
         }
         return out
     }
