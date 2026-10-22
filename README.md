@@ -7,7 +7,7 @@ nothing polls.
 
 ![GrimPlayer](preview.png)
 
-With **Recolor from cover art** on, the panel follows the playing album's sleeve:
+With **Cover recolour** on, the panel follows the playing album's sleeve:
 
 ![GrimPlayer recoloured from the album art](preview2.png)
 
@@ -16,9 +16,9 @@ With **Recolor from cover art** on, the panel follows the playing album's sleeve
 - **Simple, minimal, three-pane layout** for browsing artists, albums and tracks.
 - **Album-focused** — plays albums locally and offline with no queue management or saved playlists.
 - **Cover art** — finds covers in the album folder, falls back to embedded art (extracted with `ffmpeg` and cached), and can optionally fetch missing covers online.
-- **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Artwork pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Artwork pane at or above` tunes the window size floor the pane is kept to.
-- **Recolor from cover art** — optionally matches the panel's colors to the playing album.
-- **Typeahead** — jump to matching rows by typing, with the readout placed in the corner or centred, at a size of your choosing.
+- **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Cover pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Pane above` tunes the window size floor the pane is kept to.
+- **Cover recolour** — optionally matches the panel's colors to the playing album.
+- **Type-to-find** — jump to matching rows by typing, with the readout placed in the corner or centred, at a size of your choosing.
 - **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, themes and optional features.
 - **Vim motions (optional)** — `j` `k` `h` `l` `g` `G` alongside arrows; with them on, `Shift` + `h`/`l` seek.
 - **Key reference** (`?`) — quick overview of keys.
@@ -36,7 +36,7 @@ with a job of its own reports the failure there. The table says which is which.
 | Embedded cover art | `ffmpeg` | Albums whose artwork is inside the file fall back to the placeholder; sidecar and fetched art are unaffected. |
 | Tag and cover editing, country flags | `mid3v2` (MP3) or `metaflac` (FLAC), and `zenity` to pick a cover file | The tag editor opens and shows what the files hold, but saving writes nothing and Browse cannot choose a cover file. |
 | Look up | `python3` with [`mutagen`](https://mutagen.readthedocs.io/) and [`musicbrainzngs`](https://python-musicbrainzngs.readthedocs.io/), and network access | The Match row reports the failure; editing by hand still works. |
-| Fetch missing cover art | `python3` (standard library only) and network access | Albums with no artwork keep the placeholder. On by default; turned off under **Player wide** in the settings. |
+| Fetch covers | `python3` (standard library only) and network access | Albums with no artwork keep the placeholder. On by default; turned off under **Player wide** in the settings. |
 
 ## Requirements
 

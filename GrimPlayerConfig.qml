@@ -455,7 +455,7 @@ Item {
         {
             key: "wrapAround",
             section: "list",
-            label: "Wrap around lists",
+            label: "Wrap lists",
             hint: "Down on the last row goes to the top, up on the first goes to the last",
             options: [true, false],
             get: function () { return store.wrapAround },
@@ -465,8 +465,8 @@ Item {
         {
             key: "playingHighlight",
             section: "list",
-            label: "Playing track marker",
-            hint: "Tint and mark the current track while browsing its album",
+            label: "Playing tint",
+            hint: "Tint the current track while browsing its album",
             options: [true, false],
             get: function () { return store.playingHighlight },
             set: function (v) { store.playingHighlight = v },
@@ -475,7 +475,7 @@ Item {
         {
             key: "playingMarkerSides",
             section: "list",
-            label: "Playing marker sides",
+            label: "Marker sides",
             hint: "Which edges of the playing row carry the accent bar; the tint stays either way",
             options: ["none", "left", "right", "both"],
             defaultValue: "right",
@@ -499,7 +499,7 @@ Item {
         {
             key: "rowSeparators",
             section: "list",
-            label: "Row separator lines",
+            label: "Row lines",
             hint: "Draw a faint line between rows in each pane",
             options: [true, false],
             defaultValue: false,
@@ -510,7 +510,7 @@ Item {
         {
             key: "seekThickness",
             section: "list",
-            label: "Seeker thickness",
+            label: "Seeker height",
             hint: "How thick the bar above the transport is drawn",
             // Rungs up to 15: the bar is a thin strip by default, and the top of
             // the old range (9) was where the useful settings started rather than
@@ -525,7 +525,7 @@ Item {
         {
             key: "paneHeadings",
             section: "panes",
-            label: "Pane headings",
+            label: "Headings",
             hint: "Show the pane name over a rule at the top; off starts the lists at the very top",
             options: [true, false],
             defaultValue: false,
@@ -536,7 +536,7 @@ Item {
         {
             key: "fontBodySmall",
             section: "panes",
-            label: "Font size: headings",
+            label: "Heading size",
             hint: "The pane name over each pane's rule, as an offset from the theme",
             // The heading is drawn as part of the pane's header, so its size only
             // has anything to size while paneHeadings is on. It sits directly
@@ -553,7 +553,7 @@ Item {
         {
             key: "paneSeparators",
             section: "panes",
-            label: "Column separators",
+            label: "Pane dividers",
             hint: "Draw the rules between the list panes and the artwork pane",
             options: [true, false],
             defaultValue: true,
@@ -564,7 +564,7 @@ Item {
         {
             key: "focusGlow",
             section: "panes",
-            label: "Dim inactive panes",
+            label: "Dim unfocused",
             hint: "Fade the two unfocused panes so the active one stands out",
             options: [true, false],
             get: function () { return store.focusGlow },
@@ -574,7 +574,7 @@ Item {
         {
             key: "activeRowBorder",
             section: "panes",
-            label: "Bold cursor frame",
+            label: "Caret frame",
             hint: "Draw a heavier frame around the caret row in the focused pane",
             options: [true, false],
             defaultValue: false,
@@ -585,7 +585,7 @@ Item {
         {
             key: "borderWidth",
             section: "panes",
-            label: "Pane border width",
+            label: "Border width",
             hint: "Thickness of the outline around each pane",
             options: [1, 2, 3, 4],
             get: function () { return store.borderWidth },
@@ -608,7 +608,7 @@ Item {
         {
             key: "typeaheadSearch",
             section: "list",
-            label: "Typeahead search",
+            label: "Type-to-find",
             hint: "Jump by typing first letters of names",
             options: [true, false],
             get: function () { return store.typeaheadSearch },
@@ -618,7 +618,7 @@ Item {
         {
             key: "typeaheadPlace",
             section: "list",
-            label: "Typeahead readout",
+            label: "Readout",
             hint: "Where the typed letters appear: tucked in the artists pane's corner, or centred in the middle of the window",
             options: ["corner", "center"],
             defaultValue: "corner",
@@ -631,7 +631,7 @@ Item {
         {
             key: "typeaheadScale",
             section: "list",
-            label: "Typeahead size",
+            label: "Readout size",
             hint: "The readout's text size, as an offset from the theme",
             // Bias large: the readout is a transient overlay read at a glance from
             // wherever the eye happens to be, so the useful half of the range is
@@ -674,7 +674,7 @@ Item {
         {
             key: "fontTitle",
             section: "text",
-            label: "Font size: playing song",
+            label: "Now playing",
             hint: "Now playing title, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
             defaultValue: 0,
@@ -685,7 +685,7 @@ Item {
         {
             key: "fontSubtitle",
             section: "text",
-            label: "Font size: rows",
+            label: "Rows",
             hint: "Album and track rows, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
             defaultValue: 0,
@@ -696,7 +696,7 @@ Item {
         {
             key: "fontBody",
             section: "text",
-            label: "Font size: artist & time",
+            label: "Artist & time",
             hint: "Artist and the elapsed/total time, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
             defaultValue: 2,
@@ -707,7 +707,7 @@ Item {
         {
             key: "fontCaption",
             section: "text",
-            label: "Font size: status banner",
+            label: "Status banner",
             hint: "The MPD error banner, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
             defaultValue: 0,
@@ -718,7 +718,7 @@ Item {
         {
             key: "adaptiveColors",
             section: "wide",
-            label: "Recolor from cover art",
+            label: "Cover recolour",
             hint: "Follow the current album cover instead of the shell theme",
             options: [true, false],
             defaultValue: false,
@@ -745,7 +745,7 @@ Item {
         {
             key: "coverBorder",
             section: "artwork",
-            label: "Cover art border",
+            label: "Cover border",
             hint: "Ring around the cover art, separate from the pane rules",
             options: [true, false],
             defaultValue: false,
@@ -756,7 +756,7 @@ Item {
         {
             key: "coverBorderWidth",
             section: "artwork",
-            label: "Cover art border width",
+            label: "Cover border width",
             hint: "Thickness of the ring around the cover art",
             options: [1, 2, 3, 4, 6, 8],
             defaultValue: 1,
@@ -769,7 +769,7 @@ Item {
         {
             key: "coverRounded",
             section: "artwork",
-            label: "Round artwork corners",
+            label: "Round corners",
             hint: "Round the artwork's corners; off draws it as a plain square",
             options: [true, false],
             defaultValue: true,
@@ -780,7 +780,7 @@ Item {
         {
             key: "coverTransition",
             section: "artwork",
-            label: "Cover change transition",
+            label: "Cover fade",
             hint: "Fade the new album cover in over the old one; instant is a plain swap",
             options: [0, 100, 200, 300, 400, 500, 600],
             defaultValue: 400,
@@ -806,7 +806,7 @@ Item {
         {
             key: "coverBandMode",
             section: "artwork",
-            label: "Artwork pane",
+            label: "Cover pane",
             hint: "Give the album art its own pane on the right, or let it follow window size",
             options: ["off", "on", "auto"],
             defaultValue: "auto",
@@ -831,7 +831,7 @@ Item {
         {
             key: "coverBandAlign",
             section: "artwork",
-            label: "Artwork pane position",
+            label: "Cover position",
             hint: "Where the cover sits vertically in the artwork pane",
             options: ["top", "middle", "bottom"],
             defaultValue: "middle",
@@ -844,7 +844,7 @@ Item {
         {
             key: "coverPadding",
             section: "artwork",
-            label: "Cover art padding",
+            label: "Cover padding",
             hint: "Keep a margin between the cover and the pane edges; off runs it flush",
             options: [true, false],
             defaultValue: false,
@@ -857,7 +857,7 @@ Item {
         {
             key: "coverScale",
             section: "artwork",
-            label: "Artwork size",
+            label: "Cover size",
             hint: "Height of the artwork as a share of the space above the now-playing bar; 100% fills it top to bottom",
             // Even ten-step rungs, rather than the old fives low down and tens up
             // top, so a nudge moves the cover the same amount wherever the knob is.
@@ -880,7 +880,7 @@ Item {
         {
             key: "coverBandMinPct",
             section: "artwork",
-            label: "Artwork pane at or above",
+            label: "Pane above",
             hint: "Show the pane while the window is at least this share of the screen's width; smaller than that the cover floats instead",
             // The size floor the panel measures the window against, as a share of
             // the screen it is on. 100% keeps the pane only while the window fills
@@ -899,7 +899,7 @@ Item {
         {
             key: "fetchCovers",
             section: "wide",
-            label: "Fetch missing cover art",
+            label: "Fetch covers",
             hint: "Look a cover up on iTunes or Deezer when an album has none, and cache it",
             options: [true, false],
             defaultValue: true,

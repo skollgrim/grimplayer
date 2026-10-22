@@ -292,10 +292,9 @@ Item {
         //
         // Five rather than four columns is what the topic cut costs: splitting by
         // subject needs somewhere for the panes and the text to each live on their
-        // own, and the widest labels ("Font size: playing song", "Artwork pane at
-        // or above") need the room. The width is still a fixed figure, so on a
-        // narrow panel the columns share what there is and the labels elide rather
-        // than the card overflowing.
+        // own. The width is fixed and generous enough that no label has to elide at
+        // full size, so on a narrow panel the columns share what there is and the
+        // labels elide rather than the card overflowing.
         width: Math.min(Math.round(1700 * root.uiScale), parent.width - Math.round(32 * root.uiScale))
         // Fixed rather than window-relative: the list scrolls inside a Flickable,
         // so the card has no reason to grow with the panel.
