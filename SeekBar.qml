@@ -34,7 +34,11 @@ Item {
         ? seekArea.scrubFraction
         : Math.max(0, Math.min(1, progress))
 
-    implicitHeight: Math.round(14 * uiScale)
+    // The bar's slot. The thickness sets it once the bar is thick enough to
+    // need the room: a thick bar keeps a couple of pixels of air above and
+    // below so it never crowds the elapsed time above it, while the thin rungs
+    // still sit in the original 14px slot rather than shrinking it.
+    implicitHeight: Math.max(Math.round(14 * uiScale), root.thickness + Math.round(4 * uiScale))
 
     Rectangle {
         anchors.verticalCenter: parent.verticalCenter

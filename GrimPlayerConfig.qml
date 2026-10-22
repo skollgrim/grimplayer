@@ -31,9 +31,12 @@ Item {
         // reads like a scrollbar that ran out of document.
         property bool wrapAround: true
 
-        // Logical pixels. The bar is centred in a 14px slot, so much past 9
-        // starts crowding the elapsed time above it.
-        property int seekThickness: 7
+        // Logical pixels. The bar is centred in a slot the thickness itself sets
+        // (see SeekBar), so a thick bar pushes the row taller rather than
+        // spilling over the elapsed time above it. 9 is where the useful
+        // settings start, and the rungs above it are for anyone who wants the
+        // bar to read as a deliberate band under the now-playing strip.
+        property int seekThickness: 9
 
         // Year prefix on the albums pane, from the tracks' Date tags.
         property bool albumYears: true
@@ -43,8 +46,11 @@ Item {
 
         // Which edges of the playing row carry the accent bar: "none", "left",
         // "right" or "both". The tint below is unaffected -- this only decides
-        // where the bars sit, so "none" keeps the tint and drops the bars.
-        property string playingMarkerSides: "both"
+        // where the bars sit, so "none" keeps the tint and drops the bars. The
+        // right edge is the default: the labels start at the left margin, so a
+        // bar on the right sits in the margin past the text's end and marks the
+        // row without crowding what it says.
+        property string playingMarkerSides: "right"
 
         // Recolour the whole panel from the playing album's cover art, instead
         // of following the shell theme. Off is the theme-following look.
@@ -56,12 +62,12 @@ Item {
         property bool fetchCovers: true
 
         // Plain j/k/h/l/g/G navigation. Off leaves the arrow keys in charge.
-        property bool vimKeys: true
+        property bool vimKeys: false
 
         // Height of one list row in logical pixels. The gap between rows is
         // derived from this (an eighth of the row), so one control sets the whole
         // row rhythm -- a separate gap slider only ever fought the row height.
-        property int rowSpacing: 32
+        property int rowSpacing: 28
 
         // Typing letters jumps the caret to the first matching row.
         property bool typeaheadSearch: true
@@ -76,9 +82,11 @@ Item {
 
         // The readout's font size as an offset from the theme, like the font-size
         // settings. The corner readout is a glanceable aside and the centred one
-        // has to hold the eye from across the window, so it starts two steps up
-        // rather than matching the panel's body text.
-        property int typeaheadScale: 2
+        // has to hold the eye from across the window, so it starts well above the
+        // panel's body text. The range starts at zero -- the theme's own size --
+        // rather than below it: the readout is meant to stand out from the text
+        // it is drawn over, so a smaller-than-theme setting had no good use.
+        property int typeaheadScale: 6
 
         // A faint line between rows. Off is the cleaner, flatter look.
         property bool rowSeparators: false
@@ -89,7 +97,7 @@ Item {
         // The heading bar atop each pane: the pane's name over an underline rule.
         // Off, the heading and its rule are dropped and the list starts at the
         // very top of the pane.
-        property bool paneHeadings: true
+        property bool paneHeadings: false
 
         // The vertical rules between the list panes, and between the lists and
         // the artwork pane. Off drops them so the panes meet with nothing drawn
@@ -100,7 +108,7 @@ Item {
         // between panes, so the two are always the same weight. The cover art
         // ring has its own slider so the two never drag each other along.
         property int borderWidth: 1
-        property bool coverBorder: true
+        property bool coverBorder: false
         property bool coverPlaceholder: true
         property int coverBorderWidth: 1
 
@@ -136,7 +144,7 @@ Item {
         // milliseconds. Zero swaps instantly. The previous cover stays on screen
         // until the new one is ready either way, so even zero is flicker-free --
         // this only decides whether the swap is visibly animated.
-        property int coverTransition: 0
+        property int coverTransition: 400
 
         // Where the cover art sits: pinned in its own pane on the right ("on"),
         // pinned as the small floating corner cover ("off"), or left to "auto",
@@ -182,7 +190,7 @@ Item {
         // absolute here fought the theme on every theme switch.
         property int fontTitle: 0
         property int fontSubtitle: 0
-        property int fontBody: 0
+        property int fontBody: 2
         property int fontBodySmall: 4
         property int fontCaption: 0
     }
@@ -470,7 +478,7 @@ Item {
             label: "Playing marker sides",
             hint: "Which edges of the playing row carry the accent bar; the tint stays either way",
             options: ["none", "left", "right", "both"],
-            defaultValue: "both",
+            defaultValue: "right",
             dependsOn: function () { return store.playingHighlight },
             after: "playingHighlight",
             get: function () { return store.playingMarkerSides },
@@ -483,7 +491,7 @@ Item {
             label: "Row height",
             hint: "Height of each list row; the gap between rows follows it",
             options: [24, 28, 32, 36, 40],
-            defaultValue: 32,
+            defaultValue: 28,
             get: function () { return store.rowSpacing },
             set: function (v) { store.rowSpacing = v },
             format: function (v) { return v + " px" }
@@ -504,8 +512,12 @@ Item {
             section: "list",
             label: "Seeker thickness",
             hint: "How thick the bar above the transport is drawn",
-            options: [3, 5, 7, 9],
-            defaultValue: 7,
+            // Rungs up to 15: the bar is a thin strip by default, and the top of
+            // the old range (9) was where the useful settings started rather than
+            // ended. The bar's slot grows with it (see SeekBar), so a thicker bar
+            // takes more room rather than crowding the elapsed time above it.
+            options: [3, 5, 7, 9, 11, 13, 15],
+            defaultValue: 9,
             get: function () { return store.seekThickness },
             set: function (v) { store.seekThickness = v },
             format: function (v) { return v + " px" }
@@ -516,10 +528,27 @@ Item {
             label: "Pane headings",
             hint: "Show the pane name over a rule at the top; off starts the lists at the very top",
             options: [true, false],
-            defaultValue: true,
+            defaultValue: false,
             get: function () { return store.paneHeadings },
             set: function (v) { store.paneHeadings = v },
             format: root.boolText
+        },
+        {
+            key: "fontBodySmall",
+            section: "panes",
+            label: "Font size: headings",
+            hint: "The pane name over each pane's rule, as an offset from the theme",
+            // The heading is drawn as part of the pane's header, so its size only
+            // has anything to size while paneHeadings is on. It sits directly
+            // under that switch, greyed while the switch is off, so the row above
+            // is why it is greyed.
+            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
+            defaultValue: 4,
+            dependsOn: function () { return store.paneHeadings },
+            after: "paneHeadings",
+            get: function () { return store.fontBodySmall },
+            set: function (v) { store.fontBodySmall = v },
+            format: root.deltaText
         },
         {
             key: "paneSeparators",
@@ -571,6 +600,7 @@ Item {
             label: "Vim keys",
             hint: "Use j/k/h/l/g/G for navigation",
             options: [true, false],
+            defaultValue: false,
             get: function () { return store.vimKeys },
             set: function (v) { store.vimKeys = v },
             format: root.boolText
@@ -605,9 +635,12 @@ Item {
             hint: "The readout's text size, as an offset from the theme",
             // Bias large: the readout is a transient overlay read at a glance from
             // wherever the eye happens to be, so the useful half of the range is
-            // the upper one and +2 is the resting size.
-            options: [-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
-            defaultValue: 2,
+            // the upper one and +6 is the resting size. The floor is the theme's
+            // own size rather than a step below it -- the readout is meant to
+            // stand out, and a smaller-than-theme setting was a way to make it
+            // harder to read than the text it is drawn over.
+            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            defaultValue: 6,
             dependsOn: function () { return store.typeaheadSearch },
             after: "typeaheadSearch",
             get: function () { return store.typeaheadScale },
@@ -666,20 +699,9 @@ Item {
             label: "Font size: artist & time",
             hint: "Artist and the elapsed/total time, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
-            defaultValue: 0,
+            defaultValue: 2,
             get: function () { return store.fontBody },
             set: function (v) { store.fontBody = v },
-            format: root.deltaText
-        },
-        {
-            key: "fontBodySmall",
-            section: "text",
-            label: "Font size: headings",
-            hint: "Pane headings and secondary text, as an offset from the theme",
-            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
-            defaultValue: 4,
-            get: function () { return store.fontBodySmall },
-            set: function (v) { store.fontBodySmall = v },
             format: root.deltaText
         },
         {
@@ -726,7 +748,7 @@ Item {
             label: "Cover art border",
             hint: "Ring around the cover art, separate from the pane rules",
             options: [true, false],
-            defaultValue: true,
+            defaultValue: false,
             get: function () { return store.coverBorder },
             set: function (v) { store.coverBorder = v },
             format: root.boolText
@@ -761,7 +783,7 @@ Item {
             label: "Cover change transition",
             hint: "Fade the new album cover in over the old one; instant is a plain swap",
             options: [0, 100, 200, 300, 400, 500, 600],
-            defaultValue: 0,
+            defaultValue: 400,
             get: function () { return store.coverTransition },
             set: function (v) { store.coverTransition = v },
             format: function (v) { return v === 0 ? "instant" : v + " ms" }
