@@ -548,7 +548,13 @@ Item {
             // has anything to size while paneHeadings is on. It sits directly
             // under that switch, greyed while the switch is off, so the row above
             // is why it is greyed.
-            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
+            //
+            // The range runs from the theme's own size up to eight steps above it,
+            // so the resting +4 sits dead centre: a step either way is available
+            // without the knob starting at one end, and the floor is "theme" rather
+            // than a size below it, since a heading smaller than the theme's own
+            // small text has nothing to be smaller than.
+            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
             defaultValue: 4,
             dependsOn: function () { return store.paneHeadings },
             after: "paneHeadings",
@@ -651,8 +657,10 @@ Item {
             // the upper one and +6 is the resting size. The floor is the theme's
             // own size rather than a step below it -- the readout is meant to
             // stand out, and a smaller-than-theme setting was a way to make it
-            // harder to read than the text it is drawn over.
-            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            // harder to read than the text it is drawn over. The top runs to +12
+            // so the resting size sits centred and a bigger readout is a step
+            // away in either direction.
+            options: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
             defaultValue: 6,
             dependsOn: function () { return store.typeaheadSearch },
             after: "typeaheadSearch",
