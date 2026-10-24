@@ -138,32 +138,6 @@ Item {
             onSelectedChanged: if (selected) flick.reveal(row)
             Component.onCompleted: if (selected) Qt.callLater(function () { flick.reveal(row) })
 
-            // Tree connector for dependent rows: a thin vertical line down the
-            // indented gutter, with a small horizontal branch connecting to the row.
-            Item {
-                visible: row.dependent
-                anchors.left: parent.left
-                anchors.leftMargin: Math.round(12 * root.uiScale) + Math.round(6 * root.uiScale)
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: Math.round(10 * root.uiScale)
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: Math.max(1, Math.round(1 * root.uiScale))
-                    color: Util.alpha(root.colForeground, row.active ? 0.25 : 0.12)
-                }
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.round(6 * root.uiScale)
-                    height: Math.max(1, Math.round(1 * root.uiScale))
-                    color: Util.alpha(root.colForeground, row.active ? 0.25 : 0.12)
-                }
-            }
-
             // An accent bar down the selected row's edge: a second, pointer-proof
             // mark of the caret, so selection reads even where the fill alone is
             // faint against a busy cover colour.
@@ -217,14 +191,17 @@ Item {
                 // its edge already carry the selection.
                 //
                 // A greyed dependent carries no note of its own: it is indented
-                // under the setting it waits on, so the row above is the note.
+                // under the setting it waits on, so the row above is the note. When
+                // active but not selected, a child label reads a touch quieter than
+                // a top-level row so the parent-child link is clearer without adding
+                // extra chrome.
                 Text {
                     Layout.fillWidth: true
                     text: row.entryData.label
                     textFormat: Text.PlainText
                     color: row.selected ? root.colAccent : root.colForeground
                     font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                    opacity: row.selected ? 1.0 : 0.72
+                    opacity: row.selected ? 1.0 : (row.dependent ? 0.58 : 0.72)
                     elide: Text.ElideRight
                 }
 
