@@ -637,8 +637,12 @@ Item {
         {
             key: "typeaheadPlace",
             section: "list",
-            label: "Readout position",
+            label: "Position",
             hint: "Where the typed letters appear: tucked in the artists pane's corner, or centred in the middle of the window",
+            // Bare "Position" and "Size" are enough here: both are indented under
+            // Type-to-find, so the row above names the thing they set. The hint
+            // still says "typed letters" rather than leaning on the label, since
+            // it is read on its own at the foot of the card.
             options: ["corner", "center"],
             defaultValue: "corner",
             dependsOn: function () { return store.typeaheadSearch },
@@ -650,8 +654,8 @@ Item {
         {
             key: "typeaheadScale",
             section: "list",
-            label: "Readout size",
-            hint: "The readout's text size, as an offset from the theme",
+            label: "Size",
+            hint: "The typed letters' text size, as an offset from the theme",
             // Bias large: the readout is a transient overlay read at a glance from
             // wherever the eye happens to be, so the useful half of the range is
             // the upper one and +6 is the resting size. The floor is the theme's
@@ -1001,7 +1005,8 @@ Item {
     // left to the table's written order so that "a dependent sits under its
     // parent" is a property of the list the card draws, not a thing a later edit
     // to the table can quietly break -- and so a parent's dependents keep their
-    // own order among themselves.
+    // own order among themselves. The card indents a row that names a parent, so
+    // the same flag both places it and marks it as a child.
     //
     // Each parent is walked once, emitting the parent and then everything that
     // names it, in table order. Entries are only emitted once, so a table written

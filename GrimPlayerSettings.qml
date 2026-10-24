@@ -8,10 +8,11 @@ pragma ComponentBehavior: Bound
 // in a column where the thing they share says they should, and a setting is
 // always in the same place every time the card opens.
 //
-// A setting that waits on another is drawn greyed rather than hidden, and sits
-// directly beneath the row it waits on, so the row above is why it is greyed.
-// Keeping the row in place means a hunt for it always finds it, and a row that
-// greys while the caret is on it does not move the thing under the caret.
+// A setting that waits on another is drawn greyed rather than hidden, and is
+// indented beneath the row it waits on, so the row above is why it is greyed and
+// the block of rows reads as one setting's details. Keeping the row in place
+// means a hunt for it always finds it, and a row that greys while the caret is on
+// it does not move the thing under the caret.
 //
 // Within a cell the label sits on the left and a fixed-width control block on the
 // right, so every value in a column lines up on the same vertical edge. That fixed
@@ -102,6 +103,14 @@ Item {
             // A dependent whose parent is off. It is drawn, but greyed and kept
             // out of the caret's way, so it cannot change a value nothing reads.
             readonly property bool active: modelData.active !== false
+            // A row that names a parent in `after` is a child of that row, and
+            // tucks in a step so the block reads as one setting's details. The
+            // indent is what lets a child carry a bare name -- "Size", "Position"
+            // -- without the row above being the only thing that says what it
+            // sizes. It is layout, not state: the row does not move when its
+            // parent flips, only fades.
+            readonly property bool dependent: !!entryData.after
+            readonly property int indent: Math.round(16 * root.uiScale)
 
             Layout.fillWidth: true
             Layout.preferredHeight: Math.round(36 * root.uiScale)
@@ -109,9 +118,11 @@ Item {
             // content (see the columns' fill flag) has something to size to. The
             // inner RowLayout is anchored, so it does not feed the implicit width
             // on its own; its natural width plus the two margins is what the cell
-            // actually needs.
+            // actually needs. The child indent is part of that, or an indented row
+            // would claim less width than it draws.
             implicitWidth: innerRow.implicitWidth
                 + Math.round(12 * root.uiScale) + Math.round(10 * root.uiScale)
+                + (dependent ? indent : 0)
             radius: Math.round(6 * root.uiScale)
             color: selected ? root.colSelectedFill : "transparent"
 
@@ -167,6 +178,7 @@ Item {
                 id: innerRow
                 anchors.fill: parent
                 anchors.leftMargin: Math.round(12 * root.uiScale)
+                    + (row.dependent ? row.indent : 0)
                 anchors.rightMargin: Math.round(10 * root.uiScale)
                 spacing: Math.round(8 * root.uiScale)
 
@@ -178,7 +190,7 @@ Item {
                 // longest label. The accent ink, the filled row and the bar down
                 // its edge already carry the selection.
                 //
-                // A greyed dependent carries no note of its own: it sits directly
+                // A greyed dependent carries no note of its own: it is indented
                 // under the setting it waits on, so the row above is the note.
                 Text {
                     Layout.fillWidth: true
