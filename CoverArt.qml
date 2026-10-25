@@ -188,97 +188,58 @@ Item {
     // shell restart without being recomputed. Keyed by album rather than by track,
     // since every track on an album carries the same picture.
     readonly property string cacheDir: (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state")) + "/skollgrim.grimplayer/covers"
-    readonly property string cacheIndex: root.cacheDir + "/index.json"
-    readonly property int maxCachedCovers: 180
-    property var cacheIndexData: ({})
+    readonly property int maxCachedCovers: 150
+    property var coverAccess: ({})
 
-    function loadCacheIndex() {
-        // Index loaded lazily by ensureCacheIndex
-        root.cacheIndexData = root.cacheIndexData || ({})
-    }
-
-    function saveCacheIndex() {
-        // Best effort write via shell; Quickshell.IO available elsewhere
-        try {
-            var out = JSON.stringify(root.cacheIndexData || {})
-            // write via a small process would be heavy; rely on in-memory + prune on next run
-        } catch (e) {}
-    }
-
-    function ensureCacheIndex() {
-        if (!cacheMkdir.running) cacheMkdir.running = true
-        // Try to read index if possible via a simple approach: just ensure dir exists
-        if (!root.cacheIndexData || Object.keys(root.cacheIndexData).length === 0) {
-            root.cacheIndexData = ({})
-        }
-    }
-
-    function touchCache(dir, kind) {
+    function markAccess(dir) {
         if (!dir) return
-        if (!root.cacheIndexData) root.cacheIndexData = ({})
-        var key = (kind === "online" ? "o:" : "e:") + dir
-        root.cacheIndexData[key] = { dir: dir, kind: kind, t: Date.now() }
+        if (!root.coverAccess) root.coverAccess = ({})
+        root.coverAccess[dir] = Date.now()
     }
 
-    function pruneCache() {
+    function pruneCacheIfNeeded() {
         try {
-            if (!root.cacheIndexData) return
+            if (!root.coverAccess) return
             var entries = []
-            for (var k in root.cacheIndexData) {
-                if (!root.cacheIndexData.hasOwnProperty(k)) continue
-                var v = root.cacheIndexData[k]
-                entries.push({ key: k, dir: v.dir, kind: v.kind, t: v.t || 0 })
+            for (var d in root.coverAccess) {
+                if (root.coverAccess.hasOwnProperty(d)) entries.push({ dir: d, t: root.coverAccess[d] || 0 })
             }
+            if (entries.length <= root.maxCachedCovers) return
             entries.sort(function (a, b) { return a.t - b.t })
-            var toKeep = root.maxCachedCovers
-            // don't evict current album
             var current = root.currentAlbumDir()
-            while (entries.length > toKeep) {
-                var e = entries.shift()
-                if (e.dir === current) {
-                    entries.push(e)
-                    // if still over (shouldn't happen often), break
-                    if (entries.length <= toKeep + 1) break
-                    // put back and try again differently
-                    e = entries.shift()
-                }
-                // best effort delete - use Process
+            var toRemove = entries.length - root.maxCachedCovers
+            for (var i = 0; i < entries.length && toRemove > 0; i++) {
+                var e = entries[i]
+                if (e.dir === current) continue
                 try {
-                    var p = deleteProc.createObject(root)
+                    var p = Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { running: false }', root)
                     if (p) {
-                        p.command = ["rm", "-f", e.kind === "online" ? root.onlineCover(e.dir) : root.cachedCover(e.dir)]
+                        p.command = ["rm", "-f", root.cacheDir + "/" + Covers.fileName(e.dir)]
                         p.running = true
                     }
+                    var p2 = Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { running: false }', root)
+                    if (p2) {
+                        p2.command = ["rm", "-f", root.cacheDir + "/" + Covers.onlineFileName(e.dir)]
+                        p2.running = true
+                    }
                 } catch (ex) {}
-                delete root.cacheIndexData[e.key]
+                delete root.coverAccess[e.dir]
+                toRemove--
             }
         } catch (e) {}
-    }
-
-    Component {
-        id: deleteProc
-        Process { running: false; command: [] }
     }
 
     // FNV-1a naming lives in Covers.js, shared with the service so a cover the
     // user clears there deletes the same cached file this loads. See that file.
     function cachedCover(dir) {
-        root.touchCache(dir, "embed")
-        root.pruneCache()
+        root.markAccess(dir)
+        root.pruneCacheIfNeeded()
         return root.cacheDir + "/" + Covers.fileName(dir)
     }
 
     function onlineCover(dir) {
-        root.touchCache(dir, "online")
-        root.pruneCache()
-        return root.cacheDir + "/" + Covers.onlineFileName(dir)
-    }
-
-    // The downloaded cover for an album with nothing anywhere, cached beside the
-    // extraction. Never part of the candidate walk: the probe only reaches for
-    // it once the sidecars and the embedded picture have both come up empty, so
-    // the store's guess can never stand in for what the file actually holds.
-    function onlineCover(dir) {
+        root.markAccess(dir)
+        root.pruneCacheIfNeeded()
         return root.cacheDir + "/" + Covers.onlineFileName(dir)
     }
 
