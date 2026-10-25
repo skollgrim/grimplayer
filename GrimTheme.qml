@@ -28,6 +28,9 @@ QtObject {
     property color foreground: override ? override.foreground : Color.foreground
     property color muted: override ? override.muted : Color.muted
     property color accent: override ? override.accent : Color.accent
+    readonly property color accentHover: Util.alpha(accent, 0.8)
+    readonly property color accentPressed: Util.alpha(accent, 0.65)
+    readonly property color accentSubtle: Util.alpha(accent, 0.16)
     property color urgent: override ? override.urgent : Color.urgent
 
     // The wash under the caret row and the selected setting. Built from the
