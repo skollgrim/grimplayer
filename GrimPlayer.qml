@@ -196,14 +196,31 @@ Item {
         onTriggered: { root.syncTheme() }
     }
 
+    property string lastPaletteDir: ""
+    Timer {
+        id: paletteThrottle
+        interval: 150
+        repeat: false
+        onTriggered: { root.syncTheme() }
+    }
+
     Connections {
         target: cover
         function onPaletteChanged() { 
-            if (cover && cover.loadedDir) root.pendingThemeDir = cover.loadedDir
-            themeDebounce.restart()
+            if (cover && cover.loadedDir) {
+                root.pendingThemeDir = cover.loadedDir
+                if (cover.loadedDir !== root.lastPaletteDir) {
+                    root.lastPaletteDir = cover.loadedDir
+                    paletteThrottle.restart()
+                } else {
+                    root.syncTheme()
+                }
+            } else {
+                themeDebounce.restart()
+            }
         }
-        function onHasArtChanged() { themeDebounce.restart() }
-        function onNoArtChanged() { themeDebounce.restart() }
+        function onHasArtChanged() { paletteThrottle.restart() }
+        function onNoArtChanged() { paletteThrottle.restart() }
     }
 
     Connections {
