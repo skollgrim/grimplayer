@@ -23,6 +23,7 @@ QtObject {
     // null means "the theme's own colours", which is what shows whenever
     // adaptive colouring is off or there is no artwork to read.
     property var override: null
+    property var paletteCache: ({})
 
     property color background: override ? override.background : Color.background
     property color foreground: override ? override.foreground : Color.foreground
