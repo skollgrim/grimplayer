@@ -693,6 +693,18 @@ Item {
     // scoped to the active pane, which is where the caret is, and it never
     // steals a keystroke that a switch case above already claimed.
     property string typeaheadBuffer: ""
+    property var typeaheadIndex: ({ artists: [], albums: [], tracks: [] })
+
+    function rebuildTypeaheadIndex() {
+        var a = [], al = [], t = []
+        for (var i = 0; i < artistList.length; i++) a.push((artistList[i].name || "").toLowerCase())
+        for (var j = 0; j < albumList.length; j++) al.push((albumList[j].name || "").toLowerCase())
+        for (var k = 0; k < trackList.length; k++) {
+            var tr = trackList[k]
+            t.push(((tr.title || tr.file || "") + "").toLowerCase())
+        }
+        typeaheadIndex = { artists: a, albums: al, tracks: t }
+    }
 
     function clearTypeahead() {
         typeaheadBuffer = ""
@@ -703,16 +715,18 @@ Item {
         typeaheadBuffer = (typeaheadBuffer + ch).toLowerCase()
         typeaheadTimer.restart()
         var list = pane === "artists" ? artistList : pane === "albums" ? albumList : trackList
+        var idx = pane === "artists" ? typeaheadIndex.artists : pane === "albums" ? typeaheadIndex.albums : typeaheadIndex.tracks
+        if (!idx || idx.length !== list.length) rebuildTypeaheadIndex()
+        idx = pane === "artists" ? typeaheadIndex.artists : pane === "albums" ? typeaheadIndex.albums : typeaheadIndex.tracks
         for (var i = 0; i < list.length; i++) {
-            var item = list[i]
-            var name
-            if (pane === "artists") name = item.name || ""
-            // Match the album's own name, not the year-prefixed label the pane
-            // draws: with "Album years" on, that label starts with the year, so a
-            // typed letter could never match it.
-            else if (pane === "albums") name = item.name || ""
-            else name = item.title || item.file || ""
-            if (name.toLowerCase().startsWith(typeaheadBuffer)) {
+            var nameIdx = idx ? idx[i] : ""
+            if (!nameIdx) {
+                var item = list[i]
+                if (pane === "artists") nameIdx = (item.name || "").toLowerCase()
+                else if (pane === "albums") nameIdx = (item.name || "").toLowerCase()
+                else nameIdx = ((item.title || item.file || "") + "").toLowerCase()
+            }
+            if (nameIdx.indexOf(typeaheadBuffer) === 0) {
                 if (pane === "artists") selectArtist(i, false)
                 else if (pane === "albums") selectAlbum(i, false)
                 else trackIndex = i
@@ -720,6 +734,10 @@ Item {
             }
         }
     }
+
+    onArtistListChanged: root.rebuildTypeaheadIndex()
+    onAlbumListChanged: root.rebuildTypeaheadIndex()
+    onTrackListChanged: root.rebuildTypeaheadIndex()
 
     // ---- settings ----
     //
@@ -1013,6 +1031,7 @@ Item {
         // leaving an empty pane (and, for the artist index, an activation that
         // resolves to no files) until the caret is next moved.
         function onArtistsChanged() {
+            root.rebuildTypeaheadIndex()
             if (root.artistIndex >= root.artistList.length)
                 root.selectArtist(Math.max(0, root.artistList.length - 1), false)
             else if (root.albumIndex >= root.albumList.length)

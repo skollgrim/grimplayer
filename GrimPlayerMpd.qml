@@ -250,12 +250,33 @@ Item {
     // Re-arm before refreshing. There is then no window in which a change can
     // slip through unnoticed between the event arriving and the next
     // subscription, even though the refresh itself happens on the other socket.
+    property bool dbUpdatePending: false
+    Timer {
+        id: dbUpdateTimer
+        interval: 250
+        repeat: false
+        onTriggered: {
+            if (root.dbUpdatePending) {
+                root.dbUpdatePending = false
+                root.dbUpdateTimer.restart()
+                return
+            }
+            root.loadLibrary()
+        }
+    }
+
     function handleEvents() {
         root.armIdle()
         var touched = root.changed
         root.changed = []
         if (touched.length === 0) return
-        if (touched.indexOf("database") >= 0) root.loadLibrary()
+        if (touched.indexOf("database") >= 0) {
+            if (root.dbUpdateTimer.running) {
+                root.dbUpdatePending = true
+            } else {
+                root.dbUpdateTimer.restart()
+            }
+        }
         root.refreshState()
     }
 
