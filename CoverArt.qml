@@ -108,6 +108,20 @@ Item {
         rescaleSize: 48
     }
 
+    Timer {
+        id: paletteDebounce
+        interval: 180
+        repeat: false
+        property string pendingDir: ""
+        onTriggered: {
+            if (paletteDebounce.pendingDir === root.loadedDir || paletteDebounce.pendingDir === root.currentAlbumDir()) {
+                if (quantizer && quantizer.colors && quantizer.colors.length > 0) {
+                    root.palette = quantizer.colors
+                }
+            }
+        }
+    }
+
     readonly property var palette: quantizer.colors
 
     // Real artwork, as opposed to the placeholder the CD is drawn for. The
@@ -174,11 +188,90 @@ Item {
     // shell restart without being recomputed. Keyed by album rather than by track,
     // since every track on an album carries the same picture.
     readonly property string cacheDir: (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state")) + "/skollgrim.grimplayer/covers"
+    readonly property string cacheIndex: root.cacheDir + "/index.json"
+    readonly property int maxCachedCovers: 180
+    property var cacheIndexData: ({})
+
+    function loadCacheIndex() {
+        // Index loaded lazily by ensureCacheIndex
+        root.cacheIndexData = root.cacheIndexData || ({})
+    }
+
+    function saveCacheIndex() {
+        // Best effort write via shell; Quickshell.IO available elsewhere
+        try {
+            var out = JSON.stringify(root.cacheIndexData || {})
+            // write via a small process would be heavy; rely on in-memory + prune on next run
+        } catch (e) {}
+    }
+
+    function ensureCacheIndex() {
+        if (!cacheMkdir.running) cacheMkdir.running = true
+        // Try to read index if possible via a simple approach: just ensure dir exists
+        if (!root.cacheIndexData || Object.keys(root.cacheIndexData).length === 0) {
+            root.cacheIndexData = ({})
+        }
+    }
+
+    function touchCache(dir, kind) {
+        if (!dir) return
+        if (!root.cacheIndexData) root.cacheIndexData = ({})
+        var key = (kind === "online" ? "o:" : "e:") + dir
+        root.cacheIndexData[key] = { dir: dir, kind: kind, t: Date.now() }
+    }
+
+    function pruneCache() {
+        try {
+            if (!root.cacheIndexData) return
+            var entries = []
+            for (var k in root.cacheIndexData) {
+                if (!root.cacheIndexData.hasOwnProperty(k)) continue
+                var v = root.cacheIndexData[k]
+                entries.push({ key: k, dir: v.dir, kind: v.kind, t: v.t || 0 })
+            }
+            entries.sort(function (a, b) { return a.t - b.t })
+            var toKeep = root.maxCachedCovers
+            // don't evict current album
+            var current = root.currentAlbumDir()
+            while (entries.length > toKeep) {
+                var e = entries.shift()
+                if (e.dir === current) {
+                    entries.push(e)
+                    // if still over (shouldn't happen often), break
+                    if (entries.length <= toKeep + 1) break
+                    // put back and try again differently
+                    e = entries.shift()
+                }
+                // best effort delete - use Process
+                try {
+                    var p = deleteProc.createObject(root)
+                    if (p) {
+                        p.command = ["rm", "-f", e.kind === "online" ? root.onlineCover(e.dir) : root.cachedCover(e.dir)]
+                        p.running = true
+                    }
+                } catch (ex) {}
+                delete root.cacheIndexData[e.key]
+            }
+        } catch (e) {}
+    }
+
+    Component {
+        id: deleteProc
+        Process { running: false; command: [] }
+    }
 
     // FNV-1a naming lives in Covers.js, shared with the service so a cover the
     // user clears there deletes the same cached file this loads. See that file.
     function cachedCover(dir) {
+        root.touchCache(dir, "embed")
+        root.pruneCache()
         return root.cacheDir + "/" + Covers.fileName(dir)
+    }
+
+    function onlineCover(dir) {
+        root.touchCache(dir, "online")
+        root.pruneCache()
+        return root.cacheDir + "/" + Covers.onlineFileName(dir)
     }
 
     // The downloaded cover for an album with nothing anywhere, cached beside the
@@ -266,6 +359,7 @@ Item {
     // Point the Image straight at a cached cover we know exists, rather than
     // walking the candidate list again for an answer already in hand.
     function showCached(dir) {
+        root.touchCache(dir, "embed")
         var target = Covers.fileUrl(root.cachedCover(dir))
         // A picture is in hand as of now -- the extractor wrote it, or a tag editor
         // set one -- so noArt has to stay false while it loads rather than flashing
@@ -1174,6 +1268,16 @@ Item {
                     root.requestEmbedded(root.loadedDir)
                     root.walkDone = true
                 }
+            }
+        }
+    }
+
+    Connections {
+        target: quantizer
+        function onColorsChanged() {
+            if (root.adaptiveColors && quantizer.colors && quantizer.colors.length > 0) {
+                paletteDebounce.pendingDir = root.loadedDir
+                paletteDebounce.restart()
             }
         }
     }

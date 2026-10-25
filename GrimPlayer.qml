@@ -188,11 +188,22 @@ Item {
         root.frameReading = false
     }
 
+    property string pendingThemeDir: ""
+    Timer {
+        id: themeDebounce
+        interval: 200
+        repeat: false
+        onTriggered: { root.syncTheme() }
+    }
+
     Connections {
         target: cover
-        function onPaletteChanged() { root.syncTheme() }
-        function onHasArtChanged() { root.syncTheme() }
-        function onNoArtChanged() { root.syncTheme() }
+        function onPaletteChanged() { 
+            if (cover && cover.loadedDir) root.pendingThemeDir = cover.loadedDir
+            themeDebounce.restart()
+        }
+        function onHasArtChanged() { themeDebounce.restart() }
+        function onNoArtChanged() { themeDebounce.restart() }
     }
 
     Connections {

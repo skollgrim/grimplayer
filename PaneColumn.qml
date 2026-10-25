@@ -158,7 +158,7 @@ Item {
             spacing: root.rowGap
             boundsBehavior: ListView.StopAtBounds
             reuseItems: true
-            cacheBuffer: Math.round(root.rowHeight * 4)
+            cacheBuffer: Math.round(root.rowHeight * 16)
             highlightFollowsCurrentItem: false
 
             // The parent's keyboard handling owns selection, so following the
