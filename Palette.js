@@ -127,7 +127,24 @@ function pickAccent(cs, light) {
     // On a light ground the accent has to come down in lightness to keep its
     // contrast; on a dark ground it stays bright.
     var accentL = light ? clamp(best.l, 0.34, 0.52) : clamp(best.l, 0.52, 0.70)
-    return toHex(hslToRgb(best.h, clamp(best.s * 1.8, 0.50, 0.95), accentL))
+    var accentS = clamp(best.s * 1.8, 0.50, 0.95)
+    var accentRgb = hslToRgb(best.h, accentS, accentL)
+    // Simple contrast guard: ensure minimum contrast against background
+    // Background is approximated; if too low, bump lightness
+    var bgL = light ? 0.9 : 0.11
+    function relL(c) {
+        function ch(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+        var r = ch(c.r), g = ch(c.g), b = ch(c.b)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    var al = relL(accentRgb), bl = relL({r:bgL,g:bgL,b:bgL})
+    var cr = (Math.max(al, bl) + 0.05) / (Math.min(al, bl) + 0.05)
+    if (cr < 3.0) {
+        if (light) accentL = Math.max(0.25, accentL - 0.15)
+        else accentL = Math.min(0.8, accentL + 0.15)
+        accentRgb = hslToRgb(best.h, accentS, accentL)
+    }
+    return toHex(accentRgb)
 }
 
 // Derive a full panel palette from the quantized cover colours.

@@ -104,7 +104,8 @@ Item {
         id: quantizer
         source: root.resolvedSource
         depth: 3
-        rescaleSize: 64
+        // Downscale aggressively for palette extraction - full resolution not needed
+        rescaleSize: 48
     }
 
     readonly property var palette: quantizer.colors
