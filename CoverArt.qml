@@ -1166,8 +1166,24 @@ Item {
             // Decode at display size in physical pixels rather than at the
             // source's full resolution, which is what keeps a large sidecar
             // from filling the pixmap cache while the lists scroll.
-            sourceSize.width: width > 0 ? Math.round(Math.min(width, 1024) * (root.pixelRatio || 1)) : 0
-            sourceSize.height: height > 0 ? Math.round(Math.min(height, 1024) * (root.pixelRatio || 1)) : 0
+            sourceSize.width: {
+                if (width <= 0) return 0
+                var maxW = width
+                if (prefs && prefs.coverDecodeSize === "medium") maxW = Math.min(width, 1024)
+                else if (prefs && prefs.coverDecodeSize === "large") maxW = Math.min(width, 1536)
+                else if (prefs && prefs.coverDecodeSize === "full") maxW = width
+                else maxW = Math.min(width, 1024)
+                return Math.round(maxW * (root.pixelRatio || 1))
+            }
+            sourceSize.height: {
+                if (height <= 0) return 0
+                var maxH = height
+                if (prefs && prefs.coverDecodeSize === "medium") maxH = Math.min(height, 1024)
+                else if (prefs && prefs.coverDecodeSize === "large") maxH = Math.min(height, 1536)
+                else if (prefs && prefs.coverDecodeSize === "full") maxH = height
+                else maxH = Math.min(height, 1024)
+                return Math.round(maxH * (root.pixelRatio || 1))
+            }
         }
 
         Image {
@@ -1180,8 +1196,24 @@ Item {
             cache: true
             smooth: true
             mipmap: true
-            sourceSize.width: width > 0 ? Math.round(Math.min(width, 1024) * (root.pixelRatio || 1)) : 0
-            sourceSize.height: height > 0 ? Math.round(Math.min(height, 1024) * (root.pixelRatio || 1)) : 0
+            sourceSize.width: {
+                if (width <= 0) return 0
+                var maxW = width
+                if (prefs && prefs.coverDecodeSize === "medium") maxW = Math.min(width, 1024)
+                else if (prefs && prefs.coverDecodeSize === "large") maxW = Math.min(width, 1536)
+                else if (prefs && prefs.coverDecodeSize === "full") maxW = width
+                else maxW = Math.min(width, 1024)
+                return Math.round(maxW * (root.pixelRatio || 1))
+            }
+            sourceSize.height: {
+                if (height <= 0) return 0
+                var maxH = height
+                if (prefs && prefs.coverDecodeSize === "medium") maxH = Math.min(height, 1024)
+                else if (prefs && prefs.coverDecodeSize === "large") maxH = Math.min(height, 1536)
+                else if (prefs && prefs.coverDecodeSize === "full") maxH = height
+                else maxH = Math.min(height, 1024)
+                return Math.round(maxH * (root.pixelRatio || 1))
+            }
 
             onStatusChanged: {
                 if (status === Image.Ready) {

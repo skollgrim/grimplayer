@@ -51,6 +51,7 @@ Item {
         // bar on the right sits in the margin past the text's end and marks the
         // row without crowding what it says.
         property string playingMarkerSides: "right"
+        property string coverDecodeSize: "medium"
 
         // Recolour the whole panel from the playing album's cover art, instead
         // of following the shell theme. Off is the theme-following look.
@@ -377,6 +378,7 @@ Item {
     readonly property bool albumYears: store.albumYears
     readonly property bool playingHighlight: store.playingHighlight
     readonly property string playingMarkerSides: store.playingMarkerSides
+    readonly property string coverDecodeSize: store.coverDecodeSize
     readonly property bool adaptiveColors: store.adaptiveColors
     readonly property bool fetchCovers: store.fetchCovers
     readonly property bool vimKeys: store.vimKeys
@@ -477,6 +479,23 @@ Item {
             get: function () { return store.playingHighlight },
             set: function (v) { store.playingHighlight = v },
             format: root.boolText
+        },
+        {
+            key: "playingMarkerSides",
+            section: "list",
+            label: "Marker sides",
+        },
+        {
+            key: "coverDecodeSize",
+            section: "artwork",
+            label: "Cover decode size",
+            type: "enum",
+            options: [
+                { label: "Full", value: "full" },
+                { label: "Large", value: "large" },
+                { label: "Medium", value: "medium" },
+            ],
+            defaultValue: "medium"
         },
         {
             key: "playingMarkerSides",
