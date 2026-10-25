@@ -90,6 +90,17 @@ Item {
             theme.reset()
     }
 
+    // Cached frame measurements per monitor+config to avoid spawns when unchanged.
+    property var frameCache: ({})
+    property string frameCacheKey: ""
+
+    function computeFrameCacheKey() {
+        var mon = root.activeScreen ? (root.activeScreen.name || "") : ""
+        // Use a stable key based on monitor; config changes are rare and opening
+        // the panel is when we need fresh values anyway, so monitor identity is enough
+        return mon
+    }
+
     // Re-read the compositor's frame figures. Called at mount and on every open,
     // which is when a gap or border change is about to matter -- reading on the
     // Hyprland config-reload event would need the Hyprland import for a value
@@ -99,20 +110,25 @@ Item {
     // consulted while the window is deciding. With the pane pinned on or off the
     // figures are dead weight, so pinning skips three process spawns per summon
     // rather than asking the compositor a question whose answer is unused.
+    // Cache results per monitor to skip spawns when values are unchanged.
     function readFrame() {
         if (prefs.coverBandMode !== "auto") return
         // Already reading: leave the run in flight alone. Restarting the count
-        // under it would let the first run's three answers arm frameRead as if
+        // under it would let the first run's answers arm frameRead as if
         // they were the second run's, and setting running on a live Process does
         // not restart it anyway, so the "re-read" would only corrupt the count.
-        // The figures cannot have moved in the few milliseconds between two
-        // calls, so dropping the second is what the caller wanted regardless.
-        //
-        // A flag rather than Process.running, because running goes false when the
-        // process exits, which is one event-loop turn before the collector hands
-        // over the text. A call landing in that gap would look idle and reset the
-        // count the pending answers are still arriving against.
         if (root.frameReading) return
+
+        var key = root.computeFrameCacheKey()
+        var cached = root.frameCache[key]
+        if (cached && cached.physicalScreenWidth > 0) {
+            root.frameGap = cached.frameGap
+            root.frameBorder = cached.frameBorder
+            root.frameRead = true
+            root.frameCacheKey = key
+            return
+        }
+
         root.frameReading = true
         // Drop the answering flag first: the figures are about to be replaced, and
         // between the spawn and the answer the old ones should not be trusted to
@@ -147,7 +163,16 @@ Item {
         // the inset from two zeroes and misfile every window size, so a failed run
         // holds the pane instead -- the same "unanswered is a reason to wait" rule
         // frameRead follows. The next open tries again.
-        if (!root.frameFailed && root.physicalScreenWidth > 0) root.frameRead = true
+        if (!root.frameFailed && root.physicalScreenWidth > 0) {
+            root.frameRead = true
+            var key = root.computeFrameCacheKey()
+            root.frameCache[key] = {
+                frameGap: root.frameGap,
+                frameBorder: root.frameBorder,
+                physicalScreenWidth: root.physicalScreenWidth
+            }
+            root.frameCacheKey = key
+        }
     }
     // The watchdog fired: the run has had long enough. A process that could not be
     // spawned reports nothing at all (see the note on frameWatchdog), so the parts

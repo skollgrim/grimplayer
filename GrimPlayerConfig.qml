@@ -1010,23 +1010,29 @@ Item {
     //
     // Each parent is walked once, emitting the parent and then everything that
     // names it, in table order. Entries are only emitted once, so a table written
-    // in any order comes out the same way.
+    // in any order comes out the same way. Children are indexed by parent key
+    // to avoid re-scanning the whole list per parent.
     function arranged() {
         var out = []
         var used = {}
+        var childrenByKey = {}
         for (var i = 0; i < visibleEntries.length; i++) {
-            var e = visibleEntries[i]
+            var d = visibleEntries[i]
+            if (!d.after) continue
+            if (!childrenByKey[d.after]) childrenByKey[d.after] = []
+            childrenByKey[d.after].push(d)
+        }
+        for (var k = 0; k < visibleEntries.length; k++) {
+            var e = visibleEntries[k]
             if (used[e.key]) continue
             out.push(e)
             used[e.key] = true
-            // Everything waiting on this row, in table order, goes directly
-            // beneath it.
-            for (var j = 0; j < visibleEntries.length; j++) {
-                var d = visibleEntries[j]
-                if (d.after === e.key && !used[d.key]) {
-                    out.push(d)
-                    used[d.key] = true
-                }
+            var list = childrenByKey[e.key]
+            if (!list) continue
+            for (var c = 0; c < list.length; c++) {
+                if (used[list[c].key]) continue
+                out.push(list[c])
+                used[list[c].key] = true
             }
         }
         return out

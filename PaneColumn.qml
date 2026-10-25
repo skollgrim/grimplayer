@@ -157,6 +157,9 @@ Item {
             // the scroll extent and the follow math are unchanged.
             spacing: root.rowGap
             boundsBehavior: ListView.StopAtBounds
+            reuseItems: true
+            cacheBuffer: Math.round(root.rowHeight * 4)
+            highlightFollowsCurrentItem: false
 
             // The parent's keyboard handling owns selection, so following the
             // caret is the whole job here: the pane scrolls only to keep the
