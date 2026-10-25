@@ -198,6 +198,8 @@ Item {
                 // whose file is the one MPD reports, so the highlight can only
                 // ever appear on the album the track actually belongs to.
                 readonly property bool playing: root.isCurrent !== null && root.isCurrent(modelData)
+                readonly property bool isSelected: index === root.currentIndex
+                readonly property bool isHovered: rowArea.containsMouse
 
                 // Selection still wins, then hover. The caret is what the user
                 // is about to act on, so it stays the strongest thing in the
@@ -206,10 +208,10 @@ Item {
                 // while browsing. Both tints are held back in an inactive pane
                 // to match rowOpacity, apart from the accent bar, which is
                 // meant to stay findable.
-                color: index === root.currentIndex
+                color: isSelected
                     ? (root.active ? root.colSelectedFill : Util.alpha(root.colForeground, 0.05))
                     : (row.playing ? Util.alpha(root.colAccent, root.active ? 0.11 : 0.07)
-                       : (rowArea.containsMouse ? Util.alpha(root.colForeground, 0.03) : "transparent"))
+                       : (isHovered ? Util.alpha(root.colForeground, 0.03) : "transparent"))
 
                 // The marker that goes with the tint. A 2px bar was too easy to
                 // miss against a list of rows, and it is the one part of the
