@@ -1166,8 +1166,8 @@ Item {
             // Decode at display size in physical pixels rather than at the
             // source's full resolution, which is what keeps a large sidecar
             // from filling the pixmap cache while the lists scroll.
-            sourceSize.width: width > 0 ? Math.round(width * (root.pixelRatio || 1)) : 0
-            sourceSize.height: height > 0 ? Math.round(height * (root.pixelRatio || 1)) : 0
+            sourceSize.width: width > 0 ? Math.round(Math.min(width, 1024) * (root.pixelRatio || 1)) : 0
+            sourceSize.height: height > 0 ? Math.round(Math.min(height, 1024) * (root.pixelRatio || 1)) : 0
         }
 
         Image {
@@ -1180,8 +1180,8 @@ Item {
             cache: true
             smooth: true
             mipmap: true
-            sourceSize.width: width > 0 ? Math.round(width * (root.pixelRatio || 1)) : 0
-            sourceSize.height: height > 0 ? Math.round(height * (root.pixelRatio || 1)) : 0
+            sourceSize.width: width > 0 ? Math.round(Math.min(width, 1024) * (root.pixelRatio || 1)) : 0
+            sourceSize.height: height > 0 ? Math.round(Math.min(height, 1024) * (root.pixelRatio || 1)) : 0
 
             onStatusChanged: {
                 if (status === Image.Ready) {
