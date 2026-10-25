@@ -115,8 +115,17 @@ function pickAccent(cs, light) {
     var best = null, bestRgb = null, bestScore = -1
     for (var i = 0; i < cs.length; i++) {
         var hsl = rgbToHsl(cs[i])
-        var score = chroma(cs[i]) * (1 - Math.abs(hsl.l - 0.5) * 2)
+        var c = chroma(cs[i])
+        if (c < 0.03) continue
+        var score = c * (1 - Math.abs(hsl.l - 0.5) * 2) * (1 + Math.min(c, 0.3))
         if (score > bestScore) { bestScore = score; best = hsl; bestRgb = cs[i] }
+    }
+    if (bestScore < 0) {
+        for (var j = 0; j < cs.length; j++) {
+            var hsl2 = rgbToHsl(cs[j])
+            var score2 = chroma(cs[j]) * (1 - Math.abs(hsl2.l - 0.5) * 2)
+            if (score2 > bestScore) { bestScore = score2; best = hsl2; bestRgb = cs[j] }
+        }
     }
     if (!bestRgb || chroma(bestRgb) < 0.04) {
         if (light) return toHex(hslToRgb(0, 0, 0.45))
