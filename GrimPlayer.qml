@@ -371,6 +371,8 @@ Item {
     readonly property bool coverBand: {
         if (prefs.coverBandMode === "on") return true
         if (prefs.coverBandMode === "off") return false
+        // Auto-hide at very narrow widths to keep the three-pane layout usable
+        if (root.width > 0 && root.width < Math.round(680 * prefs.uiScale)) return false
         // No screen reported yet, or no frame read back: keep the pane rather than
         // flicker it away for the frame before the compositor answers.
         if (root.screenWidth <= 0 || !root.frameRead) return true

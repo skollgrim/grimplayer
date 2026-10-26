@@ -108,8 +108,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: root.colBackground
-        opacity: 0.97
+        color: Util.alpha(root.colBackground, 0.97)
     }
 
     // Everything the pane draws inside its outline.
