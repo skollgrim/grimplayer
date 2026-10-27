@@ -370,12 +370,15 @@ Item {
                     var y = item.mapToItem(contentItem, 0, 0).y
                     var h = item.height
                     var rowH = Math.round((root.compact ? 32 : 36) * root.uiScale)
-                    var margin = rowH * 3.2
+                    var margin = rowH * 2.5
                     var maxY = Math.max(0, contentHeight - flick.height)
+                    // Keep caret with 2-3 items visible below
+                    if (y + h + margin > contentY + flick.height) {
+                        contentY = Math.min(maxY, y + h + margin - flick.height)
+                    }
+                    // Keep caret with 2-3 items visible above
                     if (y - margin < contentY) {
                         contentY = Math.max(0, y - margin)
-                    } else if (y + h + margin > contentY + flick.height) {
-                        contentY = Math.min(maxY, y + h + margin - flick.height)
                     }
                 }
 
