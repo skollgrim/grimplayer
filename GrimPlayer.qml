@@ -826,10 +826,46 @@ Item {
         if (!settingsOpen) return
         var step = delta < 0 ? -1 : 1
         if (prefs.visibleEntries.length === 0) return
-        for (var i = settingIndex + step; i >= 0 && i < prefs.visibleEntries.length; i += step) {
-            if (prefs.isActive(prefs.visibleEntries[i])) {
-                settingIndex = i
+        // Get current category
+        var cur = prefs.visibleEntries[settingIndex]
+        if (!cur) {
+            // Find first active in current category
+            var items = settingsLoader.item && settingsLoader.item.columns && settingsLoader.item.columns[settingsLoader.item.categoryIndex || 0] ? settingsLoader.item.columns[settingsLoader.item.categoryIndex || 0].items : []
+            for (var t = 0; t < items.length; t++) {
+                if (prefs.isActive(items[t].entry)) {
+                    settingIndex = items[t].index
+                    settingsEditMode = false
+                    return
+                }
+            }
+            return
+        }
+        // Only navigate within current category
+        var items2 = settingsLoader.item && settingsLoader.item.columns && settingsLoader.item.columns[settingsLoader.item.categoryIndex || 0] ? settingsLoader.item.columns[settingsLoader.item.categoryIndex || 0].items : []
+        var idx = -1
+        for (var v = 0; v < items2.length; v++) {
+            if (items2[v].index === settingIndex || items2[v].entry === cur || items2[v].entry.key === cur.key) {
+                idx = v
+                break
+            }
+        }
+        if (idx < 0) {
+            for (var t2 = 0; t2 < items2.length; t2++) {
+                if (prefs.isActive(items2[t2].entry)) {
+                    settingIndex = items2[t2].index
+                    settingsEditMode = false
+                    return
+                }
+            }
+            return
+        }
+        for (var k = idx + step; k >= 0 && k < items2.length; k += step) {
+            if (prefs.isActive(items2[k].entry)) {
+                settingIndex = items2[k].index
                 settingsEditMode = false
+                if (settingsLoader.item) {
+                    settingsLoader.item.index = settingIndex
+                }
                 return
             }
         }
