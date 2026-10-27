@@ -352,9 +352,15 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 contentWidth: width
-                contentHeight: (root.compact ? boardCompact.implicitHeight : board.implicitHeight) + Math.round(20 * root.uiScale)
+                contentHeight: (root.compact ? boardCompact.implicitHeight : board.implicitHeight) + Math.round(60 * root.uiScale)
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.VerticalFlick
+
+                function forceReveal(idx) {
+                    // Find the item
+                    var items = root.compact ? boardCompact.children : board.children
+                    // walk
+                }
 
                 // Flickable has no ensureVisible of its own, so the card scrolls
                 // the caret's own cell into view whenever it moves. Without it a
@@ -364,7 +370,7 @@ Item {
                     var y = item.mapToItem(contentItem, 0, 0).y
                     var h = item.height
                     var rowH = Math.round((root.compact ? 32 : 36) * root.uiScale)
-                    var margin = rowH * 3.5
+                    var margin = rowH * 3
                     var maxY = Math.max(0, contentHeight - flick.height)
                     // Always ensure at least 3 items above
                     if (y < contentY + margin) {

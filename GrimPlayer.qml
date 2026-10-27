@@ -845,10 +845,9 @@ Item {
                 if (prefs.isActive(prefs.visibleEntries[i])) {
                     settingIndex = i
                     settingsEditMode = false
-                    // Force scroll reveal
-                    Qt.callLater(function() {
-                        var entries = settingsLoader.item && settingsLoader.item.config ? settingsLoader.item.config.visibleEntries : []
-                    })
+                    if (settingsLoader.item && typeof settingsLoader.item.forceReveal === "function") {
+                        settingsLoader.item.forceReveal(i)
+                    }
                     return
                 }
             }
