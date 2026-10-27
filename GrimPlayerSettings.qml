@@ -361,15 +361,15 @@ Item {
                 // keyboard walk off the bottom edge selects a row nobody can see.
                 function reveal(item) {
                     if (!item) return
-                    var pos = item.mapToItem(contentItem, 0, 0)
-                    var y = pos.y
+                    var y = item.mapToItem(contentItem, 0, 0).y
                     var h = item.height
-                    var pad = Math.round(24 * root.uiScale)
-                    var maxY = Math.max(0, contentItem.height - flick.height)
-                    if (y < contentY + pad) {
+                    var pad = Math.round(28 * root.uiScale)
+                    var viewTop = contentY
+                    var viewBottom = contentY + flick.height
+                    if (y < viewTop + pad) {
                         contentY = Math.max(0, y - pad)
-                    } else if (y + h > contentY + flick.height - pad) {
-                        contentY = Math.min(maxY, y + h - flick.height + pad)
+                    } else if (y + h > viewBottom - pad) {
+                        contentY = Math.min(Math.max(0, contentHeight - flick.height), y + h - flick.height + pad)
                     }
                 }
 
