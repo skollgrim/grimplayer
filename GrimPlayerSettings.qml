@@ -138,8 +138,8 @@ Item {
             // Keep the caret's row on screen as it moves, and once more when the
             // cell is created, since a cell that appears already selected never
             // fires selectedChanged.
-            onSelectedChanged: if (selected) flick.reveal(row)
-            Component.onCompleted: if (selected) Qt.callLater(function () { flick.reveal(row) })
+            onSelectedChanged: if (selected) Qt.callLater(function() { if (flick) flick.reveal(row) })
+            Component.onCompleted: if (selected) Qt.callLater(function () { if (flick) flick.reveal(row) })
 
             // An accent bar down the selected row's edge: a second, pointer-proof
             // mark of the caret, so selection reads even where the fill alone is
@@ -362,12 +362,12 @@ Item {
                     if (!item) return
                     var y = item.mapToItem(contentItem, 0, 0).y
                     var h = item.height
-                    var pad = Math.round(12 * root.uiScale)
+                    var pad = Math.round(16 * root.uiScale)
                     var bottom = Math.max(0, contentItem.height - height)
-                    if (y < contentY + pad) {
+                    if (y - pad < contentY) {
                         contentY = Math.max(0, y - pad)
-                    } else if (y + h > contentY + height - pad) {
-                        contentY = Math.max(0, Math.min(bottom, y + h - height + pad))
+                    } else if (y + h + pad > contentY + height) {
+                        contentY = Math.min(bottom, y + h + pad - height)
                     }
                 }
 
