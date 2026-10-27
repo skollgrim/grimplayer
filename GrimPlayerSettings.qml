@@ -63,12 +63,15 @@ Item {
     // identity does not survive the trip through the Repeater's model.
     readonly property var columns: config ? config.columns : []
 
+    // Compact mode for narrow windows
+    readonly property bool compact: root.width < Math.round(850 * root.uiScale)
+    
     // Slider plus value, in one fixed-width block, so the values line up down the
     // column. The value column is the widest text any setting produces ("300 ms",
     // "instant"), so it holds the odd one without the numbers jumping about.
-    readonly property int sliderWidth: Math.round(80 * uiScale)
-    readonly property int valueWidth: Math.round(56 * uiScale)
-    readonly property int controlWidth: sliderWidth + Math.round(8 * uiScale) + valueWidth
+    readonly property int sliderWidth: compact ? Math.round(56 * uiScale) : Math.round(80 * uiScale)
+    readonly property int valueWidth: compact ? Math.round(44 * uiScale) : Math.round(56 * uiScale)
+    readonly property int controlWidth: sliderWidth + Math.round(6 * uiScale) + valueWidth
 
     // The hint belongs to the entry under the caret, and the caret is an index
     // into config.visibleEntries -- the same list the panel walks.
@@ -113,7 +116,7 @@ Item {
             readonly property int indent: Math.round(16 * root.uiScale)
 
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.round(36 * root.uiScale)
+            Layout.preferredHeight: Math.round((root.compact ? 32 : 36) * root.uiScale)
             // The row's own content width, exposed so a column that hugs its
             // content (see the columns' fill flag) has something to size to. The
             // inner RowLayout is anchored, so it does not feed the implicit width
@@ -310,7 +313,9 @@ Item {
         // own. The width is fixed and generous enough that no label has to elide at
         // full size, so on a narrow panel the columns share what there is and the
         // labels elide rather than the card overflowing.
-        width: Math.min(Math.round(1700 * root.uiScale), parent.width - Math.round(32 * root.uiScale))
+        width: root.compact 
+            ? Math.min(Math.round(700 * root.uiScale), parent.width - Math.round(16 * root.uiScale))
+            : Math.min(Math.round(1100 * root.uiScale), parent.width - Math.round(32 * root.uiScale))
         // Fixed rather than window-relative: the list scrolls inside a Flickable,
         // so the card has no reason to grow with the panel.
         height: Math.min(Math.round(700 * root.uiScale), parent.height - Math.round(32 * root.uiScale))
@@ -347,7 +352,7 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 contentWidth: width
-                contentHeight: board.implicitHeight
+                contentHeight: root.compact ? boardCompact.implicitHeight : board.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
 
                 // Flickable has no ensureVisible of its own, so the card scrolls
@@ -358,9 +363,6 @@ Item {
                     var y = item.mapToItem(contentItem, 0, 0).y
                     var h = item.height
                     var pad = Math.round(8 * root.uiScale)
-                    // Declared with the rest rather than in the branch below: a
-                    // `var` there is hoisted to the whole function anyway, and the
-                    // bare form reads as though it were block-scoped.
                     var bottom = Math.max(0, contentItem.height - height)
                     if (y - pad < contentY) {
                         contentY = Math.max(0, y - pad)
@@ -371,8 +373,9 @@ Item {
 
                 RowLayout {
                     id: board
+                    visible: !root.compact
                     width: flick.width
-                    spacing: Math.round(20 * root.uiScale)
+                    spacing: Math.round(16 * root.uiScale)
 
                     Repeater {
                         model: root.columns
@@ -380,9 +383,6 @@ Item {
                         delegate: ColumnLayout {
                             id: columnBlock
                             required property var modelData
-                            // A column fills the card unless the config says
-                            // otherwise; the last section hugs its content so it
-                            // stops squeezing the wider columns beside it.
                             Layout.fillWidth: modelData.fill !== false
                             Layout.alignment: Qt.AlignTop
                             spacing: Math.round(2 * root.uiScale)
@@ -392,16 +392,59 @@ Item {
                                 text: columnBlock.modelData.name
                                 textFormat: Text.PlainText
                                 color: root.colMuted
-                                font.pixelSize: Math.round(Style.font.bodySmall * root.uiScale)
+                                font.pixelSize: Math.round((Style.font.bodySmall - 1) * root.uiScale)
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.8
                                 font.capitalization: Font.AllUppercase
                                 topPadding: Math.round(2 * root.uiScale)
-                                bottomPadding: Math.round(2 * root.uiScale)
+                                bottomPadding: Math.round(4 * root.uiScale)
                             }
 
                             Repeater {
                                 model: columnBlock.modelData.items
+                                delegate: settingCell
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    id: boardCompact
+                    visible: root.compact
+                    width: flick.width
+                    spacing: Math.round(12 * root.uiScale)
+
+                    Repeater {
+                        model: root.columns
+
+                        delegate: ColumnLayout {
+                            id: sectionBlock
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignTop
+                            spacing: Math.round(2 * root.uiScale)
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: sectionBlock.modelData.name
+                                textFormat: Text.PlainText
+                                color: root.colMuted
+                                font.pixelSize: Math.round((Style.font.bodySmall - 1) * root.uiScale)
+                                font.weight: Font.Bold
+                                font.letterSpacing: 0.8
+                                font.capitalization: Font.AllUppercase
+                                topPadding: Math.round(6 * root.uiScale)
+                                bottomPadding: Math.round(4 * root.uiScale)
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: Util.alpha(root.colForeground, 0.06)
+                            }
+
+                            Repeater {
+                                model: sectionBlock.modelData.items
                                 delegate: settingCell
                             }
                         }
@@ -422,9 +465,11 @@ Item {
                 text: root.current ? root.current.hint : ""
                 textFormat: Text.PlainText
                 color: root.colMuted
-                font.pixelSize: Math.round(Style.font.bodySmall * root.uiScale)
+                font.pixelSize: Math.round((Style.font.bodySmall - (root.compact ? 1 : 0)) * root.uiScale)
                 wrapMode: Text.WordWrap
-                Layout.bottomMargin: Math.round(8 * root.uiScale)
+                elide: Text.ElideRight
+                maximumLineCount: root.compact ? 1 : 2
+                Layout.bottomMargin: Math.round(6 * root.uiScale)
             }
 
             Text {
