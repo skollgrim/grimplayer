@@ -362,12 +362,12 @@ Item {
                     if (!item) return
                     var y = item.mapToItem(contentItem, 0, 0).y
                     var h = item.height
-                    var pad = Math.round(8 * root.uiScale)
+                    var pad = Math.round(12 * root.uiScale)
                     var bottom = Math.max(0, contentItem.height - height)
-                    if (y - pad < contentY) {
+                    if (y < contentY + pad) {
                         contentY = Math.max(0, y - pad)
-                    } else if (y + h + pad > contentY + height) {
-                        contentY = Math.max(0, Math.min(bottom, y + h + pad - height))
+                    } else if (y + h > contentY + height - pad) {
+                        contentY = Math.max(0, Math.min(bottom, y + h - height + pad))
                     }
                 }
 
