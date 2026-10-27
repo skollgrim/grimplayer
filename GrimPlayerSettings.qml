@@ -332,7 +332,7 @@ Item {
             spacing: 0
 
             Text {
-                text: root.inCategory ? "Settings" : (root.columns[root.categoryIndex] ? root.columns[root.categoryIndex].name : "Settings")
+                text: "Settings"
                 textFormat: Text.PlainText
                 color: root.colForeground
                 font.pixelSize: Math.round(Style.font.body * root.uiScale)
@@ -340,10 +340,53 @@ Item {
                 font.letterSpacing: 0.6
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: Math.round(10 * root.uiScale)
+                Layout.bottomMargin: Math.round(10 * root.uiScale)
+                spacing: Math.round(8 * root.uiScale)
+
+                Repeater {
+                    model: root.columns
+                    delegate: Rectangle {
+                        id: tab
+                        required property var modelData
+                        required property int index
+                        Layout.preferredHeight: Math.round(28 * root.uiScale)
+                        Layout.preferredWidth: tabText.implicitWidth + Math.round(20 * root.uiScale)
+                        radius: Math.round(6 * root.uiScale)
+                        color: tab.index === root.categoryIndex ? Util.alpha(root.colAccent, 0.18) : "transparent"
+                        border.width: tab.index === root.categoryIndex ? 0 : 1
+                        border.color: Util.alpha(root.colForeground, 0.12)
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                root.categoryIndex = tab.index
+                                root.inCategory = false
+                                var items = root.columns[tab.index].items
+                                if (items && items.length > 0) {
+                                    root.indexRequested(items[0].index)
+                                }
+                                root.editModeRequested(false)
+                            }
+                        }
+
+                        Text {
+                            id: tabText
+                            anchors.centerIn: parent
+                            text: tab.modelData.name
+                            color: tab.index === root.categoryIndex ? root.colForeground : root.colMuted
+                            font.pixelSize: Math.round(Style.font.bodySmall * root.uiScale)
+                            font.weight: tab.index === root.categoryIndex ? Font.DemiBold : Font.Normal
+                        }
+                    }
+                }
+            }
+
             Rectangle {
                 Layout.fillWidth: true
-                Layout.topMargin: Math.round(12 * root.uiScale)
-                Layout.bottomMargin: Math.round(12 * root.uiScale)
+                Layout.bottomMargin: Math.round(10 * root.uiScale)
                 Layout.preferredHeight: 1
                 color: Util.alpha(root.colForeground, 0.08)
             }
@@ -354,7 +397,7 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 contentWidth: width
-                contentHeight: root.inCategory ? categoryList.implicitHeight : (itemList.implicitHeight + Math.round(20 * root.uiScale))
+                contentHeight: itemList.implicitHeight + Math.round(20 * root.uiScale)
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.VerticalFlick
 
@@ -372,74 +415,7 @@ Item {
                 }
 
                 ColumnLayout {
-                    id: categoryList
-                    visible: root.inCategory
-                    width: flick.width
-                    spacing: Math.round(2 * root.uiScale)
-
-                    Repeater {
-                        model: root.columns
-                        delegate: Rectangle {
-                            id: catRow
-                            required property var modelData
-                            required property int index
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: Math.round(40 * root.uiScale)
-                            radius: Math.round(6 * root.uiScale)
-                            color: catRow.index === root.categoryIndex ? root.colSelectedFill : "transparent"
-
-                            Rectangle {
-                                visible: catRow.index === root.categoryIndex
-                                anchors.left: parent.left
-                                anchors.leftMargin: Math.round(4 * root.uiScale)
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: Math.max(2, Math.round(3 * root.uiScale))
-                                height: Math.max(0, parent.height - Math.round(12 * root.uiScale))
-                                radius: width / 2
-                                color: root.colAccent
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    root.categoryIndex = catRow.index
-                                    root.inCategory = false
-                                    var items = root.columns[catRow.index].items
-                                    if (items && items.length > 0) {
-                                        root.indexRequested(items[0].index)
-                                    }
-                                    root.editModeRequested(false)
-                                }
-                            }
-
-                            Text {
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                anchors.leftMargin: Math.round(16 * root.uiScale)
-                                anchors.rightMargin: Math.round(12 * root.uiScale)
-                                text: catRow.modelData.name
-                                color: root.colForeground
-                                font.pixelSize: Math.round(Style.font.subtitle * root.uiScale)
-                                font.weight: catRow.index === root.categoryIndex ? Font.DemiBold : Font.Normal
-                                elide: Text.ElideRight
-                            }
-
-                            Text {
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                anchors.rightMargin: Math.round(16 * root.uiScale)
-                                text: "›"
-                                color: root.colMuted
-                                font.pixelSize: Math.round(Style.font.subtitle * root.uiScale)
-                            }
-                        }
-                    }
-                }
-
-                ColumnLayout {
                     id: itemList
-                    visible: !root.inCategory
                     width: flick.width
                     spacing: Math.round(2 * root.uiScale)
 

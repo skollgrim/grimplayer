@@ -825,15 +825,6 @@ Item {
     function moveSettingRows(delta) {
         if (!settingsOpen) return
         var step = delta < 0 ? -1 : 1
-        if (settingsLoader.item && settingsLoader.item.inCategory) {
-            var cols = prefs.columns || []
-            if (cols.length === 0) return
-            var c = (settingsLoader.item.categoryIndex || 0) + step
-            if (c < 0) c = cols.length - 1
-            if (c >= cols.length) c = 0
-            settingsLoader.item.categoryIndex = c
-            return
-        }
         if (prefs.visibleEntries.length === 0) return
         for (var i = settingIndex + step; i >= 0 && i < prefs.visibleEntries.length; i += step) {
             if (prefs.isActive(prefs.visibleEntries[i])) {
@@ -847,21 +838,18 @@ Item {
     // Left/right do nothing in stacked layout
     function moveSettingColumns(delta) {
         if (!settingsOpen) return
-        if (settingsLoader.item && settingsLoader.item.inCategory) {
-            var cols = prefs.columns || []
-            if (cols.length === 0) return
-            settingsLoader.item.categoryIndex = settingsLoader.item.categoryIndex || 0
-            var items = cols[settingsLoader.item.categoryIndex].items || []
-            if (items.length === 0) return
-            settingsLoader.item.inCategory = false
-            settingsLoader.item.indexRequested(items[0].index)
-            settingsLoader.item.editModeRequested(false)
-            settingIndex = items[0].index
-            settingsEditMode = false
-            return
-        }
+        var cols = prefs.columns || []
+        if (cols.length === 0) return
+        var c = (settingsLoader.item ? settingsLoader.item.categoryIndex : 0) + (delta < 0 ? -1 : 1)
+        if (c < 0) c = cols.length - 1
+        if (c >= cols.length) c = 0
         if (settingsLoader.item) {
-            settingsLoader.item.inCategory = true
+            settingsLoader.item.categoryIndex = c
+            var items = cols[c].items || []
+            if (items.length > 0) {
+                settingsLoader.item.indexRequested(items[0].index)
+                settingIndex = items[0].index
+            }
             settingsLoader.item.editModeRequested(false)
             settingsEditMode = false
         }
