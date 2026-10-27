@@ -821,60 +821,24 @@ Item {
         }
     }
 
-    // Up/down walks the caret down its own column, stepping over any greyed
-    // dependent rows on the way. It keeps moving in the direction asked for until
-    // it finds a row that is actually editable, or runs off the end -- in which
-    // case it stays where it was rather than parking the caret on a row that
-    // refuses every key. The panel's own movement and the card's clicks both
-    // check isActive, so a greyed row is never the resting place of the caret.
+    // Up/down walks the caret through all visible entries in order, stepping
+    // over any greyed dependent rows. It keeps moving in the direction asked for
+    // until it finds a row that is actually editable, or runs off the end.
     function moveSettingRows(delta) {
         if (prefs.visibleEntries.length === 0) return
-        var column = prefs.columnOf(settingIndex)
-        var row = prefs.rowOf(settingIndex)
         var step = delta < 0 ? -1 : 1
-        var count = prefs.columnEntries(column).length
-        for (var i = row + step; i >= 0 && i < count; i += step) {
-            var next = prefs.indexAt(column, i)
-            if (next >= 0 && prefs.isActive(prefs.visibleEntries[next])) {
-                settingIndex = next
+        for (var i = settingIndex + step; i >= 0 && i < prefs.visibleEntries.length; i += step) {
+            if (prefs.isActive(prefs.visibleEntries[i])) {
+                settingIndex = i
                 settingsEditMode = false
                 return
             }
         }
     }
 
-    // Left/right crosses to the neighbouring column at the same height, clamping
-    // to the column's last row when it is shorter, so stepping sideways into a
-    // shorter section lands on its bottom. If the row at that height is greyed,
-    // the nearest active row in that same column is taken before moving on to the
-    // next column: a column with any live row should be reachable, and skipping
-    // the whole column because its row four happens to be greyed would jump the
-    // caret two sections across. Only a column with nothing live in it at all is
-    // passed over.
+    // Left/right do nothing in stacked layout
     function moveSettingColumns(delta) {
-        if (prefs.visibleEntries.length === 0) return
-        var step = delta < 0 ? -1 : 1
-        var column = prefs.columnOf(settingIndex)
-        var row = prefs.rowOf(settingIndex)
-        for (var c = column + step; c >= 0 && c < prefs.columns.length; c += step) {
-            var list = prefs.columnEntries(c)
-            if (list.length === 0) continue
-            // Walk outward from the same height so the landing row is the closest
-            // live one to where the caret already is.
-            var start = Math.max(0, Math.min(row, list.length - 1))
-            for (var d = 0; d < list.length; d++) {
-                for (var k = 0; k < 2; k++) {
-                    var i = k === 0 ? start + d : start - d
-                    if (i < 0 || i >= list.length) continue
-                    var entry = list[i]
-                    if (prefs.isActive(entry)) {
-                        settingIndex = prefs.visibleEntries.indexOf(entry)
-                        settingsEditMode = false
-                        return
-                    }
-                }
-            }
-        }
+        return
     }
 
     // Every entry now stays in the card, so the list the caret indexes into is

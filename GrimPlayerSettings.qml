@@ -63,8 +63,8 @@ Item {
     // identity does not survive the trip through the Repeater's model.
     readonly property var columns: config ? config.columns : []
 
-    // Compact mode for narrow windows
-    readonly property bool compact: root.width < Math.round(850 * root.uiScale)
+    // Always use stacked vertical sections
+    readonly property bool compact: true
     
     // Slider plus value, in one fixed-width block, so the values line up down the
     // column. The value column is the widest text any setting produces ("300 ms",
