@@ -38,6 +38,8 @@ Item {
     property int index: 0
     property bool editMode: false
     property real uiScale: 1.0
+    property int categoryIndex: 0
+    property bool inCategory: true
 
     // The panel's colour tokens, injected. The card is modal over the panel, so
     // it follows the same palette as everything behind it.
@@ -330,7 +332,7 @@ Item {
             spacing: 0
 
             Text {
-                text: "Settings"
+                text: root.inCategory ? "Settings" : (root.columns[root.categoryIndex] ? root.columns[root.categoryIndex].name : "Settings")
                 textFormat: Text.PlainText
                 color: root.colForeground
                 font.pixelSize: Math.round(Style.font.body * root.uiScale)
@@ -352,109 +354,98 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 contentWidth: width
-                contentHeight: (root.compact ? boardCompact.implicitHeight : board.implicitHeight) + Math.round(20 * root.uiScale)
+                contentHeight: root.inCategory ? categoryList.implicitHeight : (itemList.implicitHeight + Math.round(20 * root.uiScale))
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.VerticalFlick
 
-                // Flickable has no ensureVisible of its own, so the card scrolls
-                // the caret's own cell into view whenever it moves. Without it a
-                // keyboard walk off the bottom edge selects a row nobody can see.
                 function reveal(item) {
                     if (!item) return
                     var y = item.mapToItem(contentItem, 0, 0).y
                     var h = item.height
-                    var rowH = Math.round((root.compact ? 32 : 36) * root.uiScale)
-                    var margin = rowH * 3.5
-                    var maxY = Math.max(0, contentHeight - flick.height)
-                    // Always ensure at least 3 items above
-                    if (y < contentY + margin) {
-                        contentY = Math.max(0, y - margin)
-                        return
-                    }
-                    // Always ensure at least 3 items below
-                    if (y + h > contentY + flick.height - margin) {
-                        contentY = Math.min(maxY, y + h - flick.height + margin)
-                        return
+                    var pad = Math.round(12 * root.uiScale)
+                    var bottom = Math.max(0, contentItem.height - height)
+                    if (y - pad < contentY) {
+                        contentY = Math.max(0, y - pad)
+                    } else if (y + h + pad > contentY + height) {
+                        contentY = Math.max(0, Math.min(bottom, y + h + pad - height))
                     }
                 }
 
-                RowLayout {
-                    id: board
-                    visible: !root.compact
+                ColumnLayout {
+                    id: categoryList
+                    visible: root.inCategory
                     width: flick.width
-                    spacing: Math.round(16 * root.uiScale)
+                    spacing: Math.round(2 * root.uiScale)
 
                     Repeater {
                         model: root.columns
-
-                        delegate: ColumnLayout {
-                            id: columnBlock
+                        delegate: Rectangle {
+                            id: catRow
                             required property var modelData
-                            Layout.fillWidth: modelData.fill !== false
-                            Layout.alignment: Qt.AlignTop
-                            spacing: Math.round(2 * root.uiScale)
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Math.round(40 * root.uiScale)
+                            radius: Math.round(6 * root.uiScale)
+                            color: catRow.index === root.categoryIndex ? root.colSelectedFill : "transparent"
 
-                            Text {
-                                Layout.fillWidth: true
-                                text: columnBlock.modelData.name
-                                textFormat: Text.PlainText
-                                color: root.colMuted
-                                font.pixelSize: Math.round((Style.font.bodySmall - 1) * root.uiScale)
-                                font.weight: Font.Bold
-                                font.letterSpacing: 0.8
-                                font.capitalization: Font.AllUppercase
-                                topPadding: Math.round(2 * root.uiScale)
-                                bottomPadding: Math.round(4 * root.uiScale)
+                            Rectangle {
+                                visible: catRow.index === root.categoryIndex
+                                anchors.left: parent.left
+                                anchors.leftMargin: Math.round(4 * root.uiScale)
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Math.max(2, Math.round(3 * root.uiScale))
+                                height: Math.max(0, parent.height - Math.round(12 * root.uiScale))
+                                radius: width / 2
+                                color: root.colAccent
                             }
 
-                            Repeater {
-                                model: columnBlock.modelData.items
-                                delegate: settingCell
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    root.categoryIndex = catRow.index
+                                    root.inCategory = false
+                                    var items = root.columns[catRow.index].items
+                                    if (items && items.length > 0) {
+                                        root.indexRequested(items[0].index)
+                                    }
+                                    root.editModeRequested(false)
+                                }
+                            }
+
+                            Text {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: Math.round(16 * root.uiScale)
+                                anchors.rightMargin: Math.round(12 * root.uiScale)
+                                text: catRow.modelData.name
+                                color: root.colForeground
+                                font.pixelSize: Math.round(Style.font.subtitle * root.uiScale)
+                                font.weight: catRow.index === root.categoryIndex ? Font.DemiBold : Font.Normal
+                                elide: Text.ElideRight
+                            }
+
+                            Text {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.rightMargin: Math.round(16 * root.uiScale)
+                                text: "›"
+                                color: root.colMuted
+                                font.pixelSize: Math.round(Style.font.subtitle * root.uiScale)
                             }
                         }
                     }
                 }
 
                 ColumnLayout {
-                    id: boardCompact
-                    visible: root.compact
+                    id: itemList
+                    visible: !root.inCategory
                     width: flick.width
-                    spacing: Math.round(12 * root.uiScale)
+                    spacing: Math.round(2 * root.uiScale)
 
                     Repeater {
-                        model: root.columns
-
-                        delegate: ColumnLayout {
-                            id: sectionBlock
-                            required property var modelData
-                            Layout.fillWidth: true
-                            Layout.alignment: Qt.AlignTop
-                            spacing: Math.round(2 * root.uiScale)
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: sectionBlock.modelData.name
-                                textFormat: Text.PlainText
-                                color: root.colMuted
-                                font.pixelSize: Math.round((Style.font.bodySmall - 1) * root.uiScale)
-                                font.weight: Font.Bold
-                                font.letterSpacing: 0.8
-                                font.capitalization: Font.AllUppercase
-                                topPadding: Math.round(6 * root.uiScale)
-                                bottomPadding: Math.round(4 * root.uiScale)
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 1
-                                color: Util.alpha(root.colForeground, 0.06)
-                            }
-
-                            Repeater {
-                                model: sectionBlock.modelData.items
-                                delegate: settingCell
-                            }
-                        }
+                        model: root.columns[root.categoryIndex] ? root.columns[root.categoryIndex].items : []
+                        delegate: settingCell
                     }
                 }
             }

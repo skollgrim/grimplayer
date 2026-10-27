@@ -823,42 +823,21 @@ Item {
 
     // Up/down walks the caret through all visible entries in display order
     function moveSettingRows(delta) {
-        if (prefs.visibleEntries.length === 0) return
+        if (!settingsOpen) return
         var step = delta < 0 ? -1 : 1
-        var cur = prefs.visibleEntries[settingIndex]
-        if (!cur) return
-        // Find all entries in visual order across all sections
-        var visual = []
-        var lists = prefs.sectionLists
-        for (var s = 0; s < prefs.sections.length; s++) {
-            var tag = prefs.sections[s].tag
-            var l = lists[tag] || []
-            for (var j = 0; j < l.length; j++) visual.push(l[j])
-        }
-        var idx = -1
-        for (var v = 0; v < visual.length; v++) {
-            if (visual[v] === cur || visual[v].key === cur.key) { idx = v; break }
-        }
-        if (idx < 0) {
-            // fallback to visibleEntries
-            for (var i = settingIndex + step; i >= 0 && i < prefs.visibleEntries.length; i += step) {
-                if (prefs.isActive(prefs.visibleEntries[i])) {
-                    settingIndex = i
-                    settingsEditMode = false
-                    // Force scroll reveal
-                    Qt.callLater(function() {
-                        var entries = settingsLoader.item && settingsLoader.item.config ? settingsLoader.item.config.visibleEntries : []
-                    })
-                    return
-                }
-            }
+        if (settingsLoader.item && settingsLoader.item.inCategory) {
+            var cols = prefs.columns || []
+            if (cols.length === 0) return
+            var c = (settingsLoader.item.categoryIndex || 0) + step
+            if (c < 0) c = cols.length - 1
+            if (c >= cols.length) c = 0
+            settingsLoader.item.categoryIndex = c
             return
         }
-        for (var k = idx + step; k >= 0 && k < visual.length; k += step) {
-            var entry = visual[k]
-            if (prefs.isActive(entry)) {
-                settingIndex = prefs.visibleEntries.indexOf(entry)
-                if (settingIndex < 0) continue
+        if (prefs.visibleEntries.length === 0) return
+        for (var i = settingIndex + step; i >= 0 && i < prefs.visibleEntries.length; i += step) {
+            if (prefs.isActive(prefs.visibleEntries[i])) {
+                settingIndex = i
                 settingsEditMode = false
                 return
             }
@@ -867,7 +846,25 @@ Item {
 
     // Left/right do nothing in stacked layout
     function moveSettingColumns(delta) {
-        return
+        if (!settingsOpen) return
+        if (settingsLoader.item && settingsLoader.item.inCategory) {
+            var cols = prefs.columns || []
+            if (cols.length === 0) return
+            settingsLoader.item.categoryIndex = settingsLoader.item.categoryIndex || 0
+            var items = cols[settingsLoader.item.categoryIndex].items || []
+            if (items.length === 0) return
+            settingsLoader.item.inCategory = false
+            settingsLoader.item.indexRequested(items[0].index)
+            settingsLoader.item.editModeRequested(false)
+            settingIndex = items[0].index
+            settingsEditMode = false
+            return
+        }
+        if (settingsLoader.item) {
+            settingsLoader.item.inCategory = true
+            settingsLoader.item.editModeRequested(false)
+            settingsEditMode = false
+        }
     }
 
     // Every entry now stays in the card, so the list the caret indexes into is
