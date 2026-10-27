@@ -838,8 +838,8 @@ Item {
             for (var t = 0; t < items.length; t++) {
                 if (prefs.isActive(items[t].entry)) {
                     settingIndex = items[t].index
-                    settingsEditMode = false
                     if (loader) loader.index = settingIndex
+                    settingsEditMode = false
                     return
                 }
             }
@@ -848,8 +848,8 @@ Item {
         for (var k = idx + step; k >= 0 && k < items.length; k += step) {
             if (prefs.isActive(items[k].entry)) {
                 settingIndex = items[k].index
-                settingsEditMode = false
                 if (loader) loader.index = settingIndex
+                settingsEditMode = false
                 return
             }
         }
@@ -860,17 +860,19 @@ Item {
         if (!settingsOpen) return
         var cols = prefs.columns || []
         if (cols.length === 0) return
-        var c = (settingsLoader.item ? settingsLoader.item.categoryIndex : 0) + (delta < 0 ? -1 : 1)
+        var loader = settingsLoader.item
+        var c = (loader ? (loader.categoryIndex || 0) : 0) + (delta < 0 ? -1 : 1)
         if (c < 0) c = cols.length - 1
         if (c >= cols.length) c = 0
-        if (settingsLoader.item) {
-            settingsLoader.item.categoryIndex = c
+        if (loader) {
+            loader.categoryIndex = c
             var items = cols[c].items || []
             if (items.length > 0) {
-                settingsLoader.item.indexRequested(items[0].index)
+                loader.indexRequested(items[0].index)
                 settingIndex = items[0].index
+                loader.index = settingIndex
             }
-            settingsLoader.item.editModeRequested(false)
+            loader.editModeRequested(false)
             settingsEditMode = false
         }
     }
