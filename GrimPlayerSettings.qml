@@ -352,8 +352,9 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 contentWidth: width
-                contentHeight: root.compact ? boardCompact.implicitHeight : board.implicitHeight
+                contentHeight: (root.compact ? boardCompact.implicitHeight : board.implicitHeight) + Math.round(20 * root.uiScale)
                 boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
 
                 // Flickable has no ensureVisible of its own, so the card scrolls
                 // the caret's own cell into view whenever it moves. Without it a
