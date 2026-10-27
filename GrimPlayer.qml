@@ -825,47 +825,31 @@ Item {
     function moveSettingRows(delta) {
         if (!settingsOpen) return
         var step = delta < 0 ? -1 : 1
-        if (prefs.visibleEntries.length === 0) return
-        // Get current category
-        var cur = prefs.visibleEntries[settingIndex]
-        if (!cur) {
-            // Find first active in current category
-            var items = settingsLoader.item && settingsLoader.item.columns && settingsLoader.item.columns[settingsLoader.item.categoryIndex || 0] ? settingsLoader.item.columns[settingsLoader.item.categoryIndex || 0].items : []
+        var loader = settingsLoader.item
+        if (!loader || !prefs.columns) return
+        var cat = loader.categoryIndex || 0
+        var items = prefs.columns[cat] ? prefs.columns[cat].items : []
+        if (items.length === 0) return
+        var idx = -1
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].index === settingIndex) { idx = i; break }
+        }
+        if (idx < 0) {
             for (var t = 0; t < items.length; t++) {
                 if (prefs.isActive(items[t].entry)) {
                     settingIndex = items[t].index
                     settingsEditMode = false
+                    if (loader) loader.index = settingIndex
                     return
                 }
             }
             return
         }
-        // Only navigate within current category
-        var items2 = settingsLoader.item && settingsLoader.item.columns && settingsLoader.item.columns[settingsLoader.item.categoryIndex || 0] ? settingsLoader.item.columns[settingsLoader.item.categoryIndex || 0].items : []
-        var idx = -1
-        for (var v = 0; v < items2.length; v++) {
-            if (items2[v].index === settingIndex || items2[v].entry === cur || items2[v].entry.key === cur.key) {
-                idx = v
-                break
-            }
-        }
-        if (idx < 0) {
-            for (var t2 = 0; t2 < items2.length; t2++) {
-                if (prefs.isActive(items2[t2].entry)) {
-                    settingIndex = items2[t2].index
-                    settingsEditMode = false
-                    return
-                }
-            }
-            return
-        }
-        for (var k = idx + step; k >= 0 && k < items2.length; k += step) {
-            if (prefs.isActive(items2[k].entry)) {
-                settingIndex = items2[k].index
+        for (var k = idx + step; k >= 0 && k < items.length; k += step) {
+            if (prefs.isActive(items[k].entry)) {
+                settingIndex = items[k].index
                 settingsEditMode = false
-                if (settingsLoader.item) {
-                    settingsLoader.item.index = settingIndex
-                }
+                if (loader) loader.index = settingIndex
                 return
             }
         }
