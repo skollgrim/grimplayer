@@ -363,13 +363,14 @@ Item {
                     if (!item) return
                     var y = item.mapToItem(contentItem, 0, 0).y
                     var h = item.height
-                    var pad = Math.round(28 * root.uiScale)
+                    var rowH = Math.round((root.compact ? 32 : 36) * root.uiScale)
+                    var margin = rowH * 3
                     var viewTop = contentY
                     var viewBottom = contentY + flick.height
-                    if (y < viewTop + pad) {
-                        contentY = Math.max(0, y - pad)
-                    } else if (y + h > viewBottom - pad) {
-                        contentY = Math.min(Math.max(0, contentHeight - flick.height), y + h - flick.height + pad)
+                    if (y < viewTop + margin) {
+                        contentY = Math.max(0, y - margin)
+                    } else if (y + h > viewBottom - margin) {
+                        contentY = Math.min(Math.max(0, contentHeight - flick.height), y + h - flick.height + margin)
                     }
                 }
 
