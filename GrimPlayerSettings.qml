@@ -371,10 +371,10 @@ Item {
                     var h = item.height
                     var rowH = Math.round((root.compact ? 32 : 36) * root.uiScale)
                     var maxY = Math.max(0, contentHeight - flick.height)
-                    var target = y + h/2 - flick.height/2
-                    if (target < 0) target = 0
-                    if (target > maxY) target = maxY
-                    contentY = target
+                    var desired = y - rowH * 3
+                    if (desired < 0) desired = 0
+                    if (desired > maxY) desired = maxY
+                    contentY = desired
                 }
 
                 RowLayout {
