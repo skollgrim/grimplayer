@@ -821,15 +821,40 @@ Item {
         }
     }
 
-    // Up/down walks the caret through all visible entries in order, stepping
-    // over any greyed dependent rows. It keeps moving in the direction asked for
-    // until it finds a row that is actually editable, or runs off the end.
+    // Up/down walks the caret through all visible entries in display order
     function moveSettingRows(delta) {
         if (prefs.visibleEntries.length === 0) return
         var step = delta < 0 ? -1 : 1
-        for (var i = settingIndex + step; i >= 0 && i < prefs.visibleEntries.length; i += step) {
-            if (prefs.isActive(prefs.visibleEntries[i])) {
-                settingIndex = i
+        var cur = prefs.visibleEntries[settingIndex]
+        if (!cur) return
+        // Find all entries in visual order across all sections
+        var visual = []
+        var lists = prefs.sectionLists
+        for (var s = 0; s < prefs.sections.length; s++) {
+            var tag = prefs.sections[s].tag
+            var l = lists[tag] || []
+            for (var j = 0; j < l.length; j++) visual.push(l[j])
+        }
+        var idx = -1
+        for (var v = 0; v < visual.length; v++) {
+            if (visual[v] === cur || visual[v].key === cur.key) { idx = v; break }
+        }
+        if (idx < 0) {
+            // fallback to visibleEntries
+            for (var i = settingIndex + step; i >= 0 && i < prefs.visibleEntries.length; i += step) {
+                if (prefs.isActive(prefs.visibleEntries[i])) {
+                    settingIndex = i
+                    settingsEditMode = false
+                    return
+                }
+            }
+            return
+        }
+        for (var k = idx + step; k >= 0 && k < visual.length; k += step) {
+            var entry = visual[k]
+            if (prefs.isActive(entry)) {
+                settingIndex = prefs.visibleEntries.indexOf(entry)
+                if (settingIndex < 0) continue
                 settingsEditMode = false
                 return
             }
