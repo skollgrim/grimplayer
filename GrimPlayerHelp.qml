@@ -58,7 +58,20 @@ Item {
             title: "Screens",
             rows: [
                 { keys: "Alt + S", action: "Settings" },
-                { keys: "Alt + T", action: "Tag editor — edit the selection's tags and cover" }
+                { keys: "Alt + T", action: "Tag editor — edit the selection's tags and cover" },
+                { keys: "Alt + L", action: "Lyrics — toggle lyrics in the panes area" },
+                { keys: "Alt + K", action: "Karaoke — toggle the lyrics-only view in the player" }
+            ]
+        },
+        {
+            title: "Lyrics view",
+            rows: [
+                { keys: "j   k / ↑ ↓", action: "Scroll a line" },
+                { keys: "PgUp  PgDn", action: "Scroll a page" },
+                { keys: "Home  End", action: "Top / bottom" },
+                { keys: "Click", action: "Seek to that line" },
+                { keys: "Space", action: "Play / pause" },
+                { keys: "Esc / Q", action: "Back to the player / close lyrics" }
             ]
         }
     ]

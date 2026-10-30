@@ -19,7 +19,9 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Cover pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Pane above` tunes the window size floor the pane is kept to.
 - **Adaptive colours** — optionally matches the panel's colors to the playing album.
 - **Type-to-find** — jump to matching rows by typing, with the readout placed in the corner or centred, at a size of your choosing.
-- **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, themes and optional features.
+- **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line.
+- **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
+- **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, lyrics, themes and optional features.
 - **Vim motions (optional)** — `j` `k` `h` `l` `g` `G` alongside arrows; with them on, `Shift` + `h`/`l` seek.
 - **Key reference** (`?`) — quick overview of keys.
 
@@ -37,6 +39,7 @@ with a job of its own reports the failure there. The table says which is which.
 | Tag and cover editing, country flags | `mid3v2` (MP3) or `metaflac` (FLAC), and `zenity` to pick a cover file | The tag editor opens and shows what the files hold, but saving writes nothing and Browse cannot choose a cover file. |
 | Look up | `python3` with [`mutagen`](https://mutagen.readthedocs.io/) and [`musicbrainzngs`](https://python-musicbrainzngs.readthedocs.io/), and network access | The Match row reports the failure; editing by hand still works. |
 | Fetch covers | `python3` (standard library only) and network access | Albums with no artwork keep the placeholder. On by default; turned off under **Player wide** in the settings. |
+| Fetch lyrics | `python3` (standard library only) and network access | Tracks with no lyrics on disk show “No lyrics found”. On by default; turned off under **Lyrics** in the settings, which keeps the view local-only. |
 
 ## Requirements
 
@@ -99,6 +102,8 @@ then a one-liner around whichever of the three you prefer.
 | `g` / `G` | First / last row *(Vim keys on)* |
 | `Alt` + `S` | Settings card |
 | `Alt` + `T` | Tag editor |
+| `Alt` + `L` | Lyrics view (toggle) |
+| `Alt` + `K` | Karaoke view (toggle) |
 | `?` | Key reference |
 
 In the settings card: arrows or `hjkl` move — up/down moves within a column,
@@ -108,13 +113,20 @@ first or last setting, `R` resets everything, `?` switches to the key reference,
 `Esc` steps back out and `Q` closes.
 
 The card is cut into columns by topic — the list and what plays it, the panes and
-their rules, the text and its scale, the cover art, and the player-wide extras —
-so a slider and a switch sit together where their subject says they should, and a
-setting is always in the same place. A setting that only matters while another is
-on — a cover border's width, the artwork pane's position — stays on the card but
-is greyed, sitting directly beneath the setting it waits on, so the row above is
-why it is greyed and you never edit a value nothing reads. Its value is kept for
-when the parent comes back.
+their rules, the text and its scale, the cover art, the lyrics view, and the
+player-wide extras — so a slider and a switch sit together where their subject
+says they should, and a setting is always in the same place. A setting that only
+matters while another is on — a cover border's width, the artwork pane's
+position — stays on the card but is greyed, sitting directly beneath the setting
+it waits on, so the row above is why it is greyed and you never edit a value
+nothing reads. Its value is kept for when the parent comes back.
+
+In the lyrics view: `j` / `k` or `↑` / `↓` scroll a line, `PgUp` / `PgDn` a page,
+`Home` / `End` jump to the top or bottom, `Space` plays and pauses, and a click on
+a timed line seeks to it. `Esc` or `Q` closes the view — or leaves karaoke for the
+browser. Scrolling by hand pauses following for the wait set under **Resume after
+scroll**; with that set to **Never** the view stays where you put it until the
+track changes.
 
 In the key reference: it lists the browser keys and how to reach each screen;
 `Esc`, `Q` or `?` closes it.
@@ -216,6 +228,46 @@ Some things to know:
 - The tag is Picard's, which is what most libraries are already tagged with:
   `MusicBrainz Album Release Country` on MP3, and both
   `MUSICBRAINZ_ALBUMRELEASECOUNTRY` and `RELEASECOUNTRY` on FLAC.
+
+### Lyrics
+
+`Alt` + `L` covers the panes area with the lyrics for the playing track. Nothing
+is fetched while the view is closed, and nothing is fetched for a track whose
+lyrics are already on disk: the player reads embedded lyrics, a `.lrc` or `.txt`
+beside the track, and the shared `~/.lyrics` cache first, and only then starts the
+bundled `fetch_lyrics.py` — which asks [lrclib](https://lrclib.net/) and writes
+what it finds back to that cache. Turning **Fetch lyrics** off under the
+**Lyrics** tab keeps even that last step local-only, so the view never opens a
+socket.
+
+Synced lyrics (`.lrc`, or the `syncedLyrics` field lrclib returns) carry a time on
+each line. The current line is marked and, under the default **Follow along**
+setting, kept in the middle of the view as playback moves; the lines around it
+fade so the reading line stands out. A manual scroll pauses following for the
+configured wait rather than fighting the wheel. Plain lyrics still display, just
+without a time to mark or seek to; clicking a timed line seeks to it.
+
+The **Lyrics** tab in the settings card holds the reading surface's own choices:
+alignment, text size (an offset from the theme, so it tracks the rest of the
+panel), whether the title and artist sit above the text, how following and dimming
+behave, how long a manual scroll holds, line spacing, the width of the reading
+column, whether the cover shares the view, a global sync offset for lyrics that
+run early or late, click-to-seek, and the fetch switch. Every default reproduces
+the view as it looked before the tab existed.
+
+`Alt` + `K` turns the open player into karaoke: the lists, the now-playing strip
+and the cover are hidden, the text is set large and centred, and the current line
+is always marked and followed. It is a view of the same window, toggled exactly
+like `Alt` + `L` — press it again to go back to the browser. The settings above
+still apply where they make sense — size, spacing, dimming, width — but alignment
+and following are fixed by karaoke itself. `Esc` or `Q` also returns to the
+browser. Karaoke is not remembered: the next summon opens the normal browser.
+
+The highlight stays readable on light sleeves. Adaptive colours only promise the
+accent about 3:1 against the panel, which on a near-white cover reads as a faint
+tint, so the current line is also set in a heavier weight, and the accent is used
+for it only when it clears 4.5:1 against the background; otherwise the line takes
+the panel's ordinary foreground ink.
 
 The mouse works too: click a row to select it and move the caret into the next
 pane (playback still needs `Enter`), click a setting to change it, drag the seek

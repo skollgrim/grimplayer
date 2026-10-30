@@ -39,7 +39,6 @@ Item {
     property bool editMode: false
     property real uiScale: 1.0
     property int categoryIndex: 0
-    property bool inCategory: true
 
     // The panel's colour tokens, injected. The card is modal over the panel, so
     // it follows the same palette as everything behind it.
@@ -305,16 +304,17 @@ Item {
     Rectangle {
         id: card
         anchors.centerIn: parent
-        // Wide enough for five columns of label-left / control-right without the
+        // Wide enough for six columns of label-left / control-right without the
         // labels having to elide, and no wider than the window allows: on a panel
         // too small for the full width this falls back to the panel width less its
         // margin rather than overflowing it.
         //
-        // Five rather than four columns is what the topic cut costs: splitting by
+        // Six rather than four columns is what the topic cut costs: splitting by
         // subject needs somewhere for the panes and the text to each live on their
-        // own. The width is fixed and generous enough that no label has to elide at
-        // full size, so on a narrow panel the columns share what there is and the
-        // labels elide rather than the card overflowing.
+        // own, and later the artwork and the lyrics. The width is fixed and
+        // generous enough that no label has to elide at full size, so on a narrow
+        // panel the columns share what there is and the labels elide rather than
+        // the card overflowing.
         width: root.compact 
             ? Math.min(Math.round(700 * root.uiScale), parent.width - Math.round(16 * root.uiScale))
             : Math.min(Math.round(1100 * root.uiScale), parent.width - Math.round(32 * root.uiScale))
@@ -363,7 +363,6 @@ Item {
                             anchors.fill: parent
                             onClicked: {
                                 root.categoryIndex = tab.index
-                                root.inCategory = false
                                 var items = root.columns[tab.index].items
                                 if (items && items.length > 0) {
                                     root.indexRequested(items[0].index)

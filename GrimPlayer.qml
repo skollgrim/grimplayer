@@ -232,6 +232,13 @@ Item {
         // which is the maximised-window fault the frame subtraction exists to
         // fix. Harmless when auto was already the mode and the values are fresh.
         function onCoverBandModeChanged() { root.readFrame() }
+        // Turning following back on should pick up the playing line at once
+        // rather than leave a paused reader waiting for the next scroll.
+        function onLyricsFollowChanged() {
+            if (prefs.lyricsFollow !== "follow") return
+            root.lyricsFollowPaused = false
+            root.scrollToCurrentLyric()
+        }
     }
 
     // Re-read on the monitor changing under the open window. The frame figures
@@ -606,6 +613,30 @@ Item {
     property int albumIndex: 0
     property int trackIndex: 0
 
+    // ---- lyrics view (Alt+L) ----
+    property bool lyricsView: false
+    property string lyricsText: ""
+    property var lyricsLines: []
+    property int currentLyricLine: -1
+    property string lyricsFileKey: ""
+    // The file the running helper was started for. A stopped helper can still
+    // emit an empty result; without this an in-flight fetch for the previous
+    // track could wipe the lyrics a local hit just put on screen.
+    property string lyricsProcessKey: ""
+    property bool lyricsLoading: false
+    // True only once a lookup has taken long enough to be worth announcing.
+    // A cache or sidecar hit, or embedded lyrics read quickly, goes straight to
+    // the text instead of flashing "Looking for lyrics…" first.
+    property bool lyricsSearching: false
+    // Follow the current line until the reader scrolls away. A manual scroll
+    // pauses following for a few seconds rather than fighting the wheel.
+    property bool lyricsFollowPaused: false
+    // Karaoke presentation: the lyrics view with the browser's chrome gone and
+    // the text set large. Alt+K toggles it in the open player, the way Alt+L
+    // toggles the lyrics view; Esc leaves it for the browser.
+    property bool karaokeView: false
+    readonly property int lyricsScrollStep: Math.max(1, Math.round(48 * prefs.uiScale))
+
     // The settings card and the key reference are both modal: while either is up
     // the browser keeps its state underneath but stops answering keys, so j/k
     // cannot walk a list that is behind a dialog.
@@ -672,6 +703,27 @@ Item {
         closingFromHost = true
         window.visible = false
         closingFromHost = false
+        // Karaoke is a mode, not a state to reopen in: a later Alt+M should
+        // give the normal player. The lyrics view it forced on goes with it,
+        // or reopening would land back on the reading surface karaoke left
+        // behind rather than on the browser.
+        if (karaokeView) {
+            karaokeView = false
+            lyricsView = false
+        }
+    }
+
+    // Alt+K. Karaoke is a mode of the open player, not a separate window, so
+    // this only swaps what the window shows: on goes to the lyrics surface with
+    // the chrome gone, off goes back to the browser. The card and the key
+    // reference draw over the panes and cannot stay in front of a full-window
+    // reading surface, so they close on the way in.
+    function toggleKaraoke() {
+        root.settingsOpen = false
+        root.settingsEditMode = false
+        root.helpOpen = false
+        root.karaokeView = !root.karaokeView
+        root.lyricsView = root.karaokeView
     }
 
     // ---- activation ----
@@ -768,6 +820,317 @@ Item {
     onArtistListChanged: root.rebuildTypeaheadIndex()
     onAlbumListChanged: root.rebuildTypeaheadIndex()
     onTrackListChanged: root.rebuildTypeaheadIndex()
+
+    // ---- lyrics helpers ----
+    //
+    // One helper process answers the whole question for a track: embedded
+    // lyrics, a .lrc/.txt beside the file, the ~/.lyrics cache, or a download
+    // into that cache. It only runs while the view is open, so toggling Alt+L
+    // is what fetches -- nothing downloads for tracks nobody is looking at.
+    // Lyrics already on disk are read here first, so the helper is only started
+    // for a track whose lyrics have to be extracted or fetched.
+    readonly property string lyricsMusicDir: {
+        if (root.mpd && root.mpd.musicDir) return String(root.mpd.musicDir)
+        var dir = Quickshell.env("XDG_MUSIC_DIR")
+        if (dir) return String(dir)
+        var home = Quickshell.env("HOME")
+        return (home ? String(home) : "") + "/Music"
+    }
+
+    // fetch_lyrics.py, resolved beside this file so the plugin stays portable.
+    // Quickshell serves its files under qs://, so the scheme is stripped to
+    // leave the plain path python3 can open.
+    readonly property string lyricsScript: {
+        var url = String(Qt.resolvedUrl("fetch_lyrics.py"))
+        var path = url.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "")
+        try { path = decodeURIComponent(path) } catch (e) {}
+        return path
+    }
+
+    function clearLyrics() {
+        root.lyricsText = ""
+        root.lyricsLines = []
+        root.currentLyricLine = -1
+    }
+
+    // The shared cache the helper writes downloads into.
+    readonly property string lyricsHome: (Quickshell.env("HOME") || "") + "/.lyrics"
+
+    // Mirrors safe_name() in fetch_lyrics.py: a tag value as the filename the
+    // helper would have used.
+    function lyricsSafeName(name) {
+        var s = String(name === undefined || name === null ? "" : name)
+        s = s.replace(/[/\\\x00-\x1f]+/g, "-")
+        s = s.replace(/\s+/g, " ")
+        s = s.replace(/^[ .]+/, "").replace(/[ .]+$/, "")
+        return s || "Unknown"
+    }
+
+    // Mirrors cache_paths() in the helper: the cache stem (no extension) for
+    // the title as MPD gives it, then for the title without a trailing
+    // parenthetical, which covers earlier runs that filed a track under its
+    // shorter name. Synced lyrics are saved as .lrc, plain ones as .txt.
+    function lyricsCacheStems(artist, title) {
+        var names = [String(title)]
+        var short = String(title).replace(/\s*[\(\[][^\)\]]*[\)\]]\s*$/, "").trim()
+        if (short && short !== String(title)) names.push(short)
+        var stems = []
+        for (var i = 0; i < names.length; i++) {
+            var p = root.lyricsHome + "/" + root.lyricsSafeName(artist)
+                    + " - " + root.lyricsSafeName(names[i])
+            if (stems.indexOf(p) < 0) stems.push(p)
+        }
+        return stems
+    }
+
+    // Synchronous read through FileView. Clearing the path first matters:
+    // text() keeps returning the last file that loaded when the next path does
+    // not exist, which would turn a miss into a false hit.
+    function readLyricsFile(path) {
+        lyricsFile.path = ""
+        lyricsFile.path = path
+        return String(lyricsFile.text() || "")
+    }
+
+    // A .lrc/.txt beside the track, then the shared cache. Empty when the track
+    // has nothing on disk and the helper has to run.
+    function localLyricsFor(rel, artist, title) {
+        var base = (root.lyricsMusicDir + "/" + rel).replace(/\.[^./]+$/, "")
+        var text = root.readLyricsFile(base + ".lrc")
+        if (!text) text = root.readLyricsFile(base + ".txt")
+        if (!text && artist && title) {
+            var stems = root.lyricsCacheStems(artist, title)
+            for (var i = 0; i < stems.length && !text; i++) {
+                text = root.readLyricsFile(stems[i] + ".lrc")
+                if (!text) text = root.readLyricsFile(stems[i] + ".txt")
+            }
+        }
+        return text
+    }
+
+    // Jump the scroll back to the top for a new track, and let following
+    // resume; a reader who scrolled the previous song has moved on.
+    function resetLyricsScroll() {
+        lyricsScrollAnim.stop()
+        lyricsFlick.contentY = 0
+        root.lyricsFollowPaused = false
+        lyricsFollowTimer.stop()
+    }
+
+    // The lyrics view's own presentation, read straight from prefs so a change
+    // in the settings card lands without reopening the view.
+    //
+    // Karaoke overrides two of those settings: it always marks and follows the
+    // current line (that is what karaoke means) and always centres the text.
+    readonly property bool lyricsMarking: root.karaokeView || prefs.lyricsFollow !== "off"
+    readonly property bool lyricsFollowing: root.karaokeView || prefs.lyricsFollow === "follow"
+    readonly property int lyricsTextAlign: (root.karaokeView || prefs.lyricsAlign === "center")
+        ? Text.AlignHCenter : Text.AlignLeft
+    readonly property real lyricsDimOpacity: prefs.lyricsDim === "subtle" ? 0.85
+        : (prefs.lyricsDim === "strong" ? 0.5 : 0.7)
+
+    // Relative luminance and the WCAG contrast ratio between two colours.
+    // Palette.derive only guarantees the accent about 3:1 against the ground,
+    // which on a near-white sleeve reads as a faint tint; the highlight is
+    // text, so it wants the 4.5:1 a reader's eye expects.
+    function relativeLuminance(c) {
+        function linear(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * linear(c.r) + 0.7152 * linear(c.g) + 0.0722 * linear(c.b)
+    }
+    function contrastRatio(a, b) {
+        var la = root.relativeLuminance(a)
+        var lb = root.relativeLuminance(b)
+        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+    }
+
+    // The current line's colour. The cover accent is used when it is readable
+    // on the panel's ground; otherwise the foreground ink takes over, so a
+    // white sleeve gets a dark bold line instead of a pale accent one.
+    readonly property color lyricsHighlightColor: root.contrastRatio(theme.accent, theme.background) >= 4.5
+        ? theme.accent : theme.foreground
+
+    // The reading column's width inside the flickable. "wide" and "narrow" cap
+    // the measure and the column is centred, so a long line does not run the
+    // full width of a large window. Karaoke uses the whole width; its margins
+    // are what keep the line off the window edges.
+    readonly property real lyricsColumnWidth: root.karaokeView
+        ? lyricsFlick.width
+        : (prefs.lyricsWidth === "wide"
+            ? lyricsFlick.width * 0.8
+            : (prefs.lyricsWidth === "narrow" ? lyricsFlick.width * 0.65 : lyricsFlick.width))
+    // Whether the cover shares the view with the lyrics. Only the lyrics view
+    // is affected; the browser keeps whatever arrangement it had. Karaoke has
+    // no cover: the text is the whole point.
+    readonly property bool lyricsCoverVisible: !(root.lyricsView
+        && (prefs.lyricsCover === "hide" || root.karaokeView))
+    // Lyric type. Karaoke sets the same offset large, so the text-size setting
+    // still nudges it; the normal view is unchanged.
+    readonly property int lyricsFontPx: Math.round((Style.font.body + prefs.lyricsFont)
+        * (root.karaokeView ? 1.9 : 1) * prefs.uiScale)
+
+    // A manual scroll suspends following. With "Never" it stays suspended until
+    // the track changes or the view is reopened; otherwise the timer brings the
+    // view back to the playing line after the configured wait.
+    function pauseLyricsFollow() {
+        // Only following has an automatic scroll to suppress.
+        if (!root.lyricsFollowing) return
+        root.lyricsFollowPaused = true
+        if (prefs.lyricsResume > 0) lyricsFollowTimer.restart()
+        else lyricsFollowTimer.stop()
+    }
+
+    // Keep the highlighted line in the middle of the view. Called when the
+    // playback timer moves the highlight, and again when a paused reader lets
+    // following resume. Only "follow" (and karaoke, which always follows)
+    // scrolls: "highlight" marks the line in place, and "off" does not track it.
+    function scrollToCurrentLyric() {
+        if (!root.lyricsView || !root.lyricsFollowing) return
+        if (root.lyricsFollowPaused) return
+        if (root.currentLyricLine < 0) return
+        var item = lyricsRepeater.itemAt(root.currentLyricLine)
+        if (!item) return
+        var max = Math.max(0, lyricsFlick.contentHeight - lyricsFlick.height)
+        var target = item.y - (lyricsFlick.height - item.height) / 2
+        target = Math.max(0, Math.min(target, max))
+        if (Math.abs(target - lyricsFlick.contentY) < 2) return
+        lyricsScrollAnim.stop()
+        lyricsScrollAnim.from = lyricsFlick.contentY
+        lyricsScrollAnim.to = target
+        lyricsScrollAnim.start()
+    }
+
+    // Keyboard scrolling. Any manual movement pauses following for a few
+    // seconds, so the next line change does not yank the text away.
+    function scrollLyricsBy(delta) {
+        var max = Math.max(0, lyricsFlick.contentHeight - lyricsFlick.height)
+        lyricsScrollAnim.stop()
+        lyricsFlick.contentY = Math.max(0, Math.min(lyricsFlick.contentY + delta, max))
+        root.pauseLyricsFollow()
+    }
+
+    function scrollLyricsToEdge(edge) {
+        var max = Math.max(0, lyricsFlick.contentHeight - lyricsFlick.height)
+        lyricsScrollAnim.stop()
+        lyricsFlick.contentY = edge === 0 ? 0 : max
+        root.pauseLyricsFollow()
+    }
+
+    function parseLyrics(text) {
+        var lines = String(text === undefined || text === null ? "" : text).replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
+        var out = []
+        // [mm:ss.xx], and the [mm:ss:xx] spelling some writers emit. A third
+        // fraction digit means milliseconds rather than hundredths.
+        var re = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g
+        // A line that is nothing but LRC metadata tags -- [ar:], [ti:],
+        // [offset:] -- is not lyrics. Without this it would fall through to the
+        // plain-text branch and be printed verbatim. Bracket words in plain
+        // files, like a "[Chorus]" heading, are left alone.
+        var metaOnly = /^(?:\[(?:ar|al|ti|au|by|re|ve|length|offset|tool):[^\]]*\]\s*)+$/i
+        for (var i = 0; i < lines.length; i++) {
+            var l = lines[i]
+            re.lastIndex = 0
+            var m
+            var times = []
+            while ((m = re.exec(l)) !== null) {
+                var mm = parseInt(m[1]) || 0
+                var ss = parseInt(m[2]) || 0
+                var frac = m[3] !== undefined ? m[3] : "0"
+                var part = frac.length === 1 ? parseInt(frac) / 10
+                        : frac.length === 2 ? parseInt(frac) / 100
+                        : parseInt(frac.substring(0, 3)) / 1000
+                times.push(mm * 60 + ss + (part || 0))
+            }
+            if (times.length === 0) {
+                var t = l.trim()
+                if (t !== "" && !metaOnly.test(t)) out.push({ time: -1, text: t, order: out.length })
+                continue
+            }
+            var content = l.replace(/\[[^\]]*\]/g, "").trim()
+            if (content === "") continue
+            for (var ti = 0; ti < times.length; ti++) {
+                out.push({ time: times[ti], text: content, order: out.length })
+            }
+        }
+        // Timed lines first, then plain text. The original position breaks ties:
+        // a plain file has no times at all, and an unstable sort would otherwise
+        // be free to shuffle every line.
+        out.sort(function (a, b) {
+            if (a.time < 0 && b.time < 0) return a.order - b.order
+            if (a.time < 0) return 1
+            if (b.time < 0) return -1
+            if (a.time === b.time) return a.order - b.order
+            return a.time < b.time ? -1 : 1
+        })
+        return out
+    }
+
+    // MPD's current song, as the helper's fallback tags. The file's own tags
+    // are authoritative and the script reads them; these only cover a track it
+    // cannot read (a cue sheet, or an untagged file MPD named from its path).
+    function lyricsTag(key) {
+        var cur = root.mpd && root.mpd.current ? root.mpd.current : null
+        var value = cur ? cur[key] : ""
+        return value === undefined || value === null ? "" : String(value)
+    }
+
+    function loadLyricsFor(file) {
+        var rel = String(file === undefined || file === null ? "" : file)
+        root.lyricsFileKey = rel
+        root.lyricsLoading = false
+        root.clearLyrics()
+        root.resetLyricsScroll()
+        if (!root.lyricsView || rel === "") return
+
+        var artist = root.lyricsTag("Artist") || root.lyricsTag("AlbumArtist")
+        var title = root.lyricsTag("Title")
+        var album = root.lyricsTag("Album")
+        var duration = root.lyricsTag("duration") || root.lyricsTag("Time")
+        if (!title) {
+            var name = rel.split("/").pop() || ""
+            var dot = name.lastIndexOf(".")
+            if (dot > 0) name = name.substring(0, dot)
+            title = name.replace(/^\d+[\s.\-_]+/, "")
+        }
+        if (!artist && rel.indexOf("/") >= 0) artist = rel.split("/")[0]
+
+        // A reload for the next track must not be answered by the process
+        // still running for the previous one; stopping it first means its
+        // result arrives against the new key and is discarded below.
+        if (lyricsProcess.running) lyricsProcess.running = false
+        root.lyricsProcessKey = ""
+        lyricsTimeout.stop()
+        lyricsSearchTimer.stop()
+        root.lyricsSearching = false
+
+        // Already on disk: show it now instead of spawning python just to read
+        // the same file back.
+        var local = root.localLyricsFor(rel, artist, title)
+        if (local) {
+            root.lyricsText = local
+            root.lyricsLines = root.parseLyrics(local)
+            root.currentLyricLine = -1
+            return
+        }
+
+        root.lyricsLoading = true
+        root.lyricsProcessKey = rel
+        var command = ["python3", root.lyricsScript,
+            "--music-dir", root.lyricsMusicDir,
+            "--file", rel,
+            "--artist", artist,
+            "--title", title,
+            "--album", album,
+            "--duration", duration]
+        // "Fetch lyrics" off keeps the helper to local files only: embedded
+        // tags, sidecars and the cache, with no request to lrclib.
+        if (!prefs.lyricsDownloads) command.push("--offline")
+        lyricsProcess.command = command
+        lyricsProcess.running = true
+        lyricsTimeout.restart()
+        // Announce the lookup only if it is slow. A quick hit should go
+        // straight to the text rather than flash a message first.
+        lyricsSearchTimer.restart()
+    }
 
     // ---- settings ----
     //
@@ -1048,6 +1411,14 @@ Item {
         return requested
     }
 
+    // Seek to an absolute position, for the lyric lines (which carry a time in
+    // seconds). Routed through seekToFraction so the bar re-anchors and clamps
+    // exactly as it does for a click on the progress bar.
+    function seekToSeconds(seconds) {
+        if (!(duration > 0)) return -1
+        return root.seekToFraction(seconds / duration)
+    }
+
     Connections {
         target: root.mpd
         function onStatusChanged() {
@@ -1055,6 +1426,10 @@ Item {
         }
         function onCurrentChanged() {
             root.reanchor()
+            if (root.lyricsView) {
+                var f = root.mpd && root.mpd.current ? root.mpd.current.file : ""
+                root.loadLyricsFor(f)
+            }
         }
         // A database event rebuilds and re-sorts the tree, so an index that was in
         // range a moment ago can point past the end. Clamp it here rather than
@@ -1074,6 +1449,35 @@ Item {
         function onRepeatModeSelected(mode) {
             prefs.setRepeatMode(mode)
         }
+    }
+
+    onLyricsViewChanged: {
+        if (lyricsView) {
+            var f = root.mpd && root.mpd.current ? root.mpd.current.file : ""
+            root.loadLyricsFor(f)
+        } else {
+            root.lyricsText = ""
+            root.lyricsLines = []
+            root.currentLyricLine = -1
+            root.lyricsLoading = false
+            root.lyricsSearching = false
+            root.lyricsProcessKey = ""
+            root.lyricsFollowPaused = false
+            lyricsSearchTimer.stop()
+            lyricsFollowTimer.stop()
+            lyricsScrollAnim.stop()
+        }
+    }
+
+    onCurrentLyricLineChanged: root.scrollToCurrentLyric()
+
+    // Entering karaoke should pick up the playing line at once, not wait for
+    // the next line change. The lyrics may still be loading, in which case the
+    // first current-line update does it.
+    onKaraokeViewChanged: {
+        if (!root.karaokeView) return
+        root.lyricsFollowPaused = false
+        root.scrollToCurrentLyric()
     }
 
     function formatTime(seconds) {
@@ -1146,6 +1550,7 @@ Item {
                 PaneRow {
                     id: paneRow
 
+                    visible: !root.lyricsView
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
@@ -1186,6 +1591,151 @@ Item {
                     onTrackActivated: function (index) { root.selectTrack(index) }
                 }
 
+                Item {
+                    id: lyricsViewArea
+                    visible: root.lyricsView
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    // With the cover hidden for this view the lyrics take the
+                    // full width; otherwise they stop where the artwork pane
+                    // begins, as the browser does.
+                    width: Math.max(0, parent.width - (root.lyricsCoverVisible ? root.coverPaneWidth : 0))
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: theme.background
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: Math.round((root.karaokeView ? 40 : 24) * prefs.uiScale)
+                        spacing: Math.round(12 * prefs.uiScale)
+
+                        // Karaoke is the lyrics alone: the track block would only
+                        // eat the room the larger text needs.
+                        Text {
+                            Layout.preferredWidth: root.lyricsColumnWidth
+                            Layout.alignment: Qt.AlignHCenter
+                            visible: prefs.lyricsInfo !== "off" && !root.karaokeView
+                            text: (root.mpd && root.mpd.current && (root.mpd.current.Title || root.mpd.current.file))
+                                  ? (root.mpd.current.Title || root.mpd.current.file)
+                                  : "Lyrics"
+                            horizontalAlignment: root.lyricsTextAlign
+                            color: theme.foreground
+                            font.pixelSize: Math.round((Style.font.title + prefs.fontTitle) * prefs.uiScale)
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            Layout.preferredWidth: root.lyricsColumnWidth
+                            Layout.alignment: Qt.AlignHCenter
+                            text: (root.mpd && root.mpd.current && (root.mpd.current.Artist || root.mpd.current.AlbumArtist))
+                                  ? (root.mpd.current.Artist || root.mpd.current.AlbumArtist)
+                                  : ""
+                            visible: prefs.lyricsInfo === "both" && text !== "" && !root.karaokeView
+                            horizontalAlignment: root.lyricsTextAlign
+                            color: theme.muted
+                            font.pixelSize: Math.round((Style.font.body + prefs.fontBody) * prefs.uiScale)
+                            elide: Text.ElideRight
+                        }
+
+                        Flickable {
+                            id: lyricsFlick
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            contentWidth: lyricsColumn.width
+                            contentHeight: lyricsColumn.implicitHeight
+
+                            // A drag or flick means the reader is looking
+                            // somewhere else; stop following until they settle.
+                            onMovementStarted: {
+                                lyricsScrollAnim.stop()
+                                root.pauseLyricsFollow()
+                            }
+                            onMovementEnded: {
+                                if (prefs.lyricsResume > 0) lyricsFollowTimer.restart()
+                            }
+
+                            // The wheel moves contentY without a drag, so it
+                            // never fires movementStarted. Any scroll that is
+                            // not the follow animation itself counts as the
+                            // reader taking over, and pauses following the same
+                            // way a drag does.
+                            onContentYChanged: {
+                                if (lyricsScrollAnim.running || root.lyricsFollowPaused) return
+                                root.pauseLyricsFollow()
+                            }
+
+                            ColumnLayout {
+                                id: lyricsColumn
+                                // The measure, capped by the text-width setting
+                                // and centred, so a narrow column reads as a
+                                // column rather than as text pinned to one side.
+                                width: root.lyricsColumnWidth
+                                x: (lyricsFlick.width - width) / 2
+                                spacing: Math.round(prefs.lyricsSpacing
+                                    * (root.karaokeView ? 1.6 : 1) * prefs.uiScale)
+
+                                Repeater {
+                                    id: lyricsRepeater
+                                    model: root.lyricsLines
+                                    delegate: Text {
+                                        id: lyricLine
+                                        required property var modelData
+                                        required property int index
+                                        Layout.fillWidth: true
+                                        text: modelData.text || ""
+                                        wrapMode: Text.WordWrap
+                                        horizontalAlignment: root.lyricsTextAlign
+                                        color: (root.lyricsMarking && root.currentLyricLine === index)
+                                            ? root.lyricsHighlightColor : theme.foreground
+                                        // Only the follow modes mark a line and fade
+                                        // the rest; "off" leaves the whole text at
+                                        // full strength, since nothing is current.
+                                        opacity: (!root.lyricsMarking
+                                                  || root.currentLyricLine === index)
+                                            ? 1.0 : root.lyricsDimOpacity
+                                        // Bold as well as coloured: the accent
+                                        // alone can be too close to the ground on a
+                                        // light sleeve, but weight never is.
+                                        font.pixelSize: root.lyricsFontPx
+                                        font.weight: (root.lyricsMarking
+                                                      && root.currentLyricLine === index)
+                                            ? Font.DemiBold : Font.Normal
+
+                                        // Click a timed line to jump to it.
+                                        // Untimed (plain) lyrics stay inert,
+                                        // since there is nowhere to go.
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            enabled: prefs.lyricsClickSeek
+                                                && lyricLine.modelData.time >= 0
+                                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                            onClicked: root.seekToSeconds(lyricLine.modelData.time)
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: Math.round(12 * prefs.uiScale)
+                                    visible: root.lyricsLines.length === 0
+                                            && (!root.lyricsLoading || root.lyricsSearching)
+                                    text: root.lyricsSearching ? "Looking for lyrics…" : "No lyrics found"
+                                    horizontalAlignment: root.lyricsTextAlign
+                                    color: theme.muted
+                                    font.pixelSize: root.lyricsFontPx
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // The artwork pane. A fourth column in the panel's own background,
                 // so it reads as a peer of the lists rather than as a footer; ruled
                 // on its inner edge like every other boundary. With no padding the
@@ -1196,7 +1746,7 @@ Item {
                 Rectangle {
                     id: coverPane
 
-                    visible: root.coverBand
+                    visible: root.coverBand && root.lyricsCoverVisible
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
@@ -1227,6 +1777,9 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.stripHeight
+                // Karaoke hides the whole footer so the lyrics get the window;
+                // play/pause still works from Space, and a line click seeks.
+                visible: !root.karaokeView
                 // A step away from the panes, so the footer reads as a strip
                 // rather than as more of the same list background. The shade
                 // comes from the theme (see GrimTheme.strip), because how far to
@@ -1349,6 +1902,9 @@ Item {
             // looking at it -- an ffmpeg extraction or a store fetch per untagged
             // album, and the colour pass on each cover.
             active: window.visible
+            // The lyrics view may take the whole width; then neither the pane
+            // nor this cover shows while it is open.
+            visible: root.lyricsCoverVisible
             // The cover belongs to the album that is playing, so hiding the panel
             // keeps it rather than re-finding it: re-probing on the next summon
             // walked the candidate list from the top with the placeholder up in
@@ -1522,16 +2078,24 @@ Item {
                 // The Alt screen keys, handled before the modal branches so they
                 // work from inside the settings card or the key reference as well
                 // as from the browser: Alt+S toggles the card, Alt+T opens the tag
-                // editor. The tag editor is the exception -- it disables this
-                // catcher and reads its own keys. Plain ? opens the reference, and
-                // is left to the branches below so it can also close a screen.
-                if (alt && (event.key === Qt.Key_S || event.key === Qt.Key_T)) {
+                // editor, Alt+L toggles lyrics view in the panes area, Alt+K
+                // toggles karaoke over it. The tag editor is the exception -- it
+                // disables this catcher and reads its own keys. Plain ? opens the
+                // reference, and is left to the branches below so it can also
+                // close a screen.
+                if (alt && (event.key === Qt.Key_S || event.key === Qt.Key_T
+                            || event.key === Qt.Key_L || event.key === Qt.Key_K)) {
                     if (event.key === Qt.Key_S) {
                         root.toggleSettings()
-                    } else {
+                    } else if (event.key === Qt.Key_T) {
                         root.settingsOpen = false
                         root.helpOpen = false
                         root.openTagEditor()
+                    } else if (event.key === Qt.Key_L) {
+                        root.karaokeView = false
+                        root.lyricsView = !root.lyricsView
+                    } else if (event.key === Qt.Key_K) {
+                        root.toggleKaraoke()
                     }
                     event.accepted = true
                     return
@@ -1642,6 +2206,65 @@ Item {
                     return
                 }
 
+                // The lyrics view covers the panes, so it owns the keyboard
+                // while it is up. Without this branch j/k and the arrows moved
+                // the hidden selection, and Enter could start a different track
+                // while the reader was looking at the lyrics.
+                if (root.lyricsView) {
+                    var page = Math.max(1, Math.round(lyricsFlick.height * 0.9))
+                    switch (event.key) {
+                    case Qt.Key_Escape:
+                    case Qt.Key_Q:
+                        // Karaoke is a detour: Esc leaves it for the browser
+                        // rather than for whatever was underneath it.
+                        if (root.karaokeView) {
+                            root.karaokeView = false
+                            root.lyricsView = false
+                        } else {
+                            root.lyricsView = false
+                        }
+                        break
+                    case Qt.Key_Down:
+                    case Qt.Key_J:
+                        root.scrollLyricsBy(root.lyricsScrollStep)
+                        break
+                    case Qt.Key_Up:
+                    case Qt.Key_K:
+                        root.scrollLyricsBy(-root.lyricsScrollStep)
+                        break
+                    case Qt.Key_PageDown:
+                        root.scrollLyricsBy(page)
+                        break
+                    case Qt.Key_PageUp:
+                        root.scrollLyricsBy(-page)
+                        break
+                    case Qt.Key_Home:
+                        root.scrollLyricsToEdge(0)
+                        break
+                    case Qt.Key_End:
+                        root.scrollLyricsToEdge(1)
+                        break
+                    case Qt.Key_Left:
+                        if (shift) root.seekBy(-5)
+                        break
+                    case Qt.Key_Right:
+                        if (shift) root.seekBy(5)
+                        break
+                    case Qt.Key_Space:
+                        root.mpd && root.mpd.togglePlay()
+                        break
+                    case Qt.Key_Question:
+                        root.toggleHelp()
+                        break
+                    default:
+                        // Everything else is swallowed: no typeahead into a
+                        // list that is not on screen.
+                        break
+                    }
+                    event.accepted = true
+                    return
+                }
+
                 // Alt and control are not part of any browser binding -- the Alt
                 // screen keys were taken above. Without this, Alt+letter reached
                 // the typeahead and Ctrl+arrow moved the caret or changed pane.
@@ -1720,6 +2343,7 @@ Item {
         // scratch state, which is what the panel wants anyway -- the caret lives
         // in settingIndex, so a reopened card comes back where it was left.
         Loader {
+            id: settingsLoader
             anchors.fill: parent
             active: root.settingsOpen
             sourceComponent: settingsCard
@@ -1820,6 +2444,122 @@ Item {
         interval: 800
         repeat: false
         onTriggered: root.clearTypeahead()
+    }
+
+    // The one lyrics helper. It prints a single JSON object; the `file` it
+    // echoes back is checked against the key on screen, so a slow answer for
+    // the previous track cannot land after the next one has started loading.
+    Process {
+        id: lyricsProcess
+        command: []
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                lyricsTimeout.stop()
+                lyricsSearchTimer.stop()
+                // A helper stopped for a track change can still finish; only
+                // the run started for the file on screen may write the view.
+                if (root.lyricsProcessKey === ""
+                        || root.lyricsProcessKey !== root.lyricsFileKey) return
+                var data = null
+                try { data = JSON.parse(String(text || "")) } catch (e) { data = null }
+                if (data && data.file !== undefined
+                        && String(data.file) !== root.lyricsFileKey) return
+                root.lyricsProcessKey = ""
+                root.lyricsLoading = false
+                root.lyricsSearching = false
+                if (data && data.status === "ok" && data.lyrics) {
+                    root.lyricsText = String(data.lyrics)
+                    root.lyricsLines = root.parseLyrics(root.lyricsText)
+                    root.currentLyricLine = -1
+                } else {
+                    root.clearLyrics()
+                }
+            }
+        }
+    }
+
+    // A helper that cannot start -- python3 missing, the script moved -- never
+    // produces a stream to finish, so the loading state would stay up forever.
+    Timer {
+        id: lyricsTimeout
+        interval: 40000
+        repeat: false
+        onTriggered: {
+            if (!root.lyricsLoading) return
+            root.lyricsLoading = false
+            root.lyricsSearching = false
+            root.clearLyrics()
+        }
+    }
+
+    // Turns a lookup into "Looking for lyrics…" only once it has taken long
+    // enough to be worth saying. Local hits finish before this fires.
+    Timer {
+        id: lyricsSearchTimer
+        interval: 350
+        repeat: false
+        onTriggered: {
+            if (root.lyricsLoading) root.lyricsSearching = true
+        }
+    }
+
+    // Reads sidecar and cached lyrics synchronously (blockLoading), so a track
+    // that already has lyrics opens straight into them without a helper run.
+    FileView {
+        id: lyricsFile
+        path: ""
+        blockLoading: true
+        printErrors: false
+        watchChanges: false
+    }
+
+    // How long a manual scroll suspends following before the view returns to
+    // the line that is playing. "Never" (0) leaves the reader where they put
+    // the text until the track changes or the view is reopened.
+    Timer {
+        id: lyricsFollowTimer
+        interval: prefs.lyricsResume
+        repeat: false
+        onTriggered: {
+            root.lyricsFollowPaused = false
+            root.scrollToCurrentLyric()
+        }
+    }
+
+    NumberAnimation {
+        id: lyricsScrollAnim
+        target: lyricsFlick
+        property: "contentY"
+        duration: 240
+        easing.type: Easing.OutCubic
+    }
+
+    // Update current lyric line based on elapsed time
+    Timer {
+        id: lyricsSyncTimer
+        interval: 250
+        repeat: true
+        running: root.lyricsView && root.lyricsMarking
+                 && root.lyricsLines && root.lyricsLines.length > 0
+        onTriggered: {
+            // The offset shifts the highlight against the audio: positive
+            // delays it for lyrics that run early.
+            var elapsed = (root.elapsed || 0) - prefs.lyricsOffset / 1000
+            var best = -1
+            var lines = root.lyricsLines
+            for (var i = 0; i < lines.length; i++) {
+                var t = lines[i].time
+                if (t >= 0 && t <= elapsed + 0.25) {
+                    best = i
+                } else if (t > elapsed + 0.25) {
+                    break
+                }
+            }
+            if (best !== root.currentLyricLine) {
+                root.currentLyricLine = best
+            }
+        }
     }
 
     // Reached from outside the window as well as from inside it, so the editor can

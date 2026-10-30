@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "skollgrim.grimplayer",
   "name": "GrimPlayer",
-  "version": "1.4.4",
+  "version": "1.5.0",
   "author": "skollgrim",
-  "description": "MPD browser with artist, album and track panes, cover art and a now-playing strip",
+  "description": "MPD browser with artist, album and track panes, cover art, a now-playing strip and synced lyrics",
   "kinds": [
     "service",
     "panel"

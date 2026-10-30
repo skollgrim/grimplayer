@@ -200,6 +200,47 @@ Item {
         property int fontBody: 2
         property int fontBodySmall: 4
         property int fontCaption: 0
+
+        // ---- lyrics view ----
+        //
+        // The lyrics view is a reading surface, so its text is set apart from
+        // the lists: it has its own size offset, line spacing and measure rather
+        // than borrowing the pane rows' values. Every default here reproduces
+        // the view as it looked before these settings existed.
+        property string lyricsAlign: "left"
+        // A lyrics-only offset from the theme, like the other font sizes. It
+        // starts at the body text's own +2 so the view opens exactly as it did.
+        property int lyricsFont: 2
+        // "both", "title" or "off": the track and artist block above the text.
+        property string lyricsInfo: "both"
+        // "follow" scrolls to the current line and highlights it, "highlight"
+        // marks it without moving the view, "off" leaves the text still and
+        // unmarked -- the reading mode for plain lyrics or for reading ahead.
+        property string lyricsFollow: "follow"
+        // Gap between lyric lines, in logical pixels.
+        property int lyricsSpacing: 8
+        // How wide the reading column may get: "full", "wide" (80%) or "narrow"
+        // (65%). The column stays centred, so a narrow measure reads as a column
+        // rather than as text pushed against one side.
+        property string lyricsWidth: "full"
+        // How far the non-current lines fade: "subtle", "medium" or "strong".
+        property string lyricsDim: "medium"
+        // Whether the cover stays beside the lyrics or gives them the full
+        // width. "hide" affects the lyrics view only; the browser is untouched.
+        property string lyricsCover: "show"
+        // How long a manual scroll suspends following before the view returns
+        // to the playing line. Zero never resumes: the reader keeps the view
+        // where they put it until the track changes or the view is reopened.
+        property int lyricsResume: 5000
+        // Timing correction for synced lyrics that run early or late, in
+        // milliseconds. Positive delays the highlight.
+        property int lyricsOffset: 0
+        // Ask lrclib when a track has nothing on disk. Off keeps the player
+        // offline and local-only, the same promise Fetch covers makes.
+        property bool lyricsDownloads: true
+        // Clicking a timed lyric line seeks to it. Off makes the text inert,
+        // for anyone who would rather not seek by accident.
+        property bool lyricsClickSeek: true
     }
 
     // ---- persistence ----
@@ -281,7 +322,11 @@ Item {
                     "coverBandMinPct",
                     "uiScale", "iconSize",
                     "fontTitle", "fontSubtitle", "fontBody", "fontBodySmall",
-                    "fontCaption"]
+                    "fontCaption", "coverDecodeSize",
+                    "lyricsAlign", "lyricsFont", "lyricsInfo", "lyricsFollow",
+                    "lyricsDim", "lyricsResume", "lyricsSpacing", "lyricsWidth",
+                    "lyricsCover", "lyricsOffset", "lyricsClickSeek",
+                    "lyricsDownloads"]
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i]
             if (store[k] !== undefined) out[k] = store[k]
@@ -417,6 +462,18 @@ Item {
     readonly property int fontBody: store.fontBody
     readonly property int fontBodySmall: store.fontBodySmall
     readonly property int fontCaption: store.fontCaption
+    readonly property string lyricsAlign: store.lyricsAlign
+    readonly property int lyricsFont: store.lyricsFont
+    readonly property string lyricsInfo: store.lyricsInfo
+    readonly property string lyricsFollow: store.lyricsFollow
+    readonly property string lyricsDim: store.lyricsDim
+    readonly property int lyricsResume: store.lyricsResume
+    readonly property int lyricsSpacing: store.lyricsSpacing
+    readonly property string lyricsWidth: store.lyricsWidth
+    readonly property string lyricsCover: store.lyricsCover
+    readonly property int lyricsOffset: store.lyricsOffset
+    readonly property bool lyricsClickSeek: store.lyricsClickSeek
+    readonly property bool lyricsDownloads: store.lyricsDownloads
 
     function boolText(value) {
         return value ? "on" : "off"
@@ -449,7 +506,7 @@ Item {
     // kind of control it is, so a slider and a switch sit side by side wherever
     // the subject they share says they should. Sorting by shape instead (as this
     // table did before) put a list setting next to a font size and left every
-    // new entry needing to be told which of the four columns it "was".
+    // new entry needing to be told which column it "was".
     //
     // An entry with `dependsOn` is greyed and non-navigable until its predicate
     // is true, rather than being hidden. Keeping the row in place means a hunt
@@ -479,23 +536,6 @@ Item {
             get: function () { return store.playingHighlight },
             set: function (v) { store.playingHighlight = v },
             format: root.boolText
-        },
-        {
-            key: "playingMarkerSides",
-            section: "list",
-            label: "Marker sides",
-        },
-        {
-            key: "coverDecodeSize",
-            section: "artwork",
-            label: "Cover decode size",
-            type: "enum",
-            options: [
-                { label: "Full", value: "full" },
-                { label: "Large", value: "large" },
-                { label: "Medium", value: "medium" },
-            ],
-            defaultValue: "medium"
         },
         {
             key: "playingMarkerSides",
@@ -844,6 +884,17 @@ Item {
             format: root.boolText
         },
 
+        {
+            key: "coverDecodeSize",
+            section: "artwork",
+            label: "Cover decode size",
+            hint: "Maximum resolution to decode embedded art at",
+            options: ["full", "large", "medium"],
+            defaultValue: "medium",
+            get: function () { return store.coverDecodeSize },
+            set: function (v) { store.coverDecodeSize = v },
+            format: root.titleText
+        },
         // The pane settings sit together, the mode row first, with its dependents
         // grouped under it: the card sits each one directly beneath the row it
         // waits on, so the mode reads as the head of its own little block.
@@ -939,6 +990,152 @@ Item {
             format: function (v) { return v + "%" }
         },
 
+        // ---- Lyrics ----
+        //
+        // Every entry here carries section: "lyrics", which gathers the reading
+        // surface's own settings into their own tab rather than mixing them in
+        // with the list and text rows they otherwise resemble. The follow row
+        // heads its block: the two rows that only matter while following sit
+        // beneath it and grey out with it.
+        {
+            key: "lyricsAlign",
+            section: "lyrics",
+            label: "Alignment",
+            hint: "Align the lyric lines left, or centre them in the reading column",
+            options: ["left", "center"],
+            defaultValue: "left",
+            get: function () { return store.lyricsAlign },
+            set: function (v) { store.lyricsAlign = v },
+            format: root.titleText
+        },
+        {
+            key: "lyricsFont",
+            section: "lyrics",
+            label: "Text size",
+            hint: "Lyric size as an offset from the theme",
+            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            defaultValue: 2,
+            get: function () { return store.lyricsFont },
+            set: function (v) { store.lyricsFont = v },
+            format: root.deltaText
+        },
+        {
+            key: "lyricsInfo",
+            section: "lyrics",
+            label: "Track info",
+            hint: "Show the title and artist above the lyrics, the title alone, or neither",
+            options: ["both", "title", "off"],
+            defaultValue: "both",
+            get: function () { return store.lyricsInfo },
+            set: function (v) { store.lyricsInfo = v },
+            format: root.titleText
+        },
+        {
+            key: "lyricsFollow",
+            section: "lyrics",
+            label: "Follow along",
+            hint: "Scroll to the current line and highlight it, highlight it without scrolling, or leave the text still",
+            options: ["follow", "highlight", "off"],
+            defaultValue: "follow",
+            get: function () { return store.lyricsFollow },
+            set: function (v) { store.lyricsFollow = v },
+            format: root.titleText
+        },
+        {
+            key: "lyricsDim",
+            section: "lyrics",
+            label: "Dim other lines",
+            hint: "How far the lines around the current one fade back",
+            options: ["subtle", "medium", "strong"],
+            defaultValue: "medium",
+            dependsOn: function () { return store.lyricsFollow !== "off" },
+            after: "lyricsFollow",
+            get: function () { return store.lyricsDim },
+            set: function (v) { store.lyricsDim = v },
+            format: root.titleText
+        },
+        {
+            key: "lyricsResume",
+            section: "lyrics",
+            label: "Resume after scroll",
+            hint: "How long the view waits after a manual scroll before returning to the playing line",
+            options: [5000, 15000, 0],
+            defaultValue: 5000,
+            dependsOn: function () { return store.lyricsFollow === "follow" },
+            after: "lyricsFollow",
+            get: function () { return store.lyricsResume },
+            set: function (v) { store.lyricsResume = v },
+            format: function (v) { return v === 0 ? "Never" : (v / 1000) + " s" }
+        },
+        {
+            key: "lyricsSpacing",
+            section: "lyrics",
+            label: "Line spacing",
+            hint: "Gap between lyric lines: tight, normal or airy",
+            options: [4, 8, 12],
+            defaultValue: 8,
+            get: function () { return store.lyricsSpacing },
+            set: function (v) { store.lyricsSpacing = v },
+            format: function (v) { return v === 4 ? "Tight" : v === 8 ? "Normal" : "Airy" }
+        },
+        {
+            key: "lyricsWidth",
+            section: "lyrics",
+            label: "Text width",
+            hint: "How wide the reading column may get; a narrower column keeps long lines readable",
+            options: ["full", "wide", "narrow"],
+            defaultValue: "full",
+            get: function () { return store.lyricsWidth },
+            set: function (v) { store.lyricsWidth = v },
+            format: root.titleText
+        },
+        {
+            key: "lyricsCover",
+            section: "lyrics",
+            label: "Cover while open",
+            hint: "Keep the artwork beside the lyrics, or let the lyrics take the full width",
+            options: ["show", "hide"],
+            defaultValue: "show",
+            get: function () { return store.lyricsCover },
+            set: function (v) { store.lyricsCover = v },
+            format: root.titleText
+        },
+        {
+            key: "lyricsOffset",
+            section: "lyrics",
+            label: "Sync offset",
+            hint: "Shift synced lyrics that run early or late; positive delays the highlight",
+            options: [-2000, -1500, -1000, -500, 0, 500, 1000, 1500, 2000],
+            defaultValue: 0,
+            get: function () { return store.lyricsOffset },
+            set: function (v) { store.lyricsOffset = v },
+            format: function (v) {
+                return v === 0 ? "0 s" : (v > 0 ? "+" : "") + (v / 1000).toFixed(1) + " s"
+            }
+        },
+        {
+            key: "lyricsClickSeek",
+            section: "lyrics",
+            label: "Click to seek",
+            hint: "Click a timed line to jump to that point in the track",
+            options: [true, false],
+            defaultValue: true,
+            get: function () { return store.lyricsClickSeek },
+            set: function (v) { store.lyricsClickSeek = v },
+            format: root.boolText
+        },
+        {
+            key: "lyricsDownloads",
+            section: "lyrics",
+            label: "Fetch lyrics",
+            hint: "Ask lrclib when a track has no lyrics on disk; off keeps the player local-only",
+            options: [true, false],
+            defaultValue: true,
+            get: function () { return store.lyricsDownloads },
+            set: function (v) { store.lyricsDownloads = v },
+            format: root.boolText
+        },
+
         // ---- Player wide ----
         {
             key: "fetchCovers",
@@ -982,9 +1179,9 @@ Item {
 
     // The sections the card draws, in column order, each a name and the tag its
     // entries carry. A section is one topic -- the lists and what plays them, the
-    // panes and their rules, the text and scale, the cover art, the extras --
-    // rather than one kind of control, so a slider and a switch sit together
-    // wherever their subject says they should.
+    // panes and their rules, the text and scale, the cover art, the lyrics view,
+    // the extras -- rather than one kind of control, so a slider and a switch sit
+    // together wherever their subject says they should.
     //
     // The last section hugs its content instead of taking an equal share: it
     // holds a single row with a short label, so filling a full column with it
@@ -994,6 +1191,7 @@ Item {
         { tag: "panes", name: "Panes & layout" },
         { tag: "text", name: "Text & scale" },
         { tag: "artwork", name: "Artwork" },
+        { tag: "lyrics", name: "Lyrics" },
         { tag: "wide", name: "Player wide", fill: false }
     ]
 
