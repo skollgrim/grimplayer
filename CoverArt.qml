@@ -213,11 +213,18 @@ Item {
         // A pass already in flight has its own list; the next call will see the
         // map without the entries this one is about to drop.
         if (cachePrune.running) return
-        var entries = []
+        // Count first: this runs on every cover change, and the common case is a
+        // cache well under the limit, which should not pay for building and
+        // sorting the whole entry list.
+        var count = 0
         for (var d in root.coverAccess) {
-            if (root.coverAccess.hasOwnProperty(d)) entries.push({ dir: d, t: root.coverAccess[d] || 0 })
+            if (root.coverAccess.hasOwnProperty(d)) count++
         }
-        if (entries.length <= root.maxCachedCovers) return
+        if (count <= root.maxCachedCovers) return
+        var entries = []
+        for (var dir in root.coverAccess) {
+            if (root.coverAccess.hasOwnProperty(dir)) entries.push({ dir: dir, t: root.coverAccess[dir] || 0 })
+        }
         entries.sort(function (a, b) { return a.t - b.t })
         var current = root.currentAlbumDir()
         var files = []

@@ -327,6 +327,22 @@ Item {
                 // so it is repopulated whenever the song changes rather than only
                 // when the user leaves album mode.
                 root.rememberAlbumLoopPoint()
+                // A mode chosen before the first status read waited for both
+                // halves of this refresh: the status says MPD is there, the song
+                // says what pool to build. Shuffle first, so choosing repeat album
+                // alongside it can pull the scope back to album as usual.
+                if (root.status && root.status.state !== undefined) {
+                    if (root.pendingShuffleMode >= 0) {
+                        var pendingShuffle = root.pendingShuffleMode
+                        root.pendingShuffleMode = -1
+                        root.applyShuffleMode(pendingShuffle)
+                    }
+                    if (root.pendingRepeatMode >= 0) {
+                        var pendingRepeat = root.pendingRepeatMode
+                        root.pendingRepeatMode = -1
+                        root.applyRepeatMode(pendingRepeat)
+                    }
+                }
             }
             root.refreshing = false
             if (root.refreshQueued) {
@@ -1688,8 +1704,25 @@ Item {
         return target
     }
 
+    // A held volume key sends presses faster than MPD's status read can report
+    // the change, so every press would step from the same stale level and most
+    // of the burst would be lost. Remember the level last asked for and step
+    // from that while it is fresh; a second later the status read has caught up
+    // and wins again, so an external change is not masked for long.
+    property int volumeTarget: -1
+    property double volumeTargetAt: 0
+
+    function volumeNow() {
+        if (root.volumeTarget >= 0 && Date.now() - root.volumeTargetAt < 1000)
+            return root.volumeTarget
+        return root.status && root.status.volume !== undefined ? root.status.volume : 0
+    }
+
     function setVolume(value) {
-        root.command("setvol " + Math.max(0, Math.min(100, Math.round(value))))
+        var v = Math.max(0, Math.min(100, Math.round(value)))
+        root.volumeTarget = v
+        root.volumeTargetAt = Date.now()
+        root.command("setvol " + v)
     }
 
     // As playFilesScoped, but takes the resume point from MPD rather than from the
@@ -1844,6 +1877,12 @@ Item {
 
     property int repeatMode: 0
 
+    // A mode key pressed before the first status read has no song to scope a
+    // queue around and no proof MPD is listening, so the choice waits here for
+    // the read that follows instead of being dropped. -1 means nothing is
+    // waiting; 0 is a real choice (repeat off).
+    property int pendingRepeatMode: -1
+
     // Where to restart from when album mode runs out. Null until we have seen a
     // song, and cleared before replaying so the replay cannot re-enter the handler.
     property var albumLoopPoint: null
@@ -1878,7 +1917,15 @@ Item {
     }
 
     function applyRepeatMode(mode) {
-        if (!root.status || root.status.state === undefined) return
+        // Without a status there is no song to scope a queue around and no proof
+        // MPD is listening. Store the choice and let the next status read finish
+        // it, or the key would look dead right after a summon.
+        if (!root.status || root.status.state === undefined) {
+            root.repeatMode = Math.max(0, Math.min(2, mode))
+            root.repeatModeSelected(root.repeatMode)
+            root.pendingRepeatMode = root.repeatMode
+            return
+        }
         // Located from what MPD is playing, not from the panel's caret, which may be
         // pointing at a different album entirely.
         var loc = root.locateCurrent()
@@ -2028,6 +2075,10 @@ Item {
 
     property int shuffleMode: 0
 
+    // As pendingRepeatMode: a scope chosen before the first status read waits
+    // for that read rather than being dropped. -1 means nothing is waiting.
+    property int pendingShuffleMode: -1
+
     function cycleShuffleMode() {
         root.applyShuffleMode((root.shuffleMode + 1) % 4)
     }
@@ -2045,7 +2096,6 @@ Item {
     }
 
     function applyShuffleMode(mode) {
-        if (!root.status || root.status.state === undefined) return
         mode = Math.max(0, Math.min(3, mode))
 
         // A wider pool cannot live in an album-sized queue, so choosing one steps
@@ -2058,6 +2108,13 @@ Item {
 
         root.shuffleMode = mode
         root.shuffleModeSelected(mode)
+
+        // As with repeat, a choice made before the first status read has no song
+        // to build a pool from. Keep it and let that read apply it.
+        if (!root.status || root.status.state === undefined) {
+            root.pendingShuffleMode = mode
+            return
+        }
 
         var loc = root.locateCurrent()
         if (!loc) {

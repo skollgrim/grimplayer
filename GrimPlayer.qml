@@ -692,6 +692,13 @@ Item {
         // disabled because tagOpen was left true.
         tagOpen = false
         tagSongs = []
+        // A summon is a fresh start: a half-typed jump or a transport notice
+        // from the last time the panel was up must not appear over the new
+        // session. Stop the timers too, so they do not fire into this one.
+        typeaheadTimer.stop()
+        clearTypeahead()
+        transportNoticeTimer.stop()
+        transportNoticeVisible = false
         // The service may have loaded its one status before this panel attached
         // its status listener. If nothing is playing, no further event arrives,
         // so without this the bar would sit at zero until the next playback
@@ -2013,11 +2020,16 @@ Item {
             readonly property int paneArea: Math.max(0, parent.height - root.stripHeight)
             readonly property int bandY: parent.height - root.stripHeight - gutter - height
                 - (errorBanner.visible ? errorBanner.height + Math.round(8 * prefs.uiScale) : 0)
+            // A typed jump and a transport notice can be up at the same time --
+            // type a letter, then nudge the volume. The notice owns the band,
+            // so the typeahead rides above it instead of being covered.
+            readonly property int noticeLift: root.transportNoticeVisible
+                ? transportNoticeBox.height + Math.round(6 * prefs.uiScale) : 0
             visible: root.typeaheadBuffer.length > 0
             width: typeaheadReadout.implicitWidth + Math.round(20 * prefs.uiScale)
             height: typeaheadReadout.implicitHeight + Math.round(12 * prefs.uiScale)
             x: Math.round((parent.width - width) / 2)
-            y: centered ? Math.round((paneArea - height) / 2) : bandY
+            y: centered ? Math.round((paneArea - height) / 2) : bandY - noticeLift
             radius: Math.round(6 * prefs.uiScale)
             // Themed like the rest of the panel: a low foreground wash rather
             // than flat black, so it sits in the palette and follows a theme
@@ -2105,10 +2117,10 @@ Item {
                 ? Math.round(10 * prefs.uiScale)
                 : root.stripHeight + gutter
             visible: opacity > 0
-            opacity: root.transportNotice !== "" ? 1 : 0
+            opacity: root.transportNoticeVisible ? 1 : 0
             Behavior on opacity {
                 NumberAnimation {
-                    duration: root.transportNotice !== "" ? 90 : 220
+                    duration: root.transportNoticeVisible ? 90 : 220
                     easing.type: Easing.OutCubic
                 }
             }
@@ -2563,15 +2575,23 @@ Item {
     // there had none at all. A second press restarts the timer and replaces the
     // text rather than queueing a second readout.
     property string transportNotice: ""
+    // Whether the readout is up. Kept apart from the text so the line stays
+    // whole while it fades: clearing the string first collapsed the box to its
+    // padding mid-fade, leaving a shrinking sliver where the notice had been.
+    property bool transportNoticeVisible: false
 
     function showTransportNotice(text) {
         transportNotice = text
+        transportNoticeVisible = true
         transportNoticeTimer.restart()
     }
 
     function toggleMute() {
         if (!mpd || !mpd.status || mpd.status.volume === undefined) return
-        var current = mpd.status.volume
+        // The level last asked for, not the last one MPD has reported: muting
+        // right after a burst of volume keys has to remember where the burst
+        // was heading, or unmute would restore the level it started from.
+        var current = mpd.volumeNow()
         if (current > 0) {
             lastAudibleVolume = current
             mpd.setVolume(0)
@@ -2599,14 +2619,14 @@ Item {
         // only other tell is a control in the footer, which karaoke hides.
         case Qt.Key_Up:
             if (mpd && mpd.status && mpd.status.volume !== undefined) {
-                var louder = Math.min(100, mpd.status.volume + 5)
+                var louder = Math.min(100, mpd.volumeNow() + 5)
                 mpd.setVolume(louder)
                 showTransportNotice("Volume " + louder + "%")
             }
             return true
         case Qt.Key_Down:
             if (mpd && mpd.status && mpd.status.volume !== undefined) {
-                var quieter = Math.max(0, mpd.status.volume - 5)
+                var quieter = Math.max(0, mpd.volumeNow() - 5)
                 mpd.setVolume(quieter)
                 showTransportNotice("Volume " + quieter + "%")
             }
@@ -2682,7 +2702,7 @@ Item {
         id: transportNoticeTimer
         interval: 1300
         repeat: false
-        onTriggered: root.transportNotice = ""
+        onTriggered: root.transportNoticeVisible = false
     }
 
     // The one lyrics helper. It prints a single JSON object; the `file` it
