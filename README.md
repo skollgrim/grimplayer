@@ -178,6 +178,12 @@ session rather than answering “Nothing changed”.
 
 Fields: Title, Artist, Album artist, Album, Track, Disc, Year, Genre, Country.
 
+Under the title the card names what it is about to write: the file's path for a
+lone track, or the deepest folder the whole selection shares when several tracks
+are open. Paths are shown relative to the music library when they live inside it,
+and a cue album's virtual tracks name the cue sheet, the file that really exists.
+The line is elided in the middle, so the filename stays readable.
+
 Below them, reading as one more field, is a **Cover art** row: a small preview of
 the selection's cover, a **Browse…** button that opens a file chooser in the album
 folder (so the covers already beside the tracks are the first thing on offer), and

@@ -182,6 +182,50 @@ Item {
         return root.mpd.musicDir + "/" + root.mpd.albumDirOf(root.songs[0].file)
     }
 
+    // Where the selection lives on disk, shown under the title. The question it
+    // answers is "which file am I editing?", which only a lone track can answer
+    // outright: a multi-track selection is an album or an artist's whole shelf,
+    // and a list of paths would not fit on the card, so it names the deepest
+    // folder they all share instead.
+    //
+    // Paths are shown relative to the music library when they sit inside it.
+    // The prefix is the same for every file in the collection and only pushes
+    // the part that tells two files apart out of the line. A cue album's
+    // virtual tracks fold back to the cue sheet, the file that actually exists
+    // on disk.
+    readonly property string pathText: {
+        if (root.songs.length === 0) return ""
+        var dir = root.mpd ? String(root.mpd.musicDir) : ""
+        var real = function (path) {
+            var p = String(path === undefined || path === null ? "" : path)
+            // Same fold as Covers.albumDir: keep the ".cue", drop the virtual
+            // "/trackNNNN" segment MPD appends to it.
+            var cue = /\.cue\/track\d+$/i.exec(p)
+            return cue ? p.substring(0, cue.index + 4) : p
+        }
+        var shown = function (path) {
+            var p = String(path)
+            if (dir !== "" && p.indexOf(dir + "/") === 0) p = p.substring(dir.length + 1)
+            return p
+        }
+        var first = real(root.songs[0].file)
+        if (root.songs.length === 1) return shown(first)
+        var cut = first.lastIndexOf("/")
+        var prefix = cut > 0 ? first.substring(0, cut) : ""
+        // Walk the shared prefix up one folder at a time until every file in the
+        // selection is under it. Comparing against prefix + "/" rather than the
+        // bare prefix is what keeps "Foo" from swallowing "Foobar".
+        for (var i = 1; i < root.songs.length && prefix !== ""; i++) {
+            var p = real(root.songs[i].file)
+            while (prefix !== "" && p.indexOf(prefix + "/") !== 0) {
+                var slash = prefix.lastIndexOf("/")
+                prefix = slash > 0 ? prefix.substring(0, slash) : ""
+            }
+        }
+        if (prefix === "") return dir !== "" ? dir : "/"
+        return shown(prefix) + "/"
+    }
+
     // Every map here is rebuilt and reassigned rather than modified in place. A var
     // property holding a JS object does not report a change when a key is added to
     // it, so an in-place edit updates what a direct read returns while leaving
@@ -944,11 +988,12 @@ Item {
         width: Math.round(620 * root.uiScale)
         // Tall enough for the fields as they stand, and taller as "was" lines
         // appear; never taller than the room the panel gives it, so it stays on
-        // screen. 560 is the height the fields alone need.
+        // screen. 560 is the height the fields alone need; the extra 18 is the
+        // path line under the title, which the fields never had to share with.
         readonly property real maxCardHeight: Math.max(
             Math.round(320 * root.uiScale),
             root.height - Math.round(32 * root.uiScale))
-        height: Math.min(Math.round((560 + root.changedFieldCount * 18) * root.uiScale),
+        height: Math.min(Math.round((578 + root.changedFieldCount * 18) * root.uiScale),
                          card.maxCardHeight)
         radius: Math.round(12 * root.uiScale)
         color: root.colBackground
@@ -1033,9 +1078,22 @@ Item {
                 Item { Layout.fillWidth: true }
             }
 
+            // The file (or shared folder) the fields below describe. Muted and
+            // elided in the middle so the filename, the part that identifies the
+            // file, stays readable however long the folders above it get.
+            Text {
+                Layout.fillWidth: true
+                Layout.topMargin: Math.round(5 * root.uiScale)
+                text: root.pathText
+                color: Util.alpha(root.colMuted, 1.0)
+                font.pixelSize: Math.round(Style.font.caption * root.uiScale)
+                font.family: Style.font.family
+                elide: Text.ElideMiddle
+            }
+
             Rectangle {
                 Layout.fillWidth: true
-                Layout.topMargin: Math.round(14 * root.uiScale)
+                Layout.topMargin: Math.round(10 * root.uiScale)
                 Layout.bottomMargin: Math.round(10 * root.uiScale)
                 Layout.preferredHeight: 1
                 color: Util.alpha(root.colForeground, 0.08)
