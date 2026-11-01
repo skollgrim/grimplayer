@@ -36,16 +36,40 @@ Item {
 
     signal activated(int index)
 
-    // Scrolls the least amount that puts the caret row inside the viewport.
+    // Scrolls the least amount that puts the caret row inside the viewport, in
+    // whole rows. The viewport is cut to a whole number of row pitches (see
+    // viewportHeight below) and contentY only ever lands on a multiple of that
+    // pitch, so every row that is drawn is drawn completely -- nothing is left
+    // sliced in half under the fade at either edge.
+    //
     // Called when the caret moves and whenever the model is replaced, because a
     // swapped list leaves the old contentY pointing at a different row.
     function followCurrent() {
-        var top = root.currentIndex * root.rowPitch
+        var pitch = root.rowPitch
+        var top = root.currentIndex * pitch
         var bottom = top + root.rowHeight
-        if (top < flick.contentY)
-            flick.contentY = top
-        else if (bottom > flick.contentY + flick.height)
-            flick.contentY = bottom - flick.height
+        var maxY = Math.max(0, flick.contentHeight - flick.height)
+        var y = flick.contentY
+        if (top < y) {
+            y = top
+        } else if (bottom > y + flick.height) {
+            // Round up rather than to nearest: rounding down would push the
+            // bottom of the caret row back out of the viewport by up to a row.
+            y = Math.ceil((bottom - flick.height) / pitch) * pitch
+        }
+        flick.contentY = Math.max(0, Math.min(y, maxY))
+    }
+
+    // Wheel scrolling steps whole rows instead of sliding through free pixels,
+    // which is what left an artist's name cut in half at the bottom of the pane.
+    // One notch is one row; a touchpad's pixel deltas are banked until they add
+    // up to a row, so a two-finger flick still moves at a readable pace.
+    function scrollRows(rows) {
+        if (rows === 0) return
+        var pitch = root.rowPitch
+        var maxY = Math.max(0, flick.contentHeight - flick.height)
+        var base = Math.round(flick.contentY / pitch) * pitch
+        flick.contentY = Math.max(0, Math.min(base + rows * pitch, maxY))
     }
 
     // rowSpacing is the row height setting; the gap is derived from it (an eighth
@@ -101,6 +125,22 @@ Item {
     // and the follow math has to step by this rather than by the bare row height.
     readonly property int rowPitch: rowHeight + rowGap
 
+    // The list viewport is cut down to a whole number of row pitches so its
+    // bottom edge always falls between two rows. The few leftover pixels read as
+    // padding above the now-playing strip; a partial row there read as a name
+    // cut in half, which is what this is here to stop. The pitch is at least one
+    // row, so a pane too short for even one row keeps its full height rather
+    // than collapsing to zero.
+    readonly property int viewportHeight: {
+        var h = viewport.height
+        if (h <= 0) return 0
+        var rows = Math.floor(h / root.rowPitch)
+        return rows < 1 ? h : rows * root.rowPitch
+    }
+    // The unused fraction of a row, held below the list rather than shown as a
+    // sliced row.
+    readonly property int viewportTrim: Math.max(0, viewport.height - root.viewportHeight)
+
     // The focused pane holds full strength; the others pull back, but only when
     // focusGlow is on. It is a gentle pull (0.62) so the other two panes still
     // read as content rather than as disabled.
@@ -142,13 +182,25 @@ Item {
             color: Util.alpha(root.colForeground, 0.08)
         }
 
-        ListView {
-            id: flick
+        // An empty measuring item for the list area: the ListView is anchored to
+        // it and trimmed by the fraction of a row that does not fit. It draws
+        // nothing; the ListView's own clip does the cutting.
+        Item {
+            id: viewport
             anchors.top: root.showHeading ? heading.bottom : parent.top
             anchors.topMargin: root.showHeading ? 1 : 0
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
+        }
+
+        ListView {
+            id: flick
+            anchors.top: viewport.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: viewport.bottom
+            anchors.bottomMargin: root.viewportTrim
             clip: true
             model: root.model
             // The gap between rows the rowSpacing setting promises. It counts
@@ -319,6 +371,48 @@ Item {
             gradient: Gradient {
                 GradientStop { position: 0.0; color: "transparent" }
                 GradientStop { position: 1.0; color: Util.alpha(root.colBackground, 0.97) }
+            }
+        }
+
+        // Wheel input steps whole rows (see scrollRows): the default Flickable
+        // handling slides through free pixels and leaves a row sliced under the
+        // bottom edge. This catches the wheel above the rows because a handler
+        // on the ListView itself never sees events aimed at the row under the
+        // pointer. It is an empty item with only a wheel handler, so it is not a
+        // target for clicks or hover and the rows beneath still get both.
+        // Touchpad pixel deltas are banked until they add up to a row, so a
+        // two-finger flick moves at a readable pace instead of racing.
+        Item {
+            anchors.top: viewport.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: flick.bottom
+
+            WheelHandler {
+                id: wheel
+                // TouchPad is listed explicitly: without it Qt drops wheel
+                // events whose source is synthesized rather than a physical
+                // mouse, which also drops some real touchpad gestures.
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                property real banked: 0
+                onWheel: function (event) {
+                    var pitch = root.rowPitch
+                    var dy = event.pixelDelta.y
+                    if (dy !== 0) {
+                        wheel.banked += dy
+                        if (Math.abs(wheel.banked) < pitch) {
+                            event.accepted = true
+                            return
+                        }
+                        var rows = Math.trunc(wheel.banked / pitch)
+                        wheel.banked -= rows * pitch
+                        root.scrollRows(-rows)
+                    } else {
+                        var angle = event.angleDelta.y
+                        if (angle !== 0) root.scrollRows(angle < 0 ? 1 : -1)
+                    }
+                    event.accepted = true
+                }
             }
         }
     }

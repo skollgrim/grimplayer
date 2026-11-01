@@ -24,6 +24,26 @@ RowLayout {
     signal muteToggled()
     signal audibleVolumeChanged(real volume)
 
+    // A drag moves the slider through every step between the two ends, and
+    // sending one `setvol` per step would put a hundred commands and a hundred
+    // mixer events on the wire for one gesture. The handle already follows the
+    // pointer locally, so only the latest value is sent, coalesced into one
+    // command per 60ms, with the final value flushed on release.
+    property int pendingVolume: -1
+    function flushVolume() {
+        volumeSend.stop()
+        if (root.pendingVolume < 0) return
+        var value = root.pendingVolume
+        root.pendingVolume = -1
+        if (root.mpd) root.mpd.setVolume(value)
+    }
+    Timer {
+        id: volumeSend
+        interval: 60
+        repeat: false
+        onTriggered: root.flushVolume()
+    }
+
     // Fallbacks keep the control correct if it is ever placed outside the panel,
     // the same way the glyph and the transport buttons carry theirs.
     readonly property color colBackground: theme ? theme.background : Color.background
@@ -64,13 +84,17 @@ RowLayout {
         property bool dragging: false
 
         onReportedChanged: if (!dragging) value = reported
-        onPressedChanged: dragging = pressed
+        onPressedChanged: {
+            dragging = pressed
+            if (!pressed) root.flushVolume()
+        }
 
         // Dragging the slider to zero is also a mute, so it has to record the
         // level it came from or the icon click would have nothing to restore.
         onMoved: {
             if (value > 0) root.audibleVolumeChanged(value)
-            if (root.mpd) root.mpd.setVolume(value)
+            root.pendingVolume = value
+            if (!volumeSend.running) volumeSend.start()
         }
 
         Component.onCompleted: value = reported

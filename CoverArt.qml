@@ -197,36 +197,42 @@ Item {
         root.coverAccess[dir] = Date.now()
     }
 
+    // One pass drops every file it evicts with a single `rm -f`: the paths are
+    // independent, and a Process per eviction both churned objects on every
+    // prune and leaked them, because Qt.createQmlObject instances were never
+    // destroyed. Reusing this one is what keeps a long session from collecting
+    // dead children.
+    Process {
+        id: cachePrune
+        running: false
+        command: []
+    }
+
     function pruneCacheIfNeeded() {
-        try {
-            if (!root.coverAccess) return
-            var entries = []
-            for (var d in root.coverAccess) {
-                if (root.coverAccess.hasOwnProperty(d)) entries.push({ dir: d, t: root.coverAccess[d] || 0 })
-            }
-            if (entries.length <= root.maxCachedCovers) return
-            entries.sort(function (a, b) { return a.t - b.t })
-            var current = root.currentAlbumDir()
-            var toRemove = entries.length - root.maxCachedCovers
-            for (var i = 0; i < entries.length && toRemove > 0; i++) {
-                var e = entries[i]
-                if (e.dir === current) continue
-                try {
-                    var p = Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { running: false }', root)
-                    if (p) {
-                        p.command = ["rm", "-f", root.cacheDir + "/" + Covers.fileName(e.dir)]
-                        p.running = true
-                    }
-                    var p2 = Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { running: false }', root)
-                    if (p2) {
-                        p2.command = ["rm", "-f", root.cacheDir + "/" + Covers.onlineFileName(e.dir)]
-                        p2.running = true
-                    }
-                } catch (ex) {}
-                delete root.coverAccess[e.dir]
-                toRemove--
-            }
-        } catch (e) {}
+        if (!root.coverAccess) return
+        // A pass already in flight has its own list; the next call will see the
+        // map without the entries this one is about to drop.
+        if (cachePrune.running) return
+        var entries = []
+        for (var d in root.coverAccess) {
+            if (root.coverAccess.hasOwnProperty(d)) entries.push({ dir: d, t: root.coverAccess[d] || 0 })
+        }
+        if (entries.length <= root.maxCachedCovers) return
+        entries.sort(function (a, b) { return a.t - b.t })
+        var current = root.currentAlbumDir()
+        var files = []
+        var toRemove = entries.length - root.maxCachedCovers
+        for (var i = 0; i < entries.length && toRemove > 0; i++) {
+            var e = entries[i]
+            if (e.dir === current) continue
+            files.push(root.cacheDir + "/" + Covers.fileName(e.dir))
+            files.push(root.cacheDir + "/" + Covers.onlineFileName(e.dir))
+            delete root.coverAccess[e.dir]
+            toRemove--
+        }
+        if (files.length === 0) return
+        cachePrune.command = ["rm", "-f"].concat(files)
+        cachePrune.running = true
     }
 
     // FNV-1a naming lives in Covers.js, shared with the service so a cover the

@@ -73,16 +73,17 @@ Item {
         // Typing letters jumps the caret to the first matching row.
         property bool typeaheadSearch: true
 
-        // Where the typeahead readout sits: "corner" tucks it into the artists
-        // pane's lower corner, clear of the caret and the cover art, and
-        // "center" floats it in the middle of the window, where the eye already
-        // is when the lists are long enough that a corner readout is easy to
-        // miss. Kept as a named choice rather than a flag so a third position
-        // has somewhere to land without another boolean.
-        property string typeaheadPlace: "corner"
+        // Where the typeahead readout sits. Both homes are horizontally centred:
+        // "bottom" puts it in the band just above the now-playing strip, the same
+        // spot the Ctrl transport readout uses, and "center" floats it in the
+        // middle of the window, where the eye already is when the lists are long
+        // enough that a band readout is easy to miss. Kept as a named choice
+        // rather than a flag so a third position has somewhere to land without
+        // another boolean.
+        property string typeaheadPlace: "bottom"
 
         // The readout's font size as an offset from the theme, like the font-size
-        // settings. The corner readout is a glanceable aside and the centred one
+        // settings. The band readout is a glanceable aside and the centred one
         // has to hold the eye from across the window, so it starts well above the
         // panel's body text. The range starts at zero -- the theme's own size --
         // rather than below it: the readout is meant to stand out from the text
@@ -132,6 +133,12 @@ Item {
         // whole queue and its flag stays off in album mode, so the stored mode is
         // the only place the real answer lives.
         property int repeatMode: 0
+
+        // Which shuffle scope is in force: 0 off, 1 the playing album, 2 the
+        // artist, 3 the whole library. MPD's random flag says only that something
+        // is shuffled, never what the pool is, so the scope lives here for the same
+        // reason the repeat mode does.
+        property int shuffleMode: 0
 
         // Artwork sizing, as a percentage of the pane region -- everything above
         // the now-playing strip. A share rather than a pixel count, so 100% fills
@@ -200,6 +207,14 @@ Item {
         property int fontBody: 2
         property int fontBodySmall: 4
         property int fontCaption: 0
+
+        // The transient readout above the strip -- the line a shuffle, repeat,
+        // mute or volume change leaves behind. Its own offset from the theme
+        // rather than one of the font settings above, because it is an overlay
+        // read at a glance rather than a piece of the panel's body text, and
+        // wanting it larger should not also grow the lists. Zero is the theme's
+        // subtitle size, which is what it used before this setting existed.
+        property int noticeScale: 0
 
         // ---- lyrics view ----
         //
@@ -317,12 +332,12 @@ Item {
                     "vimKeys", "rowSpacing", "typeaheadSearch", "typeaheadPlace",
                     "typeaheadScale", "rowSeparators",
                     "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "coverBorder", "coverPlaceholder",
-                    "coverBorderWidth", "coverRounded", "activeRowBorder", "repeatMode", "coverScale",
+                    "coverBorderWidth", "coverRounded", "activeRowBorder", "repeatMode", "shuffleMode", "coverScale",
                     "coverTransition", "coverBandMode", "coverBandAlign", "coverPadding",
                     "coverBandMinPct",
                     "uiScale", "iconSize",
                     "fontTitle", "fontSubtitle", "fontBody", "fontBodySmall",
-                    "fontCaption", "coverDecodeSize",
+                    "fontCaption", "noticeScale", "coverDecodeSize",
                     "lyricsAlign", "lyricsFont", "lyricsInfo", "lyricsFollow",
                     "lyricsDim", "lyricsResume", "lyricsSpacing", "lyricsWidth",
                     "lyricsCover", "lyricsOffset", "lyricsClickSeek",
@@ -367,6 +382,10 @@ Item {
         if (obj && typeof obj.coverBand === "boolean" && obj.coverBandMode === undefined) {
             obj.coverBandMode = obj.coverBand ? "on" : "off"
         }
+        // The typeahead's second home used to be the artists pane's corner. It is
+        // now the band above the strip, so a file that chose the corner keeps the
+        // band placement rather than falling back to the default by accident.
+        if (obj.typeaheadPlace === "corner") obj.typeaheadPlace = "bottom"
         for (var k in obj) {
             if (store[k] === undefined) continue
             var v = obj[k]
@@ -384,10 +403,12 @@ Item {
                 if (accepted) store[k] = v
                 continue
             }
-            // No settings row: only repeatMode, whose three modes are checked by
-            // range rather than against an options list.
+            // No settings row: only the repeat and shuffle modes, whose values
+            // are checked by range rather than against an options list.
             if (k === "repeatMode" && typeof v === "number")
                 store[k] = Math.max(0, Math.min(2, Math.round(v)))
+            else if (k === "shuffleMode" && typeof v === "number")
+                store[k] = Math.max(0, Math.min(3, Math.round(v)))
         }
     }
 
@@ -442,11 +463,18 @@ Item {
     readonly property bool coverRounded: store.coverRounded
     readonly property bool activeRowBorder: store.activeRowBorder
     readonly property int repeatMode: store.repeatMode
+    readonly property int shuffleMode: store.shuffleMode
 
     // Written by the repeat-mode logic rather than by the settings card, hence
     // a setter instead of an exposed entry.
     function setRepeatMode(value) {
         store.repeatMode = value
+        saveSoon()
+    }
+
+    // Same, for the shuffle scope.
+    function setShuffleMode(value) {
+        store.shuffleMode = value
         saveSoon()
     }
     readonly property int coverScale: store.coverScale
@@ -462,6 +490,7 @@ Item {
     readonly property int fontBody: store.fontBody
     readonly property int fontBodySmall: store.fontBodySmall
     readonly property int fontCaption: store.fontCaption
+    readonly property int noticeScale: store.noticeScale
     readonly property string lyricsAlign: store.lyricsAlign
     readonly property int lyricsFont: store.lyricsFont
     readonly property string lyricsInfo: store.lyricsInfo
@@ -697,13 +726,13 @@ Item {
             key: "typeaheadPlace",
             section: "list",
             label: "Position",
-            hint: "Where the typed letters appear: tucked in the artists pane's corner, or centred in the middle of the window",
+            hint: "Where the typed letters appear: above the now-playing strip, like the transport readout, or centred in the middle of the window",
             // Bare "Position" and "Size" are enough here: both are indented under
             // Type-to-find, so the row above names the thing they set. The hint
             // still says "typed letters" rather than leaning on the label, since
             // it is read on its own at the foot of the card.
-            options: ["corner", "center"],
-            defaultValue: "corner",
+            options: ["bottom", "center"],
+            defaultValue: "bottom",
             dependsOn: function () { return store.typeaheadSearch },
             after: "typeaheadSearch",
             get: function () { return store.typeaheadPlace },
@@ -797,6 +826,20 @@ Item {
             defaultValue: 0,
             get: function () { return store.fontCaption },
             set: function (v) { store.fontCaption = v },
+            format: root.deltaText
+        },
+        {
+            key: "noticeScale",
+            section: "text",
+            label: "Transport readout",
+            hint: "Shuffle, repeat, mute and volume notices above the strip, as an offset from the theme",
+            // Runs below the theme as well as above: the readout is a transient
+            // aside, and on a small panel a quieter line is a legitimate choice.
+            // Zero is the size it had before this row existed.
+            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
+            defaultValue: 0,
+            get: function () { return store.noticeScale },
+            set: function (v) { store.noticeScale = v },
             format: root.deltaText
         },
         {

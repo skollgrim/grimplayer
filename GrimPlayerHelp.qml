@@ -3,8 +3,9 @@ pragma ComponentBehavior: Bound
 //
 // A plain cheat sheet: what keystroke does what, and -- since the settings card
 // and the tag editor are reached from this window rather than the bar -- how to
-// reach those two screens and this one. It is read-only, so it takes no caret and
-// owns no state: the panel's key handler closes it on Esc, Q or ?.
+// reach those two screens and this one. It is read-only, so it takes no caret:
+// the panel's key handler closes it on Esc, Q or ?, and scrolls it with the
+// arrows, j/k, PgUp/PgDn, Home/End and Space.
 //
 // Clicking the scrim closes it, the way the settings card does.
 import QtQuick
@@ -25,6 +26,22 @@ Item {
     readonly property color colAccent: theme ? theme.accent : Color.accent
 
     signal dismissed()
+
+    // The panel owns the keyboard while this is up, so it asks these rather than
+    // the sheet taking focus and reading keys itself. The step is one row, the
+    // page is what a viewport shows; both are what the mouse wheel would move.
+    readonly property real rowStep: Math.round(30 * uiScale)
+    readonly property real pageStep: helpFlick.height
+
+    function scrollBy(dy) {
+        var max = Math.max(0, helpFlick.contentHeight - helpFlick.height)
+        helpFlick.contentY = Math.max(0, Math.min(max, helpFlick.contentY + dy))
+    }
+
+    function scrollToEdge(edge) {
+        helpFlick.contentY = edge > 0
+            ? Math.max(0, helpFlick.contentHeight - helpFlick.height) : 0
+    }
 
     // One block per kind of thing a key does. The key itself sits in a fixed
     // column on the left so the actions line up; the text follows.
@@ -51,7 +68,19 @@ Item {
             rows: [
                 { keys: "Enter", action: "Play the artist, album or track under the caret" },
                 { keys: "Space", action: "Play / pause" },
+                { keys: "Ctrl + ← →", action: "Previous / next track" },
+                { keys: "Ctrl + ↑ ↓", action: "Volume − / + 5%" },
+                { keys: "Ctrl + M", action: "Mute / unmute" },
+                { keys: "Ctrl + S", action: "Shuffle: off, album, artist, library" },
+                { keys: "Ctrl + R", action: "Repeat: off, album, song" },
                 { keys: "Shift + ← →", action: "Seek ∓ 5 s" }
+            ]
+        },
+        {
+            title: "Mode badges",
+            rows: [
+                { keys: "Alb  Art  Lib", action: "Shuffle pool: album, artist, whole library" },
+                { keys: "A   S", action: "Repeat: album, song" }
             ]
         },
         {
@@ -69,9 +98,7 @@ Item {
                 { keys: "j   k / ↑ ↓", action: "Scroll a line" },
                 { keys: "PgUp  PgDn", action: "Scroll a page" },
                 { keys: "Home  End", action: "Top / bottom" },
-                { keys: "Click", action: "Seek to that line" },
-                { keys: "Space", action: "Play / pause" },
-                { keys: "Esc / Q", action: "Back to the player / close lyrics" }
+                { keys: "Click", action: "Seek to that line" }
             ]
         }
     ]
@@ -120,6 +147,7 @@ Item {
             }
 
             Flickable {
+                id: helpFlick
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
@@ -199,7 +227,7 @@ Item {
             }
 
             Text {
-                text: "Esc / Q closes"
+                text: "j / k scroll · Esc / Q closes"
                 textFormat: Text.PlainText
                 color: root.colMuted
                 font.pixelSize: Math.round(Style.font.caption * root.uiScale)

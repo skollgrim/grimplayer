@@ -51,6 +51,8 @@ Item {
     onMpdChanged: {
         if (root.mpd && typeof root.mpd.adoptStoredMode === "function")
             root.mpd.adoptStoredMode(prefs.repeatMode)
+        if (root.mpd && typeof root.mpd.adoptStoredShuffleMode === "function")
+            root.mpd.adoptStoredShuffleMode(prefs.shuffleMode)
     }
 
     // ---- persisted preferences ----
@@ -775,17 +777,39 @@ Item {
     // scoped to the active pane, which is where the caret is, and it never
     // steals a keystroke that a switch case above already claimed.
     property string typeaheadBuffer: ""
-    property var typeaheadIndex: ({ artists: [], albums: [], tracks: [] })
+    // One lowercased name list per pane, built the first time that pane is
+    // searched and dropped when its list changes. Rebuilding all three on every
+    // change walked the whole library each time the caret moved to another
+    // artist (which replaces the album and track lists), for an index only the
+    // active pane would ever read.
+    property var typeaheadIndex: ({ artists: null, albums: null, tracks: null })
 
-    function rebuildTypeaheadIndex() {
-        var a = [], al = [], t = []
-        for (var i = 0; i < artistList.length; i++) a.push((artistList[i].name || "").toLowerCase())
-        for (var j = 0; j < albumList.length; j++) al.push((albumList[j].name || "").toLowerCase())
-        for (var k = 0; k < trackList.length; k++) {
-            var tr = trackList[k]
-            t.push(((tr.title || tr.file || "") + "").toLowerCase())
+    function invalidateTypeahead(which) {
+        if (which === "artists") root.typeaheadIndex.artists = null
+        else if (which === "albums") root.typeaheadIndex.albums = null
+        else root.typeaheadIndex.tracks = null
+    }
+
+    function typeaheadNames(which) {
+        var cached = which === "artists" ? root.typeaheadIndex.artists
+            : which === "albums" ? root.typeaheadIndex.albums
+            : root.typeaheadIndex.tracks
+        if (cached) return cached
+        var out = []
+        if (which === "artists") {
+            for (var i = 0; i < artistList.length; i++) out.push((artistList[i].name || "").toLowerCase())
+            root.typeaheadIndex.artists = out
+        } else if (which === "albums") {
+            for (var j = 0; j < albumList.length; j++) out.push((albumList[j].name || "").toLowerCase())
+            root.typeaheadIndex.albums = out
+        } else {
+            for (var k = 0; k < trackList.length; k++) {
+                var tr = trackList[k]
+                out.push(((tr.title || tr.file || "") + "").toLowerCase())
+            }
+            root.typeaheadIndex.tracks = out
         }
-        typeaheadIndex = { artists: a, albums: al, tracks: t }
+        return out
     }
 
     function clearTypeahead() {
@@ -796,10 +820,16 @@ Item {
         if (!prefs.typeaheadSearch) return
         typeaheadBuffer = (typeaheadBuffer + ch).toLowerCase()
         typeaheadTimer.restart()
+        var which = pane === "artists" ? "artists" : pane === "albums" ? "albums" : "tracks"
         var list = pane === "artists" ? artistList : pane === "albums" ? albumList : trackList
-        var idx = pane === "artists" ? typeaheadIndex.artists : pane === "albums" ? typeaheadIndex.albums : typeaheadIndex.tracks
-        if (!idx || idx.length !== list.length) rebuildTypeaheadIndex()
-        idx = pane === "artists" ? typeaheadIndex.artists : pane === "albums" ? typeaheadIndex.albums : typeaheadIndex.tracks
+        var idx = typeaheadNames(which)
+        // A list replaced without its change signal -- or by a length the cache
+        // cannot tell apart -- falls back to one rebuild rather than searching
+        // stale names.
+        if (!idx || idx.length !== list.length) {
+            invalidateTypeahead(which)
+            idx = typeaheadNames(which)
+        }
         for (var i = 0; i < list.length; i++) {
             var nameIdx = idx ? idx[i] : ""
             if (!nameIdx) {
@@ -817,9 +847,9 @@ Item {
         }
     }
 
-    onArtistListChanged: root.rebuildTypeaheadIndex()
-    onAlbumListChanged: root.rebuildTypeaheadIndex()
-    onTrackListChanged: root.rebuildTypeaheadIndex()
+    onArtistListChanged: root.invalidateTypeahead("artists")
+    onAlbumListChanged: root.invalidateTypeahead("albums")
+    onTrackListChanged: root.invalidateTypeahead("tracks")
 
     // ---- lyrics helpers ----
     //
@@ -1321,6 +1351,11 @@ Item {
     // selected.
     property var tagSongs: []
     property bool tagOpen: false
+    // Latches the first open so the tag editor is built then and kept, rather
+    // than on every summon (see tagEditorLoader).
+    property bool tagEditorLoaded: false
+
+    onTagOpenChanged: if (tagOpen) tagEditorLoaded = true
 
     function selectionSongs() {
         if (pane === "tracks") {
@@ -1436,7 +1471,10 @@ Item {
         // leaving an empty pane (and, for the artist index, an activation that
         // resolves to no files) until the caret is next moved.
         function onArtistsChanged() {
-            root.rebuildTypeaheadIndex()
+            // The whole tree was replaced, so every pane's cached names are stale.
+            root.invalidateTypeahead("artists")
+            root.invalidateTypeahead("albums")
+            root.invalidateTypeahead("tracks")
             if (root.artistIndex >= root.artistList.length)
                 root.selectArtist(Math.max(0, root.artistList.length - 1), false)
             else if (root.albumIndex >= root.albumList.length)
@@ -1448,6 +1486,10 @@ Item {
         // so persisting the mode is the panel's half of the arrangement.
         function onRepeatModeSelected(mode) {
             prefs.setRepeatMode(mode)
+        }
+        // Same arrangement for the shuffle scope, which the service also owns.
+        function onShuffleModeSelected(mode) {
+            prefs.setShuffleMode(mode)
         }
     }
 
@@ -1478,6 +1520,12 @@ Item {
         if (!root.karaokeView) return
         root.lyricsFollowPaused = false
         root.scrollToCurrentLyric()
+    }
+
+    // A cheat sheet is read from the top: a sheet left scrolled at the bottom
+    // from last time would open on the tail of the list.
+    onHelpOpenChanged: {
+        if (root.helpOpen) helpView.scrollToEdge(0)
     }
 
     function formatTime(seconds) {
@@ -1935,12 +1983,11 @@ Item {
         // are buffered and gone the moment the buffer ages out, so it always
         // matches what the next typed letter will search for.
         //
-        // Two homes. "corner" tucks it into the lower-left of the panel -- which
-        // is the artists pane's lower corner, since that pane is leftmost and
-        // starts at x=0 -- clear of the caret and the cover art: a glanceable
-        // aside. "center" floats in the middle of the whole window, the one spot
-        // the eye lands on without hunting, which is why it centres on both axes
-        // rather than sharing the error banner's band above the strip. It is
+        // Two homes, both centred horizontally on the window. "bottom" puts it in
+        // the band just above the now-playing strip -- the same spot, at the same
+        // height, as the Ctrl transport readout, so a typed jump and a mode change
+        // are the same piece of furniture. "center" floats it in the middle of the
+        // whole window, the one spot the eye lands on without hunting. It is
         // centred on the window rather than tucked in a pane because the buffer is
         // about the session, not about whichever pane the caret happens to be in.
         //
@@ -1959,17 +2006,18 @@ Item {
             id: typeaheadReadoutBox
             readonly property bool centered: prefs.typeaheadPlace === "center"
             readonly property int gutter: Math.round(12 * prefs.uiScale)
-            // Corner: tucked left, just above the now-playing strip. Center: dead
-            // middle of the pane area above the strip, so the readout never rides
-            // down into the footer whatever the strip's thickness.
+            // Center: dead middle of the pane area above the strip, so the readout
+            // never rides down into the footer whatever the strip's thickness.
+            // Bottom: the transport readout's band, lifted clear of the error
+            // banner the same way that one is, so the two never stack.
             readonly property int paneArea: Math.max(0, parent.height - root.stripHeight)
+            readonly property int bandY: parent.height - root.stripHeight - gutter - height
+                - (errorBanner.visible ? errorBanner.height + Math.round(8 * prefs.uiScale) : 0)
             visible: root.typeaheadBuffer.length > 0
             width: typeaheadReadout.implicitWidth + Math.round(20 * prefs.uiScale)
             height: typeaheadReadout.implicitHeight + Math.round(12 * prefs.uiScale)
-            x: centered ? Math.round((parent.width - width) / 2) : gutter
-            y: centered
-                ? Math.round((paneArea - height) / 2)
-                : parent.height - root.stripHeight - gutter - height
+            x: Math.round((parent.width - width) / 2)
+            y: centered ? Math.round((paneArea - height) / 2) : bandY
             radius: Math.round(6 * prefs.uiScale)
             // Themed like the rest of the panel: a low foreground wash rather
             // than flat black, so it sits in the palette and follows a theme
@@ -2004,6 +2052,7 @@ Item {
         // whole panel and not about the caret. The band comes from stripHeight so
         // the two cannot drift apart.
         Rectangle {
+            id: errorBanner
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: root.stripHeight + Math.round(12 * prefs.uiScale)
@@ -2037,6 +2086,52 @@ Item {
                 // the panel. The user offset still applies on top, so anyone who
                 // wants it larger from the settings card can have it.
                 font.pixelSize: Math.round((Style.font.bodySmall + prefs.fontCaption) * prefs.uiScale)
+            }
+        }
+
+        // Transient readout for the Ctrl transport keys: what the last one did,
+        // in the band above the now-playing strip. Same shape and palette as the
+        // typeahead readout, so a mode change and a jump read as the same kind of
+        // aside rather than as two different overlays. It fades rather than
+        // blinking out, and rises clear of the error banner when that is up.
+        //
+        // Karaoke has no strip, and its lyrics stop short of the window's bottom
+        // edge, so there the readout drops into that margin instead of hanging a
+        // footer's height above the window.
+        Rectangle {
+            id: transportNoticeBox
+            readonly property int gutter: Math.round(12 * prefs.uiScale)
+            readonly property int baseMargin: root.karaokeView
+                ? Math.round(10 * prefs.uiScale)
+                : root.stripHeight + gutter
+            visible: opacity > 0
+            opacity: root.transportNotice !== "" ? 1 : 0
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: root.transportNotice !== "" ? 90 : 220
+                    easing.type: Easing.OutCubic
+                }
+            }
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: baseMargin
+                + (errorBanner.visible ? errorBanner.height + Math.round(8 * prefs.uiScale) : 0)
+            width: transportNoticeText.implicitWidth + Math.round(20 * prefs.uiScale)
+            height: transportNoticeText.implicitHeight + Math.round(12 * prefs.uiScale)
+            radius: Math.round(6 * prefs.uiScale)
+            color: Util.alpha(theme.foreground, 0.10)
+            border.width: 1
+            border.color: Util.alpha(theme.foreground, 0.16)
+
+            Text {
+                id: transportNoticeText
+                anchors.centerIn: parent
+                text: root.transportNotice
+                // Accent, the same as the typeahead and a live value in the
+                // settings card.
+                color: theme.accent
+                font.pixelSize: Math.round((Style.font.subtitle + prefs.noticeScale) * prefs.uiScale)
+                font.family: Style.font.family
             }
         }
 
@@ -2111,10 +2206,44 @@ Item {
                     case Qt.Key_Question:
                         if (!alt) root.helpOpen = false
                         break
+                    // The sheet is taller than the card, so the panel scrolls it
+                    // the way the reader would with the wheel.
+                    case Qt.Key_Down:
+                    case Qt.Key_J:
+                        helpView.scrollBy(helpView.rowStep)
+                        break
+                    case Qt.Key_Up:
+                    case Qt.Key_K:
+                        helpView.scrollBy(-helpView.rowStep)
+                        break
+                    case Qt.Key_PageDown:
+                    case Qt.Key_Space:
+                        helpView.scrollBy(helpView.pageStep * 0.9)
+                        break
+                    case Qt.Key_PageUp:
+                        helpView.scrollBy(-helpView.pageStep * 0.9)
+                        break
+                    case Qt.Key_Home:
+                        helpView.scrollToEdge(0)
+                        break
+                    case Qt.Key_End:
+                        helpView.scrollToEdge(1)
+                        break
                     default:
                         handled = false
                     }
                     if (handled) event.accepted = true
+                    return
+                }
+
+                // Ctrl is the transport's modifier wherever the browser keys are
+                // live. The bare arrows move the caret and change pane, bare
+                // letters and digits belong to the typeahead, and the settings
+                // card's R resets everything, so track changes, volume and the
+                // mode switches ride on Ctrl instead. The help sheet stays modal
+                // above this: its keys only scroll and close it.
+                if (ctrl && !alt && root.handleTransportKey(event.key)) {
+                    event.accepted = true
                     return
                 }
 
@@ -2266,9 +2395,10 @@ Item {
                 }
 
                 // Alt and control are not part of any browser binding -- the Alt
-                // screen keys were taken above. Without this, Alt+letter reached
-                // the typeahead and Ctrl+arrow moved the caret or changed pane.
-                // Swallow them rather than acting on the letter.
+                // screen keys and the Ctrl transport keys were taken above.
+                // Without this, Alt+letter reached the typeahead and Ctrl+letter
+                // could still trip a plain binding. Swallow them rather than
+                // acting on the letter.
                 if (alt || ctrl) {
                     event.accepted = true
                     return
@@ -2375,6 +2505,7 @@ Item {
         // The key reference, above the settings card and the panes. Read-only, so
         // it never takes focus.
         Cfg.GrimPlayerHelp {
+            id: helpView
             anchors.fill: parent
             theme: theme
             uiScale: prefs.uiScale
@@ -2385,18 +2516,37 @@ Item {
         // Above the settings card, which is itself above the panes: both are
         // modal, but the tag editor is opened from outside this window, so it has
         // to be able to appear over a settings card nobody is looking at.
-        Cfg.TagEditor {
-            id: tagEditor
+        //
+        // Behind a Loader for the same reason as the settings card: the editor is
+        // a large tree (a field per tag, a lookup list, a cover preview) and it is
+        // closed for all but a moment of the session, so building it at mount only
+        // to hide it costs every summon. It is created on the first open and then
+        // kept -- unlike the card, it can be dismissed mid-write, and destroying it
+        // out from under a running save would strand the callback that reports the
+        // result. `tagEditorLoaded` latches the first open so the cost is paid
+        // once rather than on every summon.
+        Loader {
+            id: tagEditorLoader
             anchors.fill: parent
-            theme: theme
-            mpd: root.mpd
-            songs: root.tagSongs
-            uiScale: prefs.uiScale
-            coverTransition: prefs.coverTransition
-            fetchCovers: prefs.fetchCovers
-            coverRounded: prefs.coverRounded
-            visible: root.tagOpen
-            onDismissed: root.tagOpen = false
+            active: root.tagEditorLoaded
+            sourceComponent: tagEditorComponent
+        }
+
+        Component {
+            id: tagEditorComponent
+
+            Cfg.TagEditor {
+                anchors.fill: parent
+                theme: theme
+                mpd: root.mpd
+                songs: root.tagSongs
+                uiScale: prefs.uiScale
+                coverTransition: prefs.coverTransition
+                fetchCovers: prefs.fetchCovers
+                coverRounded: prefs.coverRounded
+                visible: root.tagOpen
+                onDismissed: root.tagOpen = false
+            }
         }
     }
 
@@ -2407,15 +2557,94 @@ Item {
     // silent with no way back.
     property int lastAudibleVolume: 0
 
+    // The one-line readout for the Ctrl transport keys, flashed above the strip
+    // and faded out on its own. The strip's own buttons and slider are feedback
+    // enough in the browser, but karaoke hides the footer, so a mode change
+    // there had none at all. A second press restarts the timer and replaces the
+    // text rather than queueing a second readout.
+    property string transportNotice: ""
+
+    function showTransportNotice(text) {
+        transportNotice = text
+        transportNoticeTimer.restart()
+    }
+
     function toggleMute() {
         if (!mpd || !mpd.status || mpd.status.volume === undefined) return
         var current = mpd.status.volume
         if (current > 0) {
             lastAudibleVolume = current
             mpd.setVolume(0)
+            showTransportNotice("Muted")
         } else {
             mpd.setVolume(lastAudibleVolume > 0 ? lastAudibleVolume : 50)
+            showTransportNotice("Sound on")
         }
+    }
+
+    // Transport keys shared by the browser, the lyrics view and karaoke, so a
+    // track change or a volume nudge is the same chord wherever the reader is.
+    // They ride on Ctrl because the bare arrows move the caret and change pane,
+    // and bare letters and digits belong to the typeahead. Returns true when the
+    // key was one of them, so the caller can stop before its own switch.
+    function handleTransportKey(key) {
+        switch (key) {
+        case Qt.Key_Right:
+            if (mpd) mpd.command("next")
+            return true
+        case Qt.Key_Left:
+            if (mpd) mpd.command("previous")
+            return true
+        // Volume and the two mode switches say what they did, because their
+        // only other tell is a control in the footer, which karaoke hides.
+        case Qt.Key_Up:
+            if (mpd && mpd.status && mpd.status.volume !== undefined) {
+                var louder = Math.min(100, mpd.status.volume + 5)
+                mpd.setVolume(louder)
+                showTransportNotice("Volume " + louder + "%")
+            }
+            return true
+        case Qt.Key_Down:
+            if (mpd && mpd.status && mpd.status.volume !== undefined) {
+                var quieter = Math.max(0, mpd.status.volume - 5)
+                mpd.setVolume(quieter)
+                showTransportNotice("Volume " + quieter + "%")
+            }
+            return true
+        case Qt.Key_M:
+            root.toggleMute()
+            return true
+        // The readout names the state the press is about to leave the player in,
+        // read from the current one rather than from the reply, so it is up
+        // before MPD has answered.
+        case Qt.Key_S:
+            if (mpd) {
+                var nextShuffle = (mpd.shuffleMode + 1) % 4
+                // A scope wider than the album cannot live in an album-sized
+                // queue, so the service steps repeat album out; say so, or the
+                // repeat badge would vanish with no explanation.
+                var dropsRepeat = mpd.repeatMode === 1 && nextShuffle > 1
+                mpd.cycleShuffleMode()
+                var shuffleText = nextShuffle === 1 ? "Shuffle album on"
+                    : nextShuffle === 2 ? "Shuffle artist on"
+                    : nextShuffle === 3 ? "Shuffle library on" : "Shuffle off"
+                showTransportNotice(shuffleText + (dropsRepeat ? " · repeat off" : ""))
+            }
+            return true
+        case Qt.Key_R:
+            if (mpd) {
+                var nextMode = (mpd.repeatMode + 1) % 3
+                // Repeat album narrows the queue to the album, which drags a
+                // wider shuffle scope back with it.
+                var narrowsShuffle = nextMode === 1 && mpd.shuffleMode > 1
+                mpd.cycleRepeatMode()
+                var repeatText = nextMode === 1 ? "Repeat album on"
+                    : nextMode === 2 ? "Repeat song on" : "Repeat off"
+                showTransportNotice(repeatText + (narrowsShuffle ? " · shuffle album" : ""))
+            }
+            return true
+        }
+        return false
     }
 
     function seekBy(seconds) {
@@ -2444,6 +2673,16 @@ Item {
         interval: 800
         repeat: false
         onTriggered: root.clearTypeahead()
+    }
+
+    // Ages out the transport readout. Long enough to read a short line, short
+    // enough that it is gone before it starts feeling like furniture; holding a
+    // key restarts it, so the readout stays up until the last press.
+    Timer {
+        id: transportNoticeTimer
+        interval: 1300
+        repeat: false
+        onTriggered: root.transportNotice = ""
     }
 
     // The one lyrics helper. It prints a single JSON object; the `file` it

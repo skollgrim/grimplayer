@@ -18,7 +18,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Cover art** — finds covers in the album folder, falls back to embedded art (extracted with `ffmpeg` and cached), and can optionally fetch missing covers online.
 - **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Cover pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Pane above` tunes the window size floor the pane is kept to.
 - **Adaptive colours** — optionally matches the panel's colors to the playing album.
-- **Type-to-find** — jump to matching rows by typing, with the readout placed in the corner or centred, at a size of your choosing.
+- **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing.
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
 - **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, lyrics, themes and optional features.
@@ -95,6 +95,11 @@ then a one-liner around whichever of the three you prefer.
 | any letter or digit | Typeahead |
 | `Enter` | Play the artist, album or track under the caret |
 | `Space` | Play / pause |
+| `Ctrl` + `←` `→` | Previous / next track |
+| `Ctrl` + `↑` `↓` | Volume − / + 5% |
+| `Ctrl` + `M` | Mute / unmute |
+| `Ctrl` + `S` | Shuffle: off → album → artist → library |
+| `Ctrl` + `R` | Repeat: off → album → song |
 | `Shift` + `←` `→` | Seek ∓ 5 s |
 | `j` `k` | Change row *(Vim keys on)* |
 | `h` `l` | Change pane *(Vim keys on)* |
@@ -105,6 +110,22 @@ then a one-liner around whichever of the three you prefer.
 | `Alt` + `L` | Lyrics view (toggle) |
 | `Alt` + `K` | Karaoke view (toggle) |
 | `?` | Key reference |
+
+The Ctrl keys say what they did: a mode change or a volume step flashes a
+one-line readout above the strip — or, in karaoke, in the margin under the
+words — and it fades after a moment. The strip's own buttons and slider are
+hidden in karaoke, so without it a shuffle or repeat change would be silent
+there. The readout has its own text size (Text & scale → Transport readout), so
+it can be made easier to catch at a glance without touching the lists.
+
+Shuffle has three pools, not one: the playing album, the artist, or the whole
+library. `Ctrl` + `S` (or the shuffle button) cycles off → album → artist →
+library, and a small `Alb`, `Art` or `Lib` sits above the button naming the pool.
+Repeat's badge uses `A` for album and `S` for song the same way. The two modes
+are mostly independent, with one exception each way: choosing repeat album
+narrows the shuffle to album, because the queue is about to hold one album, and
+choosing a wider shuffle pool steps out of repeat album for the same reason. The
+readout names the change that came along with the key you pressed.
 
 In the settings card: arrows or `hjkl` move — up/down moves within a column,
 left/right crosses the columns — `Enter` (or `Space`) toggles a switch or
@@ -129,7 +150,8 @@ scroll**; with that set to **Never** the view stays where you put it until the
 track changes.
 
 In the key reference: it lists the browser keys and how to reach each screen;
-`Esc`, `Q` or `?` closes it.
+`j` / `k`, the arrows, `PgUp` / `PgDn`, `Home` / `End` and `Space` scroll it,
+and `Esc`, `Q` or `?` closes it.
 
 In the tag editor: `Enter`, the **Save** button and **Close** all do the same
 thing (see below); `Esc` or **Cancel** discards and closes at once, with no

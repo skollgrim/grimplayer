@@ -258,7 +258,7 @@ Item {
         onTriggered: {
             if (root.dbUpdatePending) {
                 root.dbUpdatePending = false
-                root.dbUpdateTimer.restart()
+                dbUpdateTimer.restart()
                 return
             }
             root.loadLibrary()
@@ -271,10 +271,15 @@ Item {
         root.changed = []
         if (touched.length === 0) return
         if (touched.indexOf("database") >= 0) {
-            if (root.dbUpdateTimer.running) {
+            // The timer is an id, not a property of the service. Reading it as
+            // `root.dbUpdateTimer` threw here on every database event, which
+            // meant the library was never reloaded after MPD's database changed:
+            // added albums stayed invisible and removed tracks stayed clickable
+            // until the shell was restarted.
+            if (dbUpdateTimer.running) {
                 root.dbUpdatePending = true
             } else {
-                root.dbUpdateTimer.restart()
+                dbUpdateTimer.restart()
             }
         }
         root.refreshState()
@@ -298,11 +303,14 @@ Item {
             if (error) root.setError("status: " + error)
             else {
                 root.status = toMap(lines)
+                // Proof the album is actually playable. See albumLoopHeard.
+                if (root.status.state === "play") root.albumLoopHeard = true
                 // Both of these read the status just assigned above, so they run
                 // only once it is known rather than on the event that prompted
                 // the refresh. Looping before the read would re-check the state
                 // the loop is trying to act on.
                 root.syncRepeatModeFromMpd()
+                root.syncShuffleModeFromMpd()
                 root.maybeLoopAlbum()
                 // A round trip that succeeded is proof the connection is healthy,
                 // so it takes down whatever was last recorded rather than waiting
@@ -1548,6 +1556,44 @@ Item {
         return all.slice(root.albumFilesAfter(artistIndex, albumIndex, trackIndex).length)
     }
 
+    // Every track by one artist, in tree order. The pool a shuffled artist plays
+    // from: albums stay in their own order inside the list, but the shuffle
+    // draws from the artist as a whole.
+    function artistFiles(artistIndex) {
+        var out = []
+        var artist = root.artists[artistIndex]
+        if (!artist) return out
+        for (var b = 0; b < artist.albums.length; b++) {
+            var tracks = artist.albums[b].tracks
+            for (var t = 0; t < tracks.length; t++) out.push(tracks[t].file)
+        }
+        return out
+    }
+
+    // The same list turned so `file` comes first. A shuffled queue has to start
+    // on the song that is already playing -- the pool decides what comes next,
+    // not which track is on now -- and rotating is cheaper than adding the rest
+    // of the list behind a separate play command.
+    function rotateTo(files, file) {
+        var at = files.indexOf(file)
+        if (at <= 0) return files
+        return files.slice(at).concat(files.slice(0, at))
+    }
+
+    // The queue a shuffle scope asks for, turned so the song being started is
+    // first. Scope 0 is the normal queue: from that song to the end of the
+    // library, in tree order. 1 is its album, 2 its artist, 3 the whole library.
+    function queueForScope(scope, artistIndex, albumIndex, trackIndex) {
+        var artist = root.artists[artistIndex]
+        var album = artist ? artist.albums[albumIndex] : null
+        var track = album ? album.tracks[trackIndex] : null
+        var file = track ? track.file : ""
+        if (scope === 1) return root.rotateTo(root.albumFilesAfter(artistIndex, albumIndex, 0), file)
+        if (scope === 2) return root.rotateTo(root.artistFiles(artistIndex), file)
+        if (scope === 3) return root.rotateTo(root.filesFrom(0, 0, 0), file)
+        return root.filesFrom(artistIndex, albumIndex, trackIndex)
+    }
+
     // Where the playing song sits in the tree, so a queue can be rebuilt around
     // it. The panel's own caret can point somewhere else entirely, so this
     // always works from what MPD is actually playing rather than from the
@@ -1574,26 +1620,41 @@ Item {
         return mode === 2 ? ["repeat 1", "single 1"] : ["repeat 0", "single 0"]
     }
 
+    // MPD's random flag, restated with every queue rebuild. The flag is the half
+    // of the shuffle mode MPD can hold; the scope lives in what the queue
+    // contains. Naming it in the same transaction as the queue keeps the two
+    // from disagreeing if something else moved the flag in between.
+    function randomFlags() {
+        return ["random " + (root.shuffleMode > 0 ? 1 : 0)]
+    }
+
     // Replaces the queue with everything below the activated track and starts
     // there. playFilesScoped already builds the clear/single/consume + add +
     // play 0 list, so this is the same thing with no resume point -- but the
     // current mode's flags are appended, because the rebuild resets `single` and
     // repeat-song would otherwise come out of it as repeat-all.
     function playFiles(files) {
-        root.playFilesScoped(files, 0, root.modeFlags(root.repeatMode))
+        root.playFilesScoped(files, 0,
+                             root.modeFlags(root.repeatMode).concat(root.randomFlags()))
     }
 
     function playArtistAndBelow(artistIndex, albumIndex, trackIndex) {
-        // Album mode means the queue is the playing album and nothing past it, so
-        // activating a track must narrow to the album too. Going through filesFrom
-        // here would put the whole library back in the queue and quietly undo the
-        // narrowing that makes the mode "album" rather than "everything".
+        // Album repeat narrows the queue to the playing album whatever shuffle
+        // says -- choosing it moves the shuffle scope to album too (see
+        // applyRepeatMode). With shuffle off the queue keeps its old shape: the
+        // album's remainder, refilled from the top when it runs out. Shuffled,
+        // the whole album has to be in the pool, or the tracks before the
+        // activated one could never come round.
         if (root.repeatMode === 1) {
             root.albumLoopPoint = { artist: artistIndex, album: albumIndex }
-            root.playFilesScoped(root.albumFilesAfter(artistIndex, albumIndex, trackIndex), 0, root.modeFlags(1))
+            var files = root.shuffleMode === 0
+                ? root.albumFilesAfter(artistIndex, albumIndex, trackIndex)
+                : root.queueForScope(1, artistIndex, albumIndex, trackIndex)
+            root.playFilesScoped(files, 0,
+                                 root.modeFlags(1).concat(root.randomFlags()))
             return
         }
-        root.playFiles(root.filesFrom(artistIndex, albumIndex, trackIndex))
+        root.playFiles(root.queueForScope(root.shuffleMode, artistIndex, albumIndex, trackIndex))
     }
 
     // Simple commands. The response is not interesting; the idle subscription
@@ -1629,10 +1690,6 @@ Item {
 
     function setVolume(value) {
         root.command("setvol " + Math.max(0, Math.min(100, Math.round(value))))
-    }
-
-    function toggleRandom() {
-        root.command("random " + (root.status.random ? 0 : 1))
     }
 
     // As playFilesScoped, but takes the resume point from MPD rather than from the
@@ -1791,6 +1848,13 @@ Item {
     // song, and cleared before replaying so the replay cannot re-enter the handler.
     property var albumLoopPoint: null
 
+    // Whether the playing album has actually produced sound since the loop last
+    // replayed it. An album whose files have all been moved or deleted never
+    // reaches "play" -- MPD skips through it and stops at once -- and without
+    // this the loop would replay it on every refresh, a stop/replay cycle that
+    // spins forever. A replay clears it; the first real "play" status sets it.
+    property bool albumLoopHeard: false
+
     function cycleRepeatMode() {
         root.applyRepeatMode((root.repeatMode + 1) % 3)
     }
@@ -1820,17 +1884,37 @@ Item {
         var loc = root.locateCurrent()
 
         // Repeat album is not MPD's flag: narrow the queue to the playing album and
-        // remember where to restart it once MPD runs off the end. The narrowing is a
-        // delete of the entries past the album rather than a rebuild, so the song
-        // now playing carries straight on; if the queue is not in the shape that
-        // allows it, fall back to rebuilding around the song.
+        // remember where to restart it once MPD runs off the end.
+        //
+        // A wider shuffle scope cannot survive that narrowing, so choosing repeat
+        // album pulls the shuffle back to album as well -- the queue is about to
+        // hold one album, and a badge claiming the whole library would be a lie.
         if (mode === 1) {
+            if (root.shuffleMode > 1) {
+                root.shuffleMode = 1
+                root.shuffleModeSelected(1)
+            }
             if (loc) {
                 root.albumLoopPoint = { artist: loc.artist, album: loc.album }
-                root.trimQueueToAlbum(loc)
+                if (root.shuffleMode === 1) {
+                    // Shuffled album repeat wants the whole album in the pool, not
+                    // just the remainder from the playing track: the tracks before
+                    // it have to be able to come round. That is a rebuild, since
+                    // the missing entries are in front of the playing song where a
+                    // delete cannot put them back.
+                    root.replaceQueueResuming(
+                        root.queueForScope(1, loc.artist, loc.album, loc.track),
+                        root.randomFlags().concat(root.modeFlags(1)))
+                } else {
+                    // Unshuffled, the narrowing is a delete of the entries past
+                    // the album rather than a rebuild, so the song now playing
+                    // carries straight on; if the queue is not in the shape that
+                    // allows it, trimQueueToAlbum rebuilds around the song.
+                    root.trimQueueToAlbum(loc)
+                }
             } else {
                 root.albumLoopPoint = null
-                root.commandList(root.modeFlags(1))
+                root.commandList(root.modeFlags(1).concat(root.randomFlags()))
             }
             root.repeatMode = 1
             root.repeatModeSelected(1)
@@ -1840,12 +1924,14 @@ Item {
         // Off and repeat song are both just MPD's flags. Stepping out of album
         // mode has to put the rest of the library back on the queue first, or the
         // list would still stop at the album's end -- and that is an append, which
-        // likewise leaves the playing song alone instead of restarting it.
-        if (root.repeatMode === 1 && loc) {
+        // likewise leaves the playing song alone instead of restarting it. With
+        // album shuffle on there is nothing to put back: that queue is already
+        // the whole album, which is the scope it should keep.
+        if (root.repeatMode === 1 && loc && root.shuffleMode !== 1) {
             root.appendFiles(root.filesAfterAlbum(loc.artist, loc.album, loc.track),
-                             root.modeFlags(mode))
+                             root.modeFlags(mode).concat(root.randomFlags()))
         } else {
-            root.commandList(root.modeFlags(mode))
+            root.commandList(root.modeFlags(mode).concat(root.randomFlags()))
         }
         root.repeatMode = mode
         root.repeatModeSelected(mode)
@@ -1870,8 +1956,16 @@ Item {
         if (root.status.song !== undefined) return
         var point = root.albumLoopPoint
         if (!point) return
+        // Nothing in the album ever played, so replaying it would only fail the
+        // same way again. Drop the point and leave the player stopped.
+        if (!root.albumLoopHeard) {
+            root.albumLoopPoint = null
+            return
+        }
+        root.albumLoopHeard = false
         root.albumLoopPoint = null
-        root.playFilesScoped(root.albumFilesAfter(point.artist, point.album, 0), 0, root.modeFlags(1))
+        root.playFilesScoped(root.albumFilesAfter(point.artist, point.album, 0), 0,
+                             root.modeFlags(1).concat(root.randomFlags()))
     }
 
     // Keeps the stored mode honest if something else moves MPD's flags -- another
@@ -1913,6 +2007,82 @@ Item {
         if (root.status && root.status.state === "stop") return
         var loc = root.locateCurrent()
         if (loc) root.albumLoopPoint = { artist: loc.artist, album: loc.album }
+    }
+
+    // ---- shuffle modes ----
+
+    // Four states, cycled as off -> album -> artist -> library.
+    //
+    // MPD's random flag is a plain boolean over the whole queue, so the scope is
+    // expressed by what the queue holds: the album's tracks, the artist's, or the
+    // whole library. Off is the normal queue -- from the playing track to the end
+    // of the library in tree order. Changing scope rebuilds the queue around the
+    // playing song and resumes at the same second, because the pool itself is
+    // what changed; the song carries on where it was, not from the top.
+    //
+    // The mode is stored in the config rather than read back from MPD, for the
+    // same reason repeat album is: the flag says only that something is shuffled,
+    // never what the pool is.
+
+    signal shuffleModeSelected(int mode)
+
+    property int shuffleMode: 0
+
+    function cycleShuffleMode() {
+        root.applyShuffleMode((root.shuffleMode + 1) % 4)
+    }
+
+    // Adopts the scope persisted by the panel. The queue in MPD is already the
+    // one that scope built -- the previous session left it there -- so nothing is
+    // rebuilt; only the flag is restated, because MPD forgets it across a restart
+    // while the config does not.
+    function adoptStoredShuffleMode(mode) {
+        if (mode === undefined || mode === null) return
+        var m = Math.round(Number(mode))
+        if (isNaN(m)) return
+        root.shuffleMode = Math.max(0, Math.min(3, m))
+        if (root.connected) root.commandList(root.randomFlags())
+    }
+
+    function applyShuffleMode(mode) {
+        if (!root.status || root.status.state === undefined) return
+        mode = Math.max(0, Math.min(3, mode))
+
+        // A wider pool cannot live in an album-sized queue, so choosing one steps
+        // out of repeat album. Choosing repeat album does the opposite and pulls
+        // the scope back to album (see applyRepeatMode).
+        if (mode > 1 && root.repeatMode === 1) {
+            root.repeatMode = 0
+            root.repeatModeSelected(0)
+        }
+
+        root.shuffleMode = mode
+        root.shuffleModeSelected(mode)
+
+        var loc = root.locateCurrent()
+        if (!loc) {
+            // Nothing in the library is playing, so there is no pool to build.
+            // The flag still follows the mode; the next track activated builds
+            // the queue its scope asks for.
+            root.commandList(root.randomFlags())
+            return
+        }
+        root.replaceQueueResuming(
+            root.queueForScope(mode, loc.artist, loc.album, loc.track),
+            root.randomFlags().concat(root.modeFlags(root.repeatMode)))
+    }
+
+    // The flag is written from the mode rather than read back into it: random
+    // says that something is shuffled, never what the pool is, so there is no
+    // scope to adopt. A flag that disagrees with the mode means MPD restarted or
+    // another client moved it, and the stored mode wins -- otherwise the button
+    // would claim a scope the flag has forgotten. Sending it again is one command,
+    // and only happens while they disagree.
+    function syncShuffleModeFromMpd() {
+        if (!root.status || root.status.state === undefined) return
+        if (root.status.random === undefined) return
+        var want = root.shuffleMode > 0 ? 1 : 0
+        if (root.status.random !== want) root.commandList(root.randomFlags())
     }
 
     // ---- misc ----

@@ -24,8 +24,16 @@ RowLayout {
         theme: root.theme
         iconSize: root.iconSize
         uiScale: root.uiScale
-        active: !!(root.mpd && root.mpd.status && root.mpd.status.random)
-        onClicked: root.mpd && root.mpd.toggleRandom()
+        // Four scopes, cycled off -> album -> artist -> library. Lit for all
+        // three shuffled scopes, with a badge above naming the pool: "Alb" the
+        // playing album, "Art" the artist, "Lib" the whole library. Three
+        // letters each, so the badge is a word rather than a puzzle to decode
+        // and the three scopes stay the same width above the button.
+        active: !!(root.mpd && root.mpd.shuffleMode > 0)
+        modeBadge: root.mpd && root.mpd.shuffleMode === 1 ? "Alb"
+                 : root.mpd && root.mpd.shuffleMode === 2 ? "Art"
+                 : root.mpd && root.mpd.shuffleMode === 3 ? "Lib" : ""
+        onClicked: root.mpd && root.mpd.cycleShuffleMode()
     }
     TransportButton {
         icon: "previous"
