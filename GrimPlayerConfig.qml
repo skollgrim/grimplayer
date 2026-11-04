@@ -241,8 +241,13 @@ Item {
         // How far the non-current lines fade: "subtle", "medium" or "strong".
         property string lyricsDim: "medium"
         // Whether the cover stays beside the lyrics or gives them the full
-        // width. "hide" affects the lyrics view only; the browser is untouched.
+        // width. "hide" affects the lyrics view's side pane only; the browser
+        // and karaoke are untouched.
         property string lyricsCover: "show"
+        // Whether karaoke draws the cover above the lyrics. A separate switch
+        // from the side pane: the two layouts are different enough that hiding
+        // one should not silently hide the other.
+        property bool karaokeCover: true
         // How long a manual scroll suspends following before the view returns
         // to the playing line. Zero never resumes: the reader keeps the view
         // where they put it until the track changes or the view is reopened.
@@ -340,7 +345,7 @@ Item {
                     "fontCaption", "noticeScale", "coverDecodeSize",
                     "lyricsAlign", "lyricsFont", "lyricsInfo", "lyricsFollow",
                     "lyricsDim", "lyricsResume", "lyricsSpacing", "lyricsWidth",
-                    "lyricsCover", "lyricsOffset", "lyricsClickSeek",
+                    "lyricsCover", "karaokeCover", "lyricsOffset", "lyricsClickSeek",
                     "lyricsDownloads"]
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i]
@@ -500,6 +505,7 @@ Item {
     readonly property int lyricsSpacing: store.lyricsSpacing
     readonly property string lyricsWidth: store.lyricsWidth
     readonly property string lyricsCover: store.lyricsCover
+    readonly property bool karaokeCover: store.karaokeCover
     readonly property int lyricsOffset: store.lyricsOffset
     readonly property bool lyricsClickSeek: store.lyricsClickSeek
     readonly property bool lyricsDownloads: store.lyricsDownloads
@@ -1135,13 +1141,24 @@ Item {
         {
             key: "lyricsCover",
             section: "lyrics",
-            label: "Cover while open",
-            hint: "Keep the artwork beside the lyrics, or let the lyrics take the full width",
+            label: "Cover beside lyrics",
+            hint: "Keep the artwork beside the lyrics, or give the text the full width",
             options: ["show", "hide"],
             defaultValue: "show",
             get: function () { return store.lyricsCover },
             set: function (v) { store.lyricsCover = v },
             format: root.titleText
+        },
+        {
+            key: "karaokeCover",
+            section: "lyrics",
+            label: "Karaoke cover",
+            hint: "Show the album cover above the lyrics in karaoke mode",
+            options: [true, false],
+            defaultValue: true,
+            get: function () { return store.karaokeCover },
+            set: function (v) { store.karaokeCover = v },
+            format: root.boolText
         },
         {
             key: "lyricsOffset",

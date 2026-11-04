@@ -333,7 +333,6 @@ Item {
     // Point the Image straight at a cached cover we know exists, rather than
     // walking the candidate list again for an answer already in hand.
     function showCached(dir) {
-        root.touchCache(dir, "embed")
         var target = Covers.fileUrl(root.cachedCover(dir))
         // A picture is in hand as of now -- the extractor wrote it, or a tag editor
         // set one -- so noArt has to stay false while it loads rather than flashing
@@ -655,6 +654,22 @@ Item {
     // oversized pixmaps are what filled the pixmap cache while scrolling.
     property real pixelRatio: 1.0
 
+    // The largest edge the Image may decode at, in logical pixels; 0 means no
+    // cap. Both the held layer and the incoming layer ask for the same figure,
+    // so the rule lives here once rather than in four copies of the same chain.
+    readonly property int decodeCap: {
+        if (!prefs) return 1024
+        if (prefs.coverDecodeSize === "large") return 1536
+        if (prefs.coverDecodeSize === "full") return 0
+        return 1024
+    }
+
+    function decodeSize(value) {
+        if (value <= 0) return 0
+        var capped = root.decodeCap > 0 ? Math.min(value, root.decodeCap) : value
+        return Math.round(capped * (root.pixelRatio || 1))
+    }
+
     // Ring around the artwork. The toggle and its thickness are separate so the
     // ring can be dropped without losing the thickness it was set to.
     property bool coverBorder: true
@@ -774,7 +789,8 @@ Item {
     //
     // cover.jpg is only a convention. folder.jpg, cover.png, front.jpg and
     // album.jpg all turn up in real collections, and stopping at the first name
-    // would mean a silently blank square for those albums.
+    // would mean a silently blank square for those albums. The .jpeg spelling is
+    // accepted too, since it names the same format and is what some rippers write.
     //
     // The capitalised spellings are listed after the lowercase ones because the
     // filesystem is case sensitive: Cover.jpg and Folder.jpg are not found by a
@@ -787,7 +803,9 @@ Item {
         // calls home; there is no directory name to join on.
         var base = dir === "." ? root.musicDir : root.musicDir + "/" + dir
         var names = ["cover.jpg", "folder.jpg", "cover.png", "front.jpg", "album.jpg",
-                     "Cover.jpg", "Folder.jpg", "Cover.png", "Front.jpg", "Album.jpg"]
+                     "cover.jpeg", "folder.jpeg", "front.jpeg", "album.jpeg",
+                     "Cover.jpg", "Folder.jpg", "Cover.png", "Front.jpg", "Album.jpg",
+                     "Cover.jpeg", "Folder.jpeg", "Front.jpeg", "Album.jpeg"]
         var named = namedCandidates()
         for (var n = 0; n < named.length; n++) names.push(named[n])
         var out = []
@@ -1179,24 +1197,8 @@ Item {
             // Decode at display size in physical pixels rather than at the
             // source's full resolution, which is what keeps a large sidecar
             // from filling the pixmap cache while the lists scroll.
-            sourceSize.width: {
-                if (width <= 0) return 0
-                var maxW = width
-                if (prefs && prefs.coverDecodeSize === "medium") maxW = Math.min(width, 1024)
-                else if (prefs && prefs.coverDecodeSize === "large") maxW = Math.min(width, 1536)
-                else if (prefs && prefs.coverDecodeSize === "full") maxW = width
-                else maxW = Math.min(width, 1024)
-                return Math.round(maxW * (root.pixelRatio || 1))
-            }
-            sourceSize.height: {
-                if (height <= 0) return 0
-                var maxH = height
-                if (prefs && prefs.coverDecodeSize === "medium") maxH = Math.min(height, 1024)
-                else if (prefs && prefs.coverDecodeSize === "large") maxH = Math.min(height, 1536)
-                else if (prefs && prefs.coverDecodeSize === "full") maxH = height
-                else maxH = Math.min(height, 1024)
-                return Math.round(maxH * (root.pixelRatio || 1))
-            }
+            sourceSize.width: root.decodeSize(width)
+            sourceSize.height: root.decodeSize(height)
         }
 
         Image {
@@ -1209,24 +1211,8 @@ Item {
             cache: true
             smooth: true
             mipmap: true
-            sourceSize.width: {
-                if (width <= 0) return 0
-                var maxW = width
-                if (prefs && prefs.coverDecodeSize === "medium") maxW = Math.min(width, 1024)
-                else if (prefs && prefs.coverDecodeSize === "large") maxW = Math.min(width, 1536)
-                else if (prefs && prefs.coverDecodeSize === "full") maxW = width
-                else maxW = Math.min(width, 1024)
-                return Math.round(maxW * (root.pixelRatio || 1))
-            }
-            sourceSize.height: {
-                if (height <= 0) return 0
-                var maxH = height
-                if (prefs && prefs.coverDecodeSize === "medium") maxH = Math.min(height, 1024)
-                else if (prefs && prefs.coverDecodeSize === "large") maxH = Math.min(height, 1536)
-                else if (prefs && prefs.coverDecodeSize === "full") maxH = height
-                else maxH = Math.min(height, 1024)
-                return Math.round(maxH * (root.pixelRatio || 1))
-            }
+            sourceSize.width: root.decodeSize(width)
+            sourceSize.height: root.decodeSize(height)
 
             onStatusChanged: {
                 if (status === Image.Ready) {

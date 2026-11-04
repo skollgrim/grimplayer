@@ -51,7 +51,7 @@ Item {
             rows: [
                 { keys: "↑ ↓", action: "Change row" },
                 { keys: "← →", action: "Change pane" },
-                { keys: "any letter or digit", action: "Jump by typing a name (typeahead)" }
+                { keys: "any letter, digit or -", action: "Jump by typing a name, or a track number in the tracks pane" }
             ]
         },
         {

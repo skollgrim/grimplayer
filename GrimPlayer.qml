@@ -92,14 +92,15 @@ Item {
             theme.reset()
     }
 
-    // Cached frame measurements per monitor+config to avoid spawns when unchanged.
+    // Cached frame measurements per monitor, to skip three hyprctl spawns when the
+    // panel is reopened soon after the last read. The cache expires: a gaps or
+    // border change happens outside this process, so a cache keyed only on the
+    // monitor name would serve the old figures for the rest of the session.
     property var frameCache: ({})
-    property string frameCacheKey: ""
+    property int frameCacheTtl: 30000
 
     function computeFrameCacheKey() {
         var mon = root.activeScreen ? (root.activeScreen.name || "") : ""
-        // Use a stable key based on monitor; config changes are rare and opening
-        // the panel is when we need fresh values anyway, so monitor identity is enough
         return mon
     }
 
@@ -112,7 +113,9 @@ Item {
     // consulted while the window is deciding. With the pane pinned on or off the
     // figures are dead weight, so pinning skips three process spawns per summon
     // rather than asking the compositor a question whose answer is unused.
-    // Cache results per monitor to skip spawns when values are unchanged.
+    // Cache results per monitor for a short while: reopening the panel in quick
+    // succession reuses them, while a change made between opens is picked up
+    // once the entry expires.
     function readFrame() {
         if (prefs.coverBandMode !== "auto") return
         // Already reading: leave the run in flight alone. Restarting the count
@@ -123,11 +126,11 @@ Item {
 
         var key = root.computeFrameCacheKey()
         var cached = root.frameCache[key]
-        if (cached && cached.physicalScreenWidth > 0) {
+        if (cached && cached.physicalScreenWidth > 0
+                && Date.now() - cached.readAt < root.frameCacheTtl) {
             root.frameGap = cached.frameGap
             root.frameBorder = cached.frameBorder
             root.frameRead = true
-            root.frameCacheKey = key
             return
         }
 
@@ -171,9 +174,9 @@ Item {
             root.frameCache[key] = {
                 frameGap: root.frameGap,
                 frameBorder: root.frameBorder,
-                physicalScreenWidth: root.physicalScreenWidth
+                physicalScreenWidth: root.physicalScreenWidth,
+                readAt: Date.now()
             }
-            root.frameCacheKey = key
         }
     }
     // The watchdog fired: the run has had long enough. A process that could not be
@@ -190,7 +193,7 @@ Item {
         root.frameReading = false
     }
 
-    property string pendingThemeDir: ""
+    property string lastPaletteDir: ""
     Timer {
         id: themeDebounce
         interval: 200
@@ -198,7 +201,6 @@ Item {
         onTriggered: { root.syncTheme() }
     }
 
-    property string lastPaletteDir: ""
     Timer {
         id: paletteThrottle
         interval: 150
@@ -210,7 +212,6 @@ Item {
         target: cover
         function onPaletteChanged() { 
             if (cover && cover.loadedDir) {
-                root.pendingThemeDir = cover.loadedDir
                 if (cover.loadedDir !== root.lastPaletteDir) {
                     root.lastPaletteDir = cover.loadedDir
                     paletteThrottle.restart()
@@ -266,10 +267,8 @@ Item {
     // and a binding that names an unimported module fails silently to 0 -- which
     // is what a zero divider quantum does to the layout. Zero until the shell
     // reports a screen, at which point PaneRow's quantum resolves.
-    readonly property real pixelRatio: {
-        var screens = Quickshell.screens
-        return screens && screens.length > 0 ? (screens[0].devicePixelRatio || 0) : 0
-    }
+    readonly property real pixelRatio: root.activeScreen
+        ? (root.activeScreen.devicePixelRatio || 0) : 0
 
     // The artwork-pane setting gives the cover its own pane: a fourth column on
     // the right, as tall as the lists beside it, with the cover set into the pane
@@ -603,6 +602,18 @@ Item {
                  window.width - root.floatGutter * 2,
                  root.paneHeight - root.floatGutter * 2))
 
+    // Karaoke's cover: a modest square above the lyrics, on the window's centre
+    // line. Deliberately smaller than the pane's art -- karaoke is for reading,
+    // and a cover that filled the height would leave nothing for the text.
+    readonly property int karaokeCoverSize: Math.max(Math.round(96 * prefs.uiScale),
+        Math.min(Math.round(window.height * 0.24),
+                 Math.round(window.width * 0.18),
+                 Math.round(300 * prefs.uiScale)))
+    // The reading surface's margin, shared by the karaoke column and the cover
+    // above it so the art's top edge lines up with the text's.
+    readonly property int karaokeMargin: Math.round(40 * prefs.uiScale)
+    readonly property int karaokeCoverGap: Math.round(10 * prefs.uiScale)
+
     // Height of the now-playing strip. Named because two overlays sit clear of it
     // and have to agree with it: the typeahead readout and the MPD error banner.
     // They used to each repeat the number, which is how a change to the strip's
@@ -625,6 +636,14 @@ Item {
     // emit an empty result; without this an in-flight fetch for the previous
     // track could wipe the lyrics a local hit just put on screen.
     property string lyricsProcessKey: ""
+    // True from the moment a helper is started until its stdout stream has
+    // ended. `running` turns false slightly before the stream's final data is
+    // delivered, so it cannot be used to decide whether a new run may start.
+    property bool lyricsStreamActive: false
+    // The run waiting for the previous helper to finish. A Process cannot be
+    // re-pointed at a new command while the old stream is still delivering, so
+    // the next request is held here and started from onStreamFinished.
+    property var lyricsPending: null
     property bool lyricsLoading: false
     // True only once a lookup has taken long enough to be worth announcing.
     // A cache or sidecar hit, or embedded lyrics read quickly, goes straight to
@@ -712,7 +731,7 @@ Item {
         closingFromHost = true
         window.visible = false
         closingFromHost = false
-        // Karaoke is a mode, not a state to reopen in: a later Alt+M should
+        // Karaoke is a mode, not a state to reopen in: a later Alt+K should
         // give the normal player. The lyrics view it forced on goes with it,
         // or reopening would land back on the reading surface karaoke left
         // behind rather than on the browser.
@@ -783,6 +802,17 @@ Item {
     // so a fresh word starts a fresh search, the way file managers behave. It is
     // scoped to the active pane, which is where the caret is, and it never
     // steals a keystroke that a switch case above already claimed.
+    //
+    // Whitespace is dropped from both the buffer and the names: space is the
+    // play/pause key, so a multi-word title could otherwise never be typed past
+    // its first word ("The Twilight Sad" could only be reached as "the").
+    //
+    // In the tracks pane a numeric buffer is tried as a track number first, so
+    // "12" reaches track 12 without having to type the title. A multi-disc album
+    // accepts the number its rows show, "2-5", and a bare "5" still finds the
+    // first disc carrying that track. A title that starts with digits remains
+    // reachable: when no track number matches, the same buffer falls through to
+    // the name search below.
     property string typeaheadBuffer: ""
     // One lowercased name list per pane, built the first time that pane is
     // searched and dropped when its list changes. Rebuilding all three on every
@@ -790,6 +820,36 @@ Item {
     // artist (which replaces the album and track lists), for an index only the
     // active pane would ever read.
     property var typeaheadIndex: ({ artists: null, albums: null, tracks: null })
+
+    function typeaheadKey(text) {
+        return String(text === undefined || text === null ? "" : text)
+            .toLowerCase().replace(/\s+/g, "")
+    }
+
+    // The number a track row displays, built the same way PaneRow builds its
+    // label: the track number, with the disc in front once the album has more
+    // than one.
+    function trackNumberKey(item) {
+        if (!item || item.track === null || item.track === undefined) return ""
+        var disc = item.disc === null || item.disc === undefined ? 0 : Number(item.disc)
+        return (disc > 1 ? disc + "-" : "") + String(item.track)
+    }
+
+    function trackIndexByNumber(buffer) {
+        if (!/^\d+(?:-\d+)?$/.test(buffer)) return -1
+        for (var i = 0; i < trackList.length; i++) {
+            if (root.trackNumberKey(trackList[i]) === buffer) return i
+        }
+        // A bare number on a multi-disc album has no disc to qualify it. The
+        // first row carrying that track is the one the label order suggests.
+        if (buffer.indexOf("-") < 0) {
+            for (var j = 0; j < trackList.length; j++) {
+                var track = trackList[j].track
+                if (track !== null && track !== undefined && String(track) === buffer) return j
+            }
+        }
+        return -1
+    }
 
     function invalidateTypeahead(which) {
         if (which === "artists") root.typeaheadIndex.artists = null
@@ -804,15 +864,15 @@ Item {
         if (cached) return cached
         var out = []
         if (which === "artists") {
-            for (var i = 0; i < artistList.length; i++) out.push((artistList[i].name || "").toLowerCase())
+            for (var i = 0; i < artistList.length; i++) out.push(root.typeaheadKey(artistList[i].name))
             root.typeaheadIndex.artists = out
         } else if (which === "albums") {
-            for (var j = 0; j < albumList.length; j++) out.push((albumList[j].name || "").toLowerCase())
+            for (var j = 0; j < albumList.length; j++) out.push(root.typeaheadKey(albumList[j].name))
             root.typeaheadIndex.albums = out
         } else {
             for (var k = 0; k < trackList.length; k++) {
                 var tr = trackList[k]
-                out.push(((tr.title || tr.file || "") + "").toLowerCase())
+                out.push(root.typeaheadKey(tr.title || tr.file || ""))
             }
             root.typeaheadIndex.tracks = out
         }
@@ -829,6 +889,15 @@ Item {
         typeaheadTimer.restart()
         var which = pane === "artists" ? "artists" : pane === "albums" ? "albums" : "tracks"
         var list = pane === "artists" ? artistList : pane === "albums" ? albumList : trackList
+        // A number in the tracks pane is a jump to that track, before the title
+        // search gets a chance to interpret it as the start of a name.
+        if (pane === "tracks") {
+            var byNumber = root.trackIndexByNumber(typeaheadBuffer)
+            if (byNumber >= 0) {
+                trackIndex = byNumber
+                return
+            }
+        }
         var idx = typeaheadNames(which)
         // A list replaced without its change signal -- or by a length the cache
         // cannot tell apart -- falls back to one rebuild rather than searching
@@ -841,9 +910,9 @@ Item {
             var nameIdx = idx ? idx[i] : ""
             if (!nameIdx) {
                 var item = list[i]
-                if (pane === "artists") nameIdx = (item.name || "").toLowerCase()
-                else if (pane === "albums") nameIdx = (item.name || "").toLowerCase()
-                else nameIdx = ((item.title || item.file || "") + "").toLowerCase()
+                if (pane === "artists") nameIdx = root.typeaheadKey(item.name)
+                else if (pane === "albums") nameIdx = root.typeaheadKey(item.name)
+                else nameIdx = root.typeaheadKey(item.title || item.file || "")
             }
             if (nameIdx.indexOf(typeaheadBuffer) === 0) {
                 if (pane === "artists") selectArtist(i, false)
@@ -995,11 +1064,15 @@ Item {
         : (prefs.lyricsWidth === "wide"
             ? lyricsFlick.width * 0.8
             : (prefs.lyricsWidth === "narrow" ? lyricsFlick.width * 0.65 : lyricsFlick.width))
-    // Whether the cover shares the view with the lyrics. Only the lyrics view
-    // is affected; the browser keeps whatever arrangement it had. Karaoke has
-    // no cover: the text is the whole point.
-    readonly property bool lyricsCoverVisible: !(root.lyricsView
+    // Whether the cover shares the reading view with the lyrics, and whether it
+    // does so beside them (the browser's artwork pane) or above them (karaoke's
+    // centred square). Only the lyrics view is affected; the browser keeps
+    // whatever arrangement it had. The two placements have separate settings:
+    // the side pane follows Cover beside lyrics, karaoke its own switch.
+    readonly property bool lyricsSideCoverVisible: !(root.lyricsView
         && (prefs.lyricsCover === "hide" || root.karaokeView))
+    readonly property bool karaokeCoverVisible: root.karaokeView && prefs.karaokeCover
+    readonly property bool lyricsCoverVisible: root.lyricsSideCoverVisible || root.karaokeCoverVisible
     // Lyric type. Karaoke sets the same offset large, so the text-size setting
     // still nudges it; the normal view is unchanged.
     readonly property int lyricsFontPx: Math.round((Style.font.body + prefs.lyricsFont)
@@ -1116,7 +1189,10 @@ Item {
         root.lyricsLoading = false
         root.clearLyrics()
         root.resetLyricsScroll()
-        if (!root.lyricsView || rel === "") return
+        if (!root.lyricsView || rel === "") {
+            root.stopLyricsRun()
+            return
+        }
 
         var artist = root.lyricsTag("Artist") || root.lyricsTag("AlbumArtist")
         var title = root.lyricsTag("Title")
@@ -1131,10 +1207,17 @@ Item {
         if (!artist && rel.indexOf("/") >= 0) artist = rel.split("/")[0]
 
         // A reload for the next track must not be answered by the process
-        // still running for the previous one; stopping it first means its
-        // result arrives against the new key and is discarded below.
-        if (lyricsProcess.running) lyricsProcess.running = false
-        root.lyricsProcessKey = ""
+        // still running for the previous one. A Process cannot be re-pointed
+        // while its old stream is still delivering, so the old helper is
+        // stopped and this request waits in lyricsPending for its finish.
+        // Clearing the key first means the dying run's output can never be
+        // read as the new run's.
+        var defer = root.lyricsStreamActive || root.lyricsPending !== null
+        if (defer) {
+            root.lyricsProcessKey = ""
+            root.lyricsPending = null
+            if (lyricsProcess.running) lyricsProcess.running = false
+        }
         lyricsTimeout.stop()
         lyricsSearchTimer.stop()
         root.lyricsSearching = false
@@ -1150,7 +1233,6 @@ Item {
         }
 
         root.lyricsLoading = true
-        root.lyricsProcessKey = rel
         var command = ["python3", root.lyricsScript,
             "--music-dir", root.lyricsMusicDir,
             "--file", rel,
@@ -1161,12 +1243,45 @@ Item {
         // "Fetch lyrics" off keeps the helper to local files only: embedded
         // tags, sidecars and the cache, with no request to lrclib.
         if (!prefs.lyricsDownloads) command.push("--offline")
+        if (defer) {
+            root.lyricsPending = { file: rel, command: command }
+            // Covers a killed helper whose stream never finishes: without it
+            // the queued request would wait forever behind a dead process.
+            lyricsTimeout.restart()
+            return
+        }
+        root.startLyricsRun(rel, command)
+    }
+
+    // Starts the one helper run, or the run queued behind a stopped one. The
+    // timers belong to the run that is actually executing, so they are started
+    // here rather than at request time.
+    function startLyricsRun(rel, command) {
+        root.lyricsProcessKey = rel
+        root.lyricsStreamActive = true
         lyricsProcess.command = command
         lyricsProcess.running = true
         lyricsTimeout.restart()
         // Announce the lookup only if it is slow. A quick hit should go
         // straight to the text rather than flash a message first.
         lyricsSearchTimer.restart()
+    }
+
+    // Forgets the current run and any queued one. Used when the view closes or
+    // there is no track to look up: a helper has no reason to keep running for
+    // lyrics nobody is looking at.
+    //
+    // A terminating process keeps lyricsStreamActive set until its stream has
+    // actually finished. Clearing that here would let the next track start into
+    // the gap, and the old stream's finish would then look like the new run's.
+    function stopLyricsRun() {
+        root.lyricsPending = null
+        root.lyricsProcessKey = ""
+        if (lyricsProcess.running) lyricsProcess.running = false
+        else root.lyricsStreamActive = false
+        lyricsTimeout.stop()
+        lyricsSearchTimer.stop()
+        root.lyricsSearching = false
     }
 
     // ---- settings ----
@@ -1509,10 +1624,10 @@ Item {
             root.lyricsLines = []
             root.currentLyricLine = -1
             root.lyricsLoading = false
-            root.lyricsSearching = false
-            root.lyricsProcessKey = ""
+            // No view, no reason for the helper to keep fetching. This also
+            // drops a request queued behind it.
+            root.stopLyricsRun()
             root.lyricsFollowPaused = false
-            lyricsSearchTimer.stop()
             lyricsFollowTimer.stop()
             lyricsScrollAnim.stop()
         }
@@ -1654,8 +1769,9 @@ Item {
                     anchors.bottom: parent.bottom
                     // With the cover hidden for this view the lyrics take the
                     // full width; otherwise they stop where the artwork pane
-                    // begins, as the browser does.
-                    width: Math.max(0, parent.width - (root.lyricsCoverVisible ? root.coverPaneWidth : 0))
+                    // begins, as the browser does. Karaoke never uses the side
+                    // pane: its cover sits above the text instead.
+                    width: Math.max(0, parent.width - (root.lyricsSideCoverVisible ? root.coverPaneWidth : 0))
 
                     Rectangle {
                         anchors.fill: parent
@@ -1664,8 +1780,19 @@ Item {
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: Math.round((root.karaokeView ? 40 : 24) * prefs.uiScale)
+                        anchors.margins: root.karaokeView
+                            ? root.karaokeMargin : Math.round(24 * prefs.uiScale)
                         spacing: Math.round(12 * prefs.uiScale)
+
+                        // Karaoke draws its cover over this band. The spacer is
+                        // what keeps the scrolling text below the art rather
+                        // than letting the first lines run underneath it.
+                        Item {
+                            Layout.preferredWidth: root.lyricsColumnWidth
+                            Layout.preferredHeight: root.karaokeCoverVisible
+                                ? root.karaokeCoverSize + root.karaokeCoverGap : 0
+                            visible: root.karaokeCoverVisible
+                        }
 
                         // Karaoke is the lyrics alone: the track block would only
                         // eat the room the larger text needs.
@@ -1801,7 +1928,7 @@ Item {
                 Rectangle {
                     id: coverPane
 
-                    visible: root.coverBand && root.lyricsCoverVisible
+                    visible: root.coverBand && root.lyricsSideCoverVisible
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
@@ -1957,8 +2084,9 @@ Item {
             // looking at it -- an ffmpeg extraction or a store fetch per untagged
             // album, and the colour pass on each cover.
             active: window.visible
-            // The lyrics view may take the whole width; then neither the pane
-            // nor this cover shows while it is open.
+            // The lyrics view may take the whole width; then the side pane and
+            // this cover's pane placement are hidden, but karaoke still shows it
+            // above the text.
             visible: root.lyricsCoverVisible
             // The cover belongs to the album that is playing, so hiding the panel
             // keeps it rather than re-finding it: re-probing on the next summon
@@ -1972,18 +2100,24 @@ Item {
             placeholder: prefs.coverPlaceholder
             fetchCovers: prefs.fetchCovers
             transitionDuration: prefs.coverTransition
-            width: root.coverBand ? root.paneCoverSize : root.floatingCoverSize
+            width: root.karaokeCoverVisible ? root.karaokeCoverSize
+                : (root.coverBand ? root.paneCoverSize : root.floatingCoverSize)
             height: width
             // In the artwork pane the cover keeps the padding setting's margin on
             // the right, flush when it is off; the pane is sized to match, so with
             // no margin the art runs flush to the left edge too and covers the pane
-            // rule over its own height. Floating, it keeps its gutter.
-            x: root.coverBand
-                ? parent.width - root.coverPad - width
-                : parent.width - width - root.floatGutter
-            y: root.coverBand
-                ? root.coverBandY
-                : parent.height - root.stripHeight - root.floatGutter - height
+            // rule over its own height. Floating, it keeps its gutter. Karaoke
+            // centres it on the window above the lyrics.
+            x: root.karaokeCoverVisible
+                ? Math.round((window.width - width) / 2)
+                : (root.coverBand
+                    ? parent.width - root.coverPad - width
+                    : parent.width - width - root.floatGutter)
+            y: root.karaokeCoverVisible
+                ? root.karaokeMargin
+                : (root.coverBand
+                    ? root.coverBandY
+                    : parent.height - root.stripHeight - root.floatGutter - height)
         }
 
         // Typeahead readout: the letters being jumped to, shown only while they
@@ -2022,8 +2156,10 @@ Item {
                 - (errorBanner.visible ? errorBanner.height + Math.round(8 * prefs.uiScale) : 0)
             // A typed jump and a transport notice can be up at the same time --
             // type a letter, then nudge the volume. The notice owns the band,
-            // so the typeahead rides above it instead of being covered.
-            readonly property int noticeLift: root.transportNoticeVisible
+            // so the typeahead rides above it instead of being covered. The lift
+            // follows the notice box's own visibility, not the flag, so it holds
+            // through the fade instead of dropping out from under the readout.
+            readonly property int noticeLift: transportNoticeBox.visible
                 ? transportNoticeBox.height + Math.round(6 * prefs.uiScale) : 0
             visible: root.typeaheadBuffer.length > 0
             width: typeaheadReadout.implicitWidth + Math.round(20 * prefs.uiScale)
@@ -2466,7 +2602,7 @@ Item {
                 // with what has been typed. handleTypeahead checks the
                 // typeaheadSearch preference itself.
                 if (!handled && event.text && event.text.length === 1
-                        && /^[A-Za-z0-9æøåÆØÅ]$/.test(event.text)) {
+                        && /^[A-Za-z0-9æøåÆØÅ-]$/.test(event.text)) {
                     root.handleTypeahead(event.text)
                     handled = true
                 }
@@ -2553,6 +2689,7 @@ Item {
                 mpd: root.mpd
                 songs: root.tagSongs
                 uiScale: prefs.uiScale
+                pixelRatio: root.pixelRatio
                 coverTransition: prefs.coverTransition
                 fetchCovers: prefs.fetchCovers
                 coverRounded: prefs.coverRounded
@@ -2711,28 +2848,66 @@ Item {
     Process {
         id: lyricsProcess
         command: []
+        // A failed start never ends a stream, so onStreamFinished never runs and
+        // lyricsStreamActive would stay set, blocking every later request. A
+        // normal finish clears the flag in onStreamFinished, which is delivered
+        // before runningChanged, so reaching here with it still set means there
+        // was no stream to finish.
+        onRunningChanged: {
+            if (running || !root.lyricsStreamActive) return
+            root.lyricsStreamActive = false
+            root.lyricsProcessKey = ""
+            if (root.lyricsPending) {
+                var pending = root.lyricsPending
+                root.lyricsPending = null
+                root.startLyricsRun(pending.file, pending.command)
+                return
+            }
+            root.lyricsLoading = false
+            root.lyricsSearching = false
+            lyricsTimeout.stop()
+            lyricsSearchTimer.stop()
+        }
         stdout: StdioCollector {
             waitForEnd: true
             onStreamFinished: {
-                lyricsTimeout.stop()
-                lyricsSearchTimer.stop()
-                // A helper stopped for a track change can still finish; only
-                // the run started for the file on screen may write the view.
-                if (root.lyricsProcessKey === ""
-                        || root.lyricsProcessKey !== root.lyricsFileKey) return
-                var data = null
-                try { data = JSON.parse(String(text || "")) } catch (e) { data = null }
-                if (data && data.file !== undefined
-                        && String(data.file) !== root.lyricsFileKey) return
-                root.lyricsProcessKey = ""
-                root.lyricsLoading = false
-                root.lyricsSearching = false
-                if (data && data.status === "ok" && data.lyrics) {
-                    root.lyricsText = String(data.lyrics)
-                    root.lyricsLines = root.parseLyrics(root.lyricsText)
-                    root.currentLyricLine = -1
-                } else {
-                    root.clearLyrics()
+                // The stream is over, so the next run may start even though
+                // `running` has not changed yet.
+                root.lyricsStreamActive = false
+                // A finish with no key is the tail of a helper stopped for a
+                // track change: its output belongs to a file no longer on
+                // screen and must not touch the timers or the view. It does
+                // mark the process as gone, which is the cue to start whatever
+                // request was queued behind it.
+                if (root.lyricsProcessKey !== ""
+                        && root.lyricsProcessKey === root.lyricsFileKey) {
+                    lyricsTimeout.stop()
+                    lyricsSearchTimer.stop()
+                    root.lyricsProcessKey = ""
+                    root.lyricsLoading = false
+                    root.lyricsSearching = false
+                    // A finish can arrive after the view was closed; the run is
+                    // over either way, but there is nothing to put on screen.
+                    if (root.lyricsView) {
+                        var data = null
+                        try { data = JSON.parse(String(text || "")) } catch (e) { data = null }
+                        // The helper echoes the file it answered for. A mismatch
+                        // means this stream is not the run the key belongs to.
+                        var forThis = !(data && data.file !== undefined
+                                && String(data.file) !== root.lyricsFileKey)
+                        if (forThis && data && data.status === "ok" && data.lyrics) {
+                            root.lyricsText = String(data.lyrics)
+                            root.lyricsLines = root.parseLyrics(root.lyricsText)
+                            root.currentLyricLine = -1
+                        } else if (forThis) {
+                            root.clearLyrics()
+                        }
+                    }
+                }
+                if (root.lyricsPending) {
+                    var pending = root.lyricsPending
+                    root.lyricsPending = null
+                    root.startLyricsRun(pending.file, pending.command)
                 }
             }
         }
@@ -2740,14 +2915,16 @@ Item {
 
     // A helper that cannot start -- python3 missing, the script moved -- never
     // produces a stream to finish, so the loading state would stay up forever.
+    // This also covers a stopped helper whose stream never ends: the request
+    // queued behind it is dropped rather than started after the view gave up.
     Timer {
         id: lyricsTimeout
         interval: 40000
         repeat: false
         onTriggered: {
             if (!root.lyricsLoading) return
+            root.stopLyricsRun()
             root.lyricsLoading = false
-            root.lyricsSearching = false
             root.clearLyrics()
         }
     }

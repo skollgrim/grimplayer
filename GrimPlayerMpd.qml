@@ -515,7 +515,8 @@ Item {
 
     readonly property var vorbisFields: ({
         title: "TITLE", artist: "ARTIST", albumArtist: "ALBUMARTIST", album: "ALBUM",
-        track: "TRACKNUMBER", disc: "DISCNUMBER", date: "DATE", genre: "GENRE"
+        track: "TRACKNUMBER", disc: "DISCNUMBER", date: "DATE", genre: "GENRE",
+        comment: "COMMENT"
     })
 
     // ---- country ----
@@ -533,8 +534,11 @@ Item {
     })
 
     // Vorbis comments are a flat list of named fields, and readers disagree about
-    // which name a release country goes under, so both are written and either is
-    // accepted on the way in.
+    // which name a release country goes under, so the two Picard names are both
+    // written and all three spellings are accepted on the way in. Plain COUNTRY
+    // is not written -- it is the least specific of the three -- but a library
+    // tagged by something else may carry it, and refusing to read it would show
+    // a tagged album as untagged.
     function vorbisFieldsFor(key) {
         if (key === "country") return ["MUSICBRAINZ_ALBUMRELEASECOUNTRY", "RELEASECOUNTRY"]
         var field = root.vorbisFields[key]
@@ -703,15 +707,205 @@ Item {
                 var cut = rest.indexOf("=")
                 if (cut < 0) continue
                 var desc = rest.slice(0, cut).replace(/[\s_-]/g, "").toUpperCase()
-                if (desc.indexOf("RELEASECOUNTRY") < 0) continue
+                if (desc.indexOf("RELEASECOUNTRY") < 0 && desc !== "COUNTRY") continue
                 candidate = rest.slice(cut + 1).trim()
-            } else if (head.replace(/[\s_-]/g, "").toUpperCase().indexOf("RELEASECOUNTRY") >= 0) {
+            } else if (head.replace(/[\s_-]/g, "").toUpperCase() === "COUNTRY"
+                    || head.replace(/[\s_-]/g, "").toUpperCase().indexOf("RELEASECOUNTRY") >= 0) {
                 candidate = rest.trim()
             } else continue
 
             if (candidate !== "") return candidate
         }
         return ""
+    }
+
+    // ---- comments ----
+    //
+    // MPD's tagtypes list has no Comment on this machine (it is not in the
+    // default metadata set, and the config does not add it), so a song object
+    // cannot carry one. Comments are therefore read from the files themselves,
+    // by the same two taggers the writer uses, and cached by MPD's relative path
+    // so reopening the editor does not re-read the same album.
+    //
+    // The scan is one shell run for the whole selection rather than one process
+    // per track: an artist selection can be hundreds of files, and forking a
+    // reader per file is exactly the fork bomb the write queue already avoids.
+    // Country rides along in the same output because both readers print the tags
+    // it lives in, which is also what lets the editor show a country for an
+    // album that has never been played (the playing-song probe only ever sees
+    // that album).
+    signal commentsLoaded(int request)
+
+    property var commentCache: ({})
+    property var commentQueue: []
+    property int commentSeq: 0
+    property int commentActive: 0
+    property bool commentBusy: false
+    property var commentBatch: []
+
+    function commentFor(file) {
+        var rel = String(file === undefined || file === null ? "" : file)
+        var value = root.commentCache[rel]
+        return value === undefined || value === null ? "" : String(value)
+    }
+
+    // A successful write is the freshest answer there is, so it replaces the
+    // cached one rather than leaving the editor to re-read what it just wrote.
+    function rememberComment(file, value) {
+        var rel = String(file === undefined || file === null ? "" : file)
+        if (rel === "") return
+        var map = {}
+        for (var key in root.commentCache) map[key] = root.commentCache[key]
+        map[rel] = String(value === undefined || value === null ? "" : value).trim()
+        root.commentCache = map
+    }
+
+    // Returns a request id. The editor keeps it and ignores any older batch's
+    // signal, so a scan that was already running when the selection changed
+    // cannot paint the previous album's comments over the new one.
+    function requestComments(files) {
+        root.commentSeq++
+        var id = root.commentSeq
+        var want = []
+        var map = null
+        for (var i = 0; i < files.length; i++) {
+            var file = String(files[i] === undefined || files[i] === null ? "" : files[i])
+            if (file === "") continue
+            if (root.commentCache[file] !== undefined) continue
+            // A cue album's virtual tracks have no file to open. Cached as empty
+            // so the selection does not ask about them again.
+            if (root.writablePath(file) === "") {
+                if (map === null) {
+                    map = {}
+                    for (var k in root.commentCache) map[k] = root.commentCache[k]
+                }
+                map[file] = ""
+                continue
+            }
+            want.push(file)
+        }
+        if (map !== null) root.commentCache = map
+        if (want.length === 0) {
+            Qt.callLater(function () { root.commentsLoaded(id) })
+            return id
+        }
+        root.commentQueue.push({ id: id, files: want })
+        root.runNextCommentRequest()
+        return id
+    }
+
+    function runNextCommentRequest() {
+        if (root.commentBusy || root.commentQueue.length === 0) return
+        var job = root.commentQueue.shift()
+        var paths = []
+        // Keep the batch in step with the paths actually handed to the shell:
+        // the output is indexed by position, so a file skipped here would shift
+        // every later result onto the wrong path.
+        var batch = []
+        for (var i = 0; i < job.files.length; i++) {
+            var path = root.writablePath(job.files[i])
+            if (path !== "") {
+                paths.push(path)
+                batch.push(job.files[i])
+            }
+        }
+        if (paths.length === 0) {
+            Qt.callLater(function () {
+                root.commentActive = job.id
+                root.commentBatch = []
+                root.finishCommentScan("")
+            })
+            return
+        }
+        root.commentBusy = true
+        root.commentActive = job.id
+        root.commentBatch = batch
+        // The marker carries the index rather than the path, so no filename has
+        // to survive a round trip through shell output. grep keeps the dump
+        // small: mid3v2 prints every frame, including lyrics, and a whole-artist
+        // scan does not need any of them.
+        commentReader.command = ["sh", "-c",
+            "i=0; for p in \"$@\"; do printf '@@GRIMTAG@@%s\\n' \"$i\"; "
+            + "case \"$p\" in *.[Ff][Ll][Aa][Cc]) metaflac --export-tags-to=- \"$p\" 2>/dev/null "
+            + "| grep -iE '^(COMMENT|MUSICBRAINZ_ALBUMRELEASECOUNTRY|RELEASECOUNTRY|COUNTRY)=' ;; "
+            + "*) mid3v2 -l \"$p\" 2>/dev/null | grep -E '^(COMM|TXXX)=' ;; esac; "
+            + "i=$((i+1)); done",
+            "grimplayer-tags"].concat(paths)
+        commentReader.running = true
+    }
+
+    function finishCommentScan(output) {
+        var lines = String(output === undefined || output === null ? "" : output).split("\n")
+        var byIndex = ({})
+        var current = -1
+        for (var i = 0; i < lines.length; i++) {
+            var match = /^@@GRIMTAG@@(\d+)$/.exec(lines[i].trim())
+            if (match !== null) {
+                current = parseInt(match[1], 10)
+                byIndex[current] = []
+                continue
+            }
+            if (current >= 0) byIndex[current].push(lines[i])
+        }
+        var files = root.commentBatch
+        var map = {}
+        for (var key in root.commentCache) map[key] = root.commentCache[key]
+        var countries = {}
+        for (var f = 0; f < files.length; f++) {
+            var file = files[f]
+            var text = byIndex[f] ? byIndex[f].join("\n") : ""
+            map[file] = root.parseComment(text, file)
+            var dir = root.albumDirOf(file)
+            if (dir !== "" && countries[dir] === undefined) {
+                var code = root.parseCountry(text)
+                if (code !== "") countries[dir] = code
+            }
+        }
+        root.commentCache = map
+        var foundCountry = false
+        for (var d in countries) {
+            root.rememberCountry(d, countries[d])
+            foundCountry = true
+        }
+        if (foundCountry) root.saveCountries()
+        var id = root.commentActive
+        root.commentActive = 0
+        root.commentBatch = []
+        root.commentBusy = false
+        root.commentsLoaded(id)
+        root.runNextCommentRequest()
+    }
+
+    // The main comment frame, not every COMM. ID3 keeps a description and a
+    // language per frame, and libraries carry extra frames under descriptions
+    // like iTunNORM; the one a reader means by "comment" is the empty-description
+    // frame. Vorbis has one flat COMMENT field.
+    function parseComment(output, file) {
+        var lines = String(output === undefined || output === null ? "" : output).split("\n")
+        var isFlac = /\.flac$/i.test(String(file))
+        var fallback = ""
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim()
+            var eq = line.indexOf("=")
+            if (eq < 0) continue
+            var head = line.slice(0, eq).trim().toUpperCase()
+            var rest = line.slice(eq + 1)
+            if (isFlac) {
+                if (head === "COMMENT") return rest
+                continue
+            }
+            if (head !== "COMM") continue
+            var cut = rest.indexOf("=")
+            if (cut < 0) continue
+            var desc = rest.slice(0, cut)
+            var tail = rest.slice(cut + 1)
+            var lang = tail.indexOf("=")
+            if (lang < 0) continue
+            var text = tail.slice(lang + 1)
+            if (desc === "") return text
+            if (fallback === "" && desc.trim().toLowerCase() === "comment") fallback = text
+        }
+        return fallback
     }
 
     // MPD presents a cue sheet as one virtual song per track, under a path that
@@ -809,6 +1003,19 @@ Item {
                 ? "" : String(tags[key]).trim()
 
             if (isMp3) {
+                // COMM is a description/language frame, not a simple text frame,
+                // so it cannot go through id3Frames. mid3v2 splits the value on
+                // ":" as description:value:language, which means a comment that
+                // itself contains a colon has to be wrapped rather than passed
+                // bare. Writing the empty description and eng language replaces
+                // the main comment frame while leaving other COMM frames (the
+                // iTunNORM loudness note, for one) alone. An empty value still
+                // writes the frame: deleting COMM would take those with it.
+                if (key === "comment") {
+                    args.push("--COMM", ":" + value + ":eng")
+                    handled++
+                    continue
+                }
                 var txxx = root.id3Txxx[key]
                 if (txxx) {
                     // mid3v2 addresses a TXXX by description, so writing and
@@ -863,12 +1070,14 @@ Item {
             return
         }
         root.tagCurrentDir = root.albumDirOf(item.file)
+        root.tagCurrentFile = item.file
         root.tagCurrentTags = item.tags
         tagger.command = args
         tagger.running = true
     }
 
     property string tagCurrentDir: ""
+    property string tagCurrentFile: ""
     property var tagCurrentTags: ({})
 
     // The cache is the only record MPD cannot keep for us, so it moves when the
@@ -921,6 +1130,9 @@ Item {
                 // does not carry one.
                 if (root.tagCurrentTags && root.tagCurrentTags.country !== undefined) {
                     root.rememberCountry(root.tagCurrentDir, root.tagCurrentTags.country)
+                }
+                if (root.tagCurrentTags && root.tagCurrentTags.comment !== undefined) {
+                    root.rememberComment(root.tagCurrentFile, root.tagCurrentTags.comment)
                 }
             } else root.tagResult.failed++
             Qt.callLater(root.runNextTag)
@@ -1268,6 +1480,7 @@ Item {
 
     // action is "set" (with an image path) or "remove".
     function applyCover(entries, action, image, onDone) {
+        var write = action === "set" && image !== "" && image !== undefined && image !== null
         var dirs = []
         var seen = {}
         var files = []
@@ -1276,14 +1489,23 @@ Item {
             var rel = String(entries[i].file)
             var path = root.writablePath(rel)
             if (path === "") { skipped++; continue }
+            // A format no tagger here can open cannot take a picture either.
+            // Counting it as skipped keeps the editor from claiming a cover was
+            // set on files that were never touched -- and from remembering an
+            // "embedded" override for an album whose picture never changed.
+            if (root.embeddedCoverCommands(path, write ? image : "") === null) {
+                skipped++
+                continue
+            }
             files.push(path)
             var dir = root.albumDirOf(rel)
             if (dir !== "" && seen[dir] === undefined) { seen[dir] = true; dirs.push(dir) }
         }
 
-        var write = action === "set" && image !== "" && image !== undefined && image !== null
         var queue = []
-        if (write || action === "remove") {
+        // Nothing writable in the selection: leave the override and the cache
+        // alone rather than recording an intent no file carries.
+        if (files.length > 0 && (write || action === "remove")) {
             // The decision is remembered per album before anything runs, so the
             // probe that follows `coversChanged` reads the new intent rather than
             // the sidecar it would otherwise settle on. A "set" says the embedded
@@ -1299,7 +1521,6 @@ Item {
             }
             for (var f = 0; f < files.length; f++) {
                 var cmds = root.embeddedCoverCommands(files[f], write ? image : "")
-                if (cmds === null) continue
                 for (var c = 0; c < cmds.length; c++) queue.push(cmds[c])
             }
         }
@@ -1464,6 +1685,15 @@ Item {
                 root.countryBusy = false
                 root.runQueuedCountry()
             }
+        }
+    }
+
+    Process {
+        id: commentReader
+        running: false
+        command: []
+        stdout: StdioCollector {
+            onStreamFinished: root.finishCommentScan(this.text)
         }
     }
 

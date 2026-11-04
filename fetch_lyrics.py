@@ -217,7 +217,12 @@ def search_lrclib(artist, title, album, duration):
     if album:
         params["album_name"] = album
     if duration:
-        params["duration"] = str(duration)
+        # lrclib's exact endpoint takes whole seconds; a fractional MPD duration
+        # ("242.5") is rejected outright, which would quietly skip this endpoint
+        # on every track whose length is not a round number.
+        seconds = int(round(duration))
+        if seconds > 0:
+            params["duration"] = str(seconds)
     exact = fetch_json(LRCLIB_GET + "?" + urllib.parse.urlencode(params))
     text = lyrics_of(exact)
     if text:
@@ -250,17 +255,25 @@ def save_cache(artist, title, text):
     so a half-written file is never read back by the next toggle.
 
     Synced lyrics go in .lrc so the panel can highlight and follow them; plain
-    lyrics go in .txt. Readers check .lrc first, so an upgrade from plain to
-    synced wins without deleting the older file.
+    lyrics go in .txt. The other extension is removed once the new file is in
+    place: readers try .lrc first, so a stale .lrc would shadow freshly written
+    plain lyrics forever. Only the same stem is touched -- longer titles are
+    tried before shorter ones, so their copies cannot shadow this one.
     """
     ext = ".lrc" if looks_synced(text) else ".txt"
-    path = cache_paths(artist, title)[0] + ext
+    base = cache_paths(artist, title)[0]
+    path = base + ext
+    stale = base + (".txt" if ext == ".lrc" else ".lrc")
     try:
         os.makedirs(LYRICS_DIR, exist_ok=True)
         temp = path + ".tmp"
         with open(temp, "w", encoding="utf-8") as fh:
             fh.write(text)
         os.replace(temp, path)
+        try:
+            os.remove(stale)
+        except OSError:
+            pass
     except OSError as exc:
         print("Could not write %s: %s" % (path, exc), file=sys.stderr)
 

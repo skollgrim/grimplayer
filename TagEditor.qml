@@ -18,6 +18,7 @@ import QtQuick.Layouts
 import Quickshell.Io
 import qs.Commons
 import "Covers.js" as Covers
+import "Paths.js" as Paths
 
 Item {
     id: root
@@ -26,6 +27,7 @@ Item {
     // The panel owns the selection; this only reads it.
     property var songs: []
     property real uiScale: 1.0
+    property real pixelRatio: 1.0
 
     // Mirrors the panel's cover-change transition, so the preview here fades the
     // same way the player does when a cover is picked or the selection changes.
@@ -63,6 +65,7 @@ Item {
         { key: "disc", label: "Disc" },
         { key: "date", label: "Year" },
         { key: "genre", label: "Genre" },
+        { key: "comment", label: "Comment" },
         { key: "country", label: "Country" }
     ]
 
@@ -87,6 +90,9 @@ Item {
     // different album before that result lands; without this the late callback
     // would paint the previous album's values and status onto the new session.
     property int session: 0
+    // The id of the comment scan this session asked for. A scan that was already
+    // running when the selection changed answers with an older id and is ignored.
+    property int commentRequest: 0
 
     // ---- cover art ----
     //
@@ -195,35 +201,9 @@ Item {
     // on disk.
     readonly property string pathText: {
         if (root.songs.length === 0) return ""
-        var dir = root.mpd ? String(root.mpd.musicDir) : ""
-        var real = function (path) {
-            var p = String(path === undefined || path === null ? "" : path)
-            // Same fold as Covers.albumDir: keep the ".cue", drop the virtual
-            // "/trackNNNN" segment MPD appends to it.
-            var cue = /\.cue\/track\d+$/i.exec(p)
-            return cue ? p.substring(0, cue.index + 4) : p
-        }
-        var shown = function (path) {
-            var p = String(path)
-            if (dir !== "" && p.indexOf(dir + "/") === 0) p = p.substring(dir.length + 1)
-            return p
-        }
-        var first = real(root.songs[0].file)
-        if (root.songs.length === 1) return shown(first)
-        var cut = first.lastIndexOf("/")
-        var prefix = cut > 0 ? first.substring(0, cut) : ""
-        // Walk the shared prefix up one folder at a time until every file in the
-        // selection is under it. Comparing against prefix + "/" rather than the
-        // bare prefix is what keeps "Foo" from swallowing "Foobar".
-        for (var i = 1; i < root.songs.length && prefix !== ""; i++) {
-            var p = real(root.songs[i].file)
-            while (prefix !== "" && p.indexOf(prefix + "/") !== 0) {
-                var slash = prefix.lastIndexOf("/")
-                prefix = slash > 0 ? prefix.substring(0, slash) : ""
-            }
-        }
-        if (prefix === "") return dir !== "" ? dir : "/"
-        return shown(prefix) + "/"
+        var paths = []
+        for (var i = 0; i < root.songs.length; i++) paths.push(root.songs[i].file)
+        return Paths.describe(paths, root.mpd ? root.mpd.musicDir : "")
     }
 
     // Every map here is rebuilt and reassigned rather than modified in place. A var
@@ -255,6 +235,15 @@ Item {
         root.wroteThisSession = false
         root.previewSubject = root.songs.length > 0
             ? { file: String(root.songs[0].file), song: root.songs[0] } : null
+        // Comments and countries come from a file scan, not from MPD. Ask now
+        // so the answer can land while the reader is looking at the other
+        // fields; the signal below fills them in without touching what has been
+        // typed in the meantime.
+        if (root.mpd) {
+            var files = []
+            for (var s = 0; s < root.songs.length; s++) files.push(String(root.songs[s].file))
+            root.commentRequest = root.mpd.requestComments(files)
+        }
         root.syncFields()
         Qt.callLater(function () { root.syncFields(); root.focusRow() })
     }
@@ -271,13 +260,17 @@ Item {
         }
     }
 
-    // Where a song's current value for a field comes from. Every tag but country is
-    // something MPD reports and so is already on the song object. Country is not
-    // in MPD's song model at all, so it is asked of the service, which keeps what
-    // it found the last time it looked.
+    // Where a song's current value for a field comes from. Every tag but country
+    // and comment is something MPD reports and so is already on the song object.
+    // Country is not in MPD's song model at all, so it is asked of the service,
+    // which keeps what it found the last time it looked. Comment is missing from
+    // this MPD's tagtypes too, so it comes from the service's file scan.
     function valueOf(song, key) {
         if (key === "country") {
             return root.mpd ? root.mpd.countryForDir(root.mpd.albumDirOf(song.file)) : ""
+        }
+        if (key === "comment") {
+            return root.mpd ? root.mpd.commentFor(song.file) : ""
         }
         var raw = song[key]
         return raw === undefined || raw === null ? "" : String(raw).trim()
@@ -337,6 +330,24 @@ Item {
     // every field still describes the old one, and a Save would write the old
     // drafts to the new songs' files.
     onSongsChanged: if (visible && root.songs.length > 0) root.load()
+
+    // The scan that fills comment and country runs asynchronously. Recompute
+    // just those two agreed values rather than reloading the editor: everything
+    // else came from MPD synchronously, and reloading would discard typing that
+    // landed while the scan was out. touched is checked per field, so a value
+    // the user has already changed is never overwritten.
+    Connections {
+        target: root.mpd
+        function onCommentsLoaded(request) {
+            if (request !== root.commentRequest) return
+            var agreed = {}
+            for (var k in root.agreed) agreed[k] = root.agreed[k]
+            if (!root.touched["comment"]) agreed["comment"] = root.commonValue("comment")
+            if (!root.touched["country"]) agreed["country"] = root.commonValue("country")
+            root.agreed = agreed
+            root.syncFields()
+        }
+    }
 
     Component.onCompleted: if (visible && root.songs.length > 0) root.load()
 
@@ -886,13 +897,15 @@ Item {
             }
             if (coverResult) {
                 if (coverResult.failed > 0) parts.push("cover failed")
-                // A cue album's tracks have no writable file, so the cover edit was
-                // skipped for every one of them. Reporting "cover set" there claimed
-                // work that never happened; the skip is the honest answer, and it is
-                // the same wording the tag half uses.
-                else if (!coverResult.changed && coverResult.skipped > 0)
+                else if (coverResult.changed)
+                    parts.push(cover === "remove" ? "cover removed" : "cover set")
+                // A cue album's tracks have no writable file, and a format no
+                // tagger can open cannot take a picture either. Reporting "cover
+                // set" for those claimed work that never happened; the skip is
+                // the honest answer, and it is the same wording the tag half
+                // uses. Both counts can be real at once in a mixed selection.
+                if (coverResult.skipped > 0)
                     parts.push(coverResult.skipped + " skipped")
-                else parts.push(cover === "remove" ? "cover removed" : "cover set")
             }
             root.status = parts.length > 0 ? parts.join(" · ") : "Nothing changed"
             // Part of the edit did not land. The files that did are written, but
@@ -988,12 +1001,12 @@ Item {
         width: Math.round(620 * root.uiScale)
         // Tall enough for the fields as they stand, and taller as "was" lines
         // appear; never taller than the room the panel gives it, so it stays on
-        // screen. 560 is the height the fields alone need; the extra 18 is the
+        // screen. 612 is the height the fields alone need; the extra 18 is the
         // path line under the title, which the fields never had to share with.
         readonly property real maxCardHeight: Math.max(
             Math.round(320 * root.uiScale),
             root.height - Math.round(32 * root.uiScale))
-        height: Math.min(Math.round((578 + root.changedFieldCount * 18) * root.uiScale),
+        height: Math.min(Math.round((612 + root.changedFieldCount * 18) * root.uiScale),
                          card.maxCardHeight)
         radius: Math.round(12 * root.uiScale)
         color: root.colBackground
@@ -1085,7 +1098,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.topMargin: Math.round(5 * root.uiScale)
                 text: root.pathText
-                color: Util.alpha(root.colMuted, 1.0)
+                color: root.colMuted
                 font.pixelSize: Math.round(Style.font.caption * root.uiScale)
                 font.family: Style.font.family
                 elide: Text.ElideMiddle
@@ -1147,7 +1160,7 @@ Item {
                                 Layout.preferredWidth: Math.round(130 * root.uiScale)
                                 text: row.modelData.label
                                 color: row.focused ? root.colForeground
-                                                     : Util.alpha(root.colMuted, 1.0)
+                                                     : root.colMuted
                                 font.pixelSize: Math.round(Style.font.body * root.uiScale)
                                 font.family: Style.font.family
                             }
@@ -1279,7 +1292,7 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                     text: "Match"
                     color: root.matchFocused ? root.colForeground
-                                             : Util.alpha(root.colMuted, 1.0)
+                                             : root.colMuted
                     font.pixelSize: Math.round(Style.font.body * root.uiScale)
                     font.family: Style.font.family
                 }
@@ -1418,7 +1431,7 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                     visible: root.matchSummary !== ""
                     text: root.matchSummary
-                    color: Util.alpha(root.colMuted, 1.0)
+                    color: root.colMuted
                     elide: Text.ElideRight
                     font.pixelSize: Math.round(Style.font.caption * root.uiScale)
                     font.family: Style.font.family
@@ -1440,7 +1453,7 @@ Item {
                     Layout.alignment: Qt.AlignVCenter
                     text: "Cover art"
                     color: root.coverFocused ? root.colForeground
-                                             : Util.alpha(root.colMuted, 1.0)
+                                             : root.colMuted
                     font.pixelSize: Math.round(Style.font.body * root.uiScale)
                     font.family: Style.font.family
                 }
@@ -1460,6 +1473,7 @@ Item {
                         mpd: root.mpd
                         theme: root.theme
                         uiScale: root.uiScale
+                        pixelRatio: root.pixelRatio
                         subject: root.previewSubject
                         // The editor's own instance, and only while the editor is up.
                         active: root.visible
@@ -1483,7 +1497,7 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             text: "None"
-                            color: Util.alpha(root.colMuted, 1.0)
+                            color: root.colMuted
                             font.pixelSize: Math.round(Style.font.caption * root.uiScale)
                             font.family: Style.font.family
                         }
@@ -1575,7 +1589,7 @@ Item {
                     Layout.fillWidth: true
                     text: root.status !== "" ? root.status
                         : "Enter saves · Cancel discards · L looks up · ← → cycle matches · Tab moves"
-                    color: root.status === "" ? Util.alpha(root.colMuted, 1.0)
+                    color: root.status === "" ? root.colMuted
                                                : Util.alpha(root.colAccent, 1.0)
                     elide: Text.ElideRight
                     font.pixelSize: Math.round(Style.font.caption * root.uiScale)

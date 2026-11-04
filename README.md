@@ -18,7 +18,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Cover art** — finds covers in the album folder, falls back to embedded art (extracted with `ffmpeg` and cached), and can optionally fetch missing covers online.
 - **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Cover pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Pane above` tunes the window size floor the pane is kept to.
 - **Adaptive colours** — optionally matches the panel's colors to the playing album.
-- **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing.
+- **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing. In the tracks pane a number jumps to that track, and a multi-disc album accepts its row number (`2-5`).
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
 - **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, lyrics, themes and optional features.
@@ -92,7 +92,7 @@ then a one-liner around whichever of the three you prefer.
 | --- | --- |
 | `↑` `↓` | Change row |
 | `←` `→` | Change pane |
-| any letter or digit | Typeahead |
+| any letter, digit or `-` | Typeahead; a number jumps to that track in the tracks pane |
 | `Enter` | Play the artist, album or track under the caret |
 | `Space` | Play / pause |
 | `Ctrl` + `←` `→` | Previous / next track |
@@ -279,13 +279,15 @@ The **Lyrics** tab in the settings card holds the reading surface's own choices:
 alignment, text size (an offset from the theme, so it tracks the rest of the
 panel), whether the title and artist sit above the text, how following and dimming
 behave, how long a manual scroll holds, line spacing, the width of the reading
-column, whether the cover shares the view, a global sync offset for lyrics that
-run early or late, click-to-seek, and the fetch switch. Every default reproduces
-the view as it looked before the tab existed.
+column, whether the cover sits beside the lyrics or above them in karaoke, a
+global sync offset for lyrics that run early or late, click-to-seek, and the
+fetch switch. Every default reproduces the view as it looked before the tab
+existed.
 
-`Alt` + `K` turns the open player into karaoke: the lists, the now-playing strip
-and the cover are hidden, the text is set large and centred, and the current line
-is always marked and followed. It is a view of the same window, toggled exactly
+`Alt` + `K` turns the open player into karaoke: the lists and the now-playing
+strip are hidden, the text is set large and centred, and the current line is
+always marked and followed. A modest cover sits above the lyrics unless the
+**Karaoke cover** switch is off. It is a view of the same window, toggled exactly
 like `Alt` + `L` — press it again to go back to the browser. The settings above
 still apply where they make sense — size, spacing, dimming, width — but alignment
 and following are fixed by karaoke itself. `Esc` or `Q` also returns to the
@@ -331,8 +333,8 @@ bar or the volume slider, click the volume icon to mute.
   for a library that should stay offline.
 - **The music directory** is assumed to be `~/Music`, honouring `XDG_MUSIC_DIR`
   when it is exported, which should match MPD's `music_directory`.
-- **Typeahead accepts ASCII letters and digits plus `æøåÆØÅ`.** Widen the regex
-  at the bottom of the key handler in `GrimPlayer.qml` for other scripts.
+- **Typeahead accepts ASCII letters and digits plus `æøåÆØÅ` and `-`.** Widen the
+  regex at the bottom of the key handler in `GrimPlayer.qml` for other scripts.
 - **Album repeat is client-side**, so there is a fraction of a second of silence
   at the album boundary.
 - **No stored playlists and no queue view**, by design: the queue is always the
@@ -358,7 +360,12 @@ reads.
 `Covers.js` and `Palette.js` are deliberately plain scripts rather than
 `.pragma library`: a library is compiled once per engine and cached across
 reloads, so a library edit would never be picked up, while a plain script is
-recompiled with the component that imports it.
+recompiled with the component that imports it. `Paths.js` follows the same rule,
+and keeps the tag editor's path arithmetic testable outside the shell:
+
+```bash
+node extras/test-paths.js
+```
 
 Edit the files under `~/.config/omarchy/plugins/skollgrim.grimplayer/` and the
 shell notices on save — but in practice a save still does not swap the running
@@ -378,7 +385,7 @@ Check a manifest before pushing it out:
 omarchy plugin validate ~/.config/omarchy/plugins/skollgrim.grimplayer
 ```
 
-There is no test harness — this is a UI plugin, so it is verified against a live
+The rest is a UI plugin with no test harness, so it is verified against a live
 MPD: kill MPD underneath it, restart it, add an album and confirm the tree
 follows.
 
