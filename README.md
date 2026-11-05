@@ -38,7 +38,7 @@ with a job of its own reports the failure there. The table says which is which.
 | Embedded cover art | `ffmpeg` | Albums whose artwork is inside the file fall back to the placeholder; sidecar and fetched art are unaffected. |
 | Tag and cover editing, country flags | `mid3v2` (MP3) or `metaflac` (FLAC), and `zenity` to pick a cover file | The tag editor opens and shows what the files hold, but saving writes nothing and Browse cannot choose a cover file. |
 | Look up | `python3` with [`mutagen`](https://mutagen.readthedocs.io/) and [`musicbrainzngs`](https://python-musicbrainzngs.readthedocs.io/), and network access | The Match row reports the failure; editing by hand still works. |
-| Fetch covers | `python3` (standard library only) and network access | Albums with no artwork keep the placeholder. On by default; turned off under **Player wide** in the settings. |
+| Fetch covers | `python3` (standard library only) and network access | Albums with no artwork keep the placeholder. On by default; turned off under **Artwork** in the settings. |
 | Fetch lyrics | `python3` (standard library only) and network access | Tracks with no lyrics on disk show “No lyrics found”. On by default; turned off under **Lyrics** in the settings, which keeps the view local-only. |
 
 ## Requirements
@@ -109,14 +109,19 @@ then a one-liner around whichever of the three you prefer.
 | `Alt` + `T` | Tag editor |
 | `Alt` + `L` | Lyrics view (toggle) |
 | `Alt` + `K` | Karaoke view (toggle) |
+| `Alt` + `C` | Cycle the cover for the current view |
+| `Alt` + `O` | Karaoke background opacity |
+| `Alt` + `=` / `-` | Text size for the current view |
+| `Alt` + `Shift` + `=` / `-` | Cover size in the browser and lyrics view |
 | `?` | Key reference |
 
-The Ctrl keys say what they did: a mode change or a volume step flashes a
-one-line readout above the strip — or, in karaoke, in the margin under the
-words — and it fades after a moment. The strip's own buttons and slider are
-hidden in karaoke, so without it a shuffle or repeat change would be silent
-there. The readout has its own text size (Text & scale → Transport readout), so
-it can be made easier to catch at a glance without touching the lists.
+The Ctrl keys and the Alt cover and size keys say what they did: a mode change,
+a volume step or a new size flashes a one-line readout above the strip — or, in
+karaoke, in the margin under the words — and it fades after a moment. The strip's
+own buttons and slider are hidden in karaoke, so without it a shuffle or repeat
+change would be silent there. The readout has its own text size (Text & scale →
+Transport readout), so it can be made easier to catch at a glance without
+touching the lists.
 
 Shuffle has three pools, not one: the playing album, the artist, or the whole
 library. `Ctrl` + `S` (or the shuffle button) cycles off → album → artist →
@@ -134,8 +139,8 @@ first or last setting, `R` resets everything, `?` switches to the key reference,
 `Esc` steps back out and `Q` closes.
 
 The card is cut into columns by topic — the list and what plays it, the panes and
-their rules, the text and its scale, the cover art, the lyrics view, and the
-player-wide extras — so a slider and a switch sit together where their subject
+their rules, the text and its scale, the cover art, the lyrics view, and
+karaoke's own surface — so a slider and a switch sit together where their subject
 says they should, and a setting is always in the same place. A setting that only
 matters while another is on — a cover border's width, the artwork pane's
 position — stays on the card but is greyed, sitting directly beneath the setting
@@ -279,19 +284,28 @@ The **Lyrics** tab in the settings card holds the reading surface's own choices:
 alignment, text size (an offset from the theme, so it tracks the rest of the
 panel), whether the title and artist sit above the text, how following and dimming
 behave, how long a manual scroll holds, line spacing, the width of the reading
-column, whether the cover sits beside the lyrics or above them in karaoke, a
-global sync offset for lyrics that run early or late, click-to-seek, and the
-fetch switch. Every default reproduces the view as it looked before the tab
-existed.
+column, whether the cover sits beside the lyrics, a global sync offset for lyrics
+that run early or late, and click-to-seek. The sync offset, click-to-seek and
+fetching apply in karaoke too. Every default reproduces the view as it looked
+before the tab existed.
+
+The **Karaoke** tab holds karaoke's own choices: its text size, independent of the
+reading view's, and the cover's placement — beside the lyrics, behind them as a
+low-opacity background, or nowhere — with the background opacity. The fetch switch
+sits under **Artwork**, where the rest of the cover art lives.
 
 `Alt` + `K` turns the open player into karaoke: the lists and the now-playing
 strip are hidden, the text is set large and centred, and the current line is
-always marked and followed. A modest cover sits above the lyrics unless the
-**Karaoke cover** switch is off. It is a view of the same window, toggled exactly
-like `Alt` + `L` — press it again to go back to the browser. The settings above
-still apply where they make sense — size, spacing, dimming, width — but alignment
-and following are fixed by karaoke itself. `Esc` or `Q` also returns to the
-browser. Karaoke is not remembered: the next summon opens the normal browser.
+always marked and followed. The **Cover** setting puts a full-size cover to the
+right of the lyrics, matching the artwork pane at full size, which shifts the
+text left into the room that leaves; in **Background** it lays the cover over the
+whole view at the chosen opacity with the lyrics on top, and **Hidden** leaves the
+text centred on its own. It is a view of the same window, toggled exactly like
+`Alt` + `L` — press it again to go back to the browser. The reading settings still
+apply where they make sense — spacing, dimming, width — but karaoke has its own
+text size, and alignment and following are fixed by karaoke itself. `Esc` or `Q`
+also returns to the browser. Karaoke is not remembered: the next summon opens the
+normal browser.
 
 The highlight stays readable on light sleeves. Adaptive colours only promise the
 accent about 3:1 against the panel, which on a near-white cover reads as a faint

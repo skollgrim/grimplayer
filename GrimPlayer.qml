@@ -602,17 +602,27 @@ Item {
                  window.width - root.floatGutter * 2,
                  root.paneHeight - root.floatGutter * 2))
 
-    // Karaoke's cover: a modest square above the lyrics, on the window's centre
-    // line. Deliberately smaller than the pane's art -- karaoke is for reading,
-    // and a cover that filled the height would leave nothing for the text.
-    readonly property int karaokeCoverSize: Math.max(Math.round(96 * prefs.uiScale),
-        Math.min(Math.round(window.height * 0.24),
-                 Math.round(window.width * 0.18),
-                 Math.round(300 * prefs.uiScale)))
-    // The reading surface's margin, shared by the karaoke column and the cover
-    // above it so the art's top edge lines up with the text's.
+    // Karaoke's cover, when it sits beside the lyrics: as tall as the reading
+    // area, the way the artwork pane looks at full size. The width cap is the
+    // same 60% the pane uses, so on a narrow window the cover gives way rather
+    // than squeezing the lyrics into a sliver. The last cap is the one that
+    // matters on a small panel: it keeps a readable text column instead of
+    // letting the 60% share push the right margin past the left one.
+    readonly property int karaokeMinTextWidth: Math.round(200 * prefs.uiScale)
+    readonly property int karaokeCoverSize: Math.max(Math.round(48 * prefs.uiScale),
+        Math.min(window.height - root.karaokeMargin * 2,
+                 Math.round(window.width * 0.60),
+                 window.width - root.karaokeMargin * 2 - root.karaokeCoverGap
+                     - root.karaokeMinTextWidth))
+    // The reading surface's margin, shared by the karaoke column and the side
+    // cover so the text's edge and the art's edge line up.
     readonly property int karaokeMargin: Math.round(40 * prefs.uiScale)
     readonly property int karaokeCoverGap: Math.round(10 * prefs.uiScale)
+    // The side cover's width plus the gap before the text. Reserved as a right
+    // margin so the lyrics centre in the room left over, which is what moves
+    // them left rather than letting the art sit on top of a line.
+    readonly property int karaokeTextRightInset: root.karaokeCoverSide
+        ? root.karaokeCoverSize + root.karaokeCoverGap : 0
 
     // Height of the now-playing strip. Named because two overlays sit clear of it
     // and have to agree with it: the typeahead readout and the MPD error banner.
@@ -1065,17 +1075,25 @@ Item {
             ? lyricsFlick.width * 0.8
             : (prefs.lyricsWidth === "narrow" ? lyricsFlick.width * 0.65 : lyricsFlick.width))
     // Whether the cover shares the reading view with the lyrics, and whether it
-    // does so beside them (the browser's artwork pane) or above them (karaoke's
-    // centred square). Only the lyrics view is affected; the browser keeps
-    // whatever arrangement it had. The two placements have separate settings:
-    // the side pane follows Cover beside lyrics, karaoke its own switch.
+    // does so beside them (the browser's artwork pane) or in karaoke's own
+    // placement. Only the lyrics view is affected; the browser keeps whatever
+    // arrangement it had. The two placements have separate settings: the side
+    // pane follows Cover beside lyrics, karaoke its own choice.
     readonly property bool lyricsSideCoverVisible: !(root.lyricsView
         && (prefs.lyricsCover === "hide" || root.karaokeView))
-    readonly property bool karaokeCoverVisible: root.karaokeView && prefs.karaokeCover
+    readonly property bool karaokeCoverSide: root.karaokeView
+        && prefs.karaokeCover === "side"
+    readonly property bool karaokeCoverBackground: root.karaokeView
+        && prefs.karaokeCover === "background"
+    readonly property bool karaokeCoverVisible: root.karaokeCoverSide
+        || root.karaokeCoverBackground
     readonly property bool lyricsCoverVisible: root.lyricsSideCoverVisible || root.karaokeCoverVisible
-    // Lyric type. Karaoke sets the same offset large, so the text-size setting
-    // still nudges it; the normal view is unchanged.
-    readonly property int lyricsFontPx: Math.round((Style.font.body + prefs.lyricsFont)
+    // Lyric type. Karaoke has its own offset, so enlarging the words there does
+    // not also enlarge the reading view; the 1.9 multiplier is what makes karaoke
+    // read from across the room, and it applies on top of whichever size is in
+    // charge.
+    readonly property int lyricsFontPx: Math.round((Style.font.body
+        + (root.karaokeView ? prefs.karaokeFont : prefs.lyricsFont))
         * (root.karaokeView ? 1.9 : 1) * prefs.uiScale)
 
     // A manual scroll suspends following. With "Never" it stays suspended until
@@ -1769,30 +1787,37 @@ Item {
                     anchors.bottom: parent.bottom
                     // With the cover hidden for this view the lyrics take the
                     // full width; otherwise they stop where the artwork pane
-                    // begins, as the browser does. Karaoke never uses the side
-                    // pane: its cover sits above the text instead.
+                    // begins, as the browser does. Karaoke never uses the
+                    // browser's side pane: its own cover sits beside the text,
+                    // behind it, or nowhere, and the column below reserves the
+                    // room that placement needs.
                     width: Math.max(0, parent.width - (root.lyricsSideCoverVisible ? root.coverPaneWidth : 0))
 
                     Rectangle {
                         anchors.fill: parent
+                        // A background cover is drawn behind this whole area, so
+                        // the opaque ground has to step aside for it. The window's
+                        // own colour is still underneath, which keeps the panel
+                        // looking the same when an album has no art.
+                        visible: !root.karaokeCoverBackground
                         color: theme.background
                     }
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: root.karaokeView
+                        anchors.leftMargin: root.karaokeView
                             ? root.karaokeMargin : Math.round(24 * prefs.uiScale)
+                        anchors.topMargin: root.karaokeView
+                            ? root.karaokeMargin : Math.round(24 * prefs.uiScale)
+                        anchors.bottomMargin: root.karaokeView
+                            ? root.karaokeMargin : Math.round(24 * prefs.uiScale)
+                        // The side cover's column is held back from the text, so
+                        // centring happens in the remaining width and the lyrics
+                        // move left as the art appears.
+                        anchors.rightMargin: (root.karaokeView
+                            ? root.karaokeMargin : Math.round(24 * prefs.uiScale))
+                            + root.karaokeTextRightInset
                         spacing: Math.round(12 * prefs.uiScale)
-
-                        // Karaoke draws its cover over this band. The spacer is
-                        // what keeps the scrolling text below the art rather
-                        // than letting the first lines run underneath it.
-                        Item {
-                            Layout.preferredWidth: root.lyricsColumnWidth
-                            Layout.preferredHeight: root.karaokeCoverVisible
-                                ? root.karaokeCoverSize + root.karaokeCoverGap : 0
-                            visible: root.karaokeCoverVisible
-                        }
 
                         // Karaoke is the lyrics alone: the track block would only
                         // eat the room the larger text needs.
@@ -2086,7 +2111,7 @@ Item {
             active: window.visible
             // The lyrics view may take the whole width; then the side pane and
             // this cover's pane placement are hidden, but karaoke still shows it
-            // above the text.
+            // in its own placement.
             visible: root.lyricsCoverVisible
             // The cover belongs to the album that is playing, so hiding the panel
             // keeps it rather than re-finding it: re-probing on the next summon
@@ -2094,30 +2119,43 @@ Item {
             // the meantime, which looked like the artwork reloading (and, for a
             // name further down the list, briefly going missing).
             keepCoverWhileHidden: true
-            coverBorder: prefs.coverBorder
+            // A background cover is a wash, not a framed picture: no ring, no
+            // rounded corners, and the opacity setting decides how much of it
+            // shows through the text. The side placement keeps the normal frame.
+            coverBorder: prefs.coverBorder && !root.karaokeCoverBackground
             coverBorderWidth: prefs.coverBorderWidth
-            rounded: prefs.coverRounded
-            placeholder: prefs.coverPlaceholder
+            rounded: prefs.coverRounded && !root.karaokeCoverBackground
+            placeholder: prefs.coverPlaceholder && !root.karaokeCoverBackground
             fetchCovers: prefs.fetchCovers
             transitionDuration: prefs.coverTransition
-            width: root.karaokeCoverVisible ? root.karaokeCoverSize
-                : (root.coverBand ? root.paneCoverSize : root.floatingCoverSize)
-            height: width
+            opacity: root.karaokeCoverBackground ? prefs.karaokeCoverOpacity : 1.0
+            // A background cover fills the reading area; a side cover is the
+            // modest karaoke square; otherwise the browser's pane or floating
+            // size applies.
+            width: root.karaokeCoverBackground ? parent.width
+                : (root.karaokeCoverSide ? root.karaokeCoverSize
+                    : (root.coverBand ? root.paneCoverSize : root.floatingCoverSize))
+            height: root.karaokeCoverBackground ? parent.height : width
             // In the artwork pane the cover keeps the padding setting's margin on
             // the right, flush when it is off; the pane is sized to match, so with
             // no margin the art runs flush to the left edge too and covers the pane
-            // rule over its own height. Floating, it keeps its gutter. Karaoke
-            // centres it on the window above the lyrics.
-            x: root.karaokeCoverVisible
-                ? Math.round((window.width - width) / 2)
-                : (root.coverBand
-                    ? parent.width - root.coverPad - width
-                    : parent.width - width - root.floatGutter)
-            y: root.karaokeCoverVisible
-                ? root.karaokeMargin
-                : (root.coverBand
-                    ? root.coverBandY
-                    : parent.height - root.stripHeight - root.floatGutter - height)
+            // rule over its own height. Floating, it keeps its gutter. A karaoke
+            // side cover sits in the column reserved on the right, vertically
+            // centred on the text; the background cover fills the area and is
+            // pushed behind the lyrics with a negative z.
+            x: root.karaokeCoverBackground ? 0
+                : (root.karaokeCoverSide
+                    ? parent.width - root.karaokeMargin - width
+                    : (root.coverBand
+                        ? parent.width - root.coverPad - width
+                        : parent.width - width - root.floatGutter))
+            y: root.karaokeCoverBackground ? 0
+                : (root.karaokeCoverSide
+                    ? Math.round((parent.height - height) / 2)
+                    : (root.coverBand
+                        ? root.coverBandY
+                        : parent.height - root.stripHeight - root.floatGutter - height))
+            z: root.karaokeCoverBackground ? -1 : 0
         }
 
         // Typeahead readout: the letters being jumped to, shown only while they
@@ -2322,12 +2360,18 @@ Item {
                 // work from inside the settings card or the key reference as well
                 // as from the browser: Alt+S toggles the card, Alt+T opens the tag
                 // editor, Alt+L toggles lyrics view in the panes area, Alt+K
-                // toggles karaoke over it. The tag editor is the exception -- it
-                // disables this catcher and reads its own keys. Plain ? opens the
-                // reference, and is left to the branches below so it can also
-                // close a screen.
+                // toggles karaoke over it. Alt+C and Alt+O, and the size keys,
+                // act on the view that is showing: the cover's placement, the
+                // karaoke background's opacity, and the text or artwork size.
+                // The tag editor is the exception -- it disables this catcher and
+                // reads its own keys. Plain ? opens the reference, and is left to
+                // the branches below so it can also close a screen.
+                var sizeUp = event.key === Qt.Key_Equal || event.key === Qt.Key_Plus
+                var sizeDown = event.key === Qt.Key_Minus || event.key === Qt.Key_Underscore
                 if (alt && (event.key === Qt.Key_S || event.key === Qt.Key_T
-                            || event.key === Qt.Key_L || event.key === Qt.Key_K)) {
+                            || event.key === Qt.Key_L || event.key === Qt.Key_K
+                            || event.key === Qt.Key_C || event.key === Qt.Key_O
+                            || sizeUp || sizeDown)) {
                     if (event.key === Qt.Key_S) {
                         root.toggleSettings()
                     } else if (event.key === Qt.Key_T) {
@@ -2339,6 +2383,19 @@ Item {
                         root.lyricsView = !root.lyricsView
                     } else if (event.key === Qt.Key_K) {
                         root.toggleKaraoke()
+                    } else if (event.key === Qt.Key_C) {
+                        root.cycleCover()
+                    } else if (event.key === Qt.Key_O) {
+                        root.cycleCoverOpacity()
+                    } else if (sizeUp) {
+                        // Shift turns the same key from text size into cover
+                        // size; the two axes otherwise share a key and a nudge
+                        // would be ambiguous.
+                        if (shift) root.cycleCoverSize(1)
+                        else root.cycleTextSize(1)
+                    } else if (sizeDown) {
+                        if (shift) root.cycleCoverSize(-1)
+                        else root.cycleTextSize(-1)
                     }
                     event.accepted = true
                     return
@@ -2721,6 +2778,93 @@ Item {
         transportNotice = text
         transportNoticeVisible = true
         transportNoticeTimer.restart()
+    }
+
+    // A settings row by key, for the presentation keys below. The row owns its
+    // options, its format and its save, so a keypress takes the same path as a
+    // nudge in the card rather than writing the store directly. An inactive row
+    // answers null: it is parked behind a parent setting and would move a value
+    // nothing on screen reads.
+    function cycleSetting(key, delta) {
+        var entry = prefs ? prefs.entryFor(key) : null
+        if (!entry || !prefs.isActive(entry)) return null
+        prefs.cycle(entry, delta)
+        return entry
+    }
+
+    function settingText(entry) {
+        return entry ? prefs.textOf(entry) : ""
+    }
+
+    // Alt+C: the cover of whatever is on screen. The browser's cover pane has
+    // three placements, the lyrics view only keeps or drops its side pane, and
+    // karaoke chooses beside/background/hidden. One key, three vocabularies,
+    // because each view has its own sensible next state.
+    function cycleCover() {
+        if (root.karaokeView) {
+            var k = root.cycleSetting("karaokeCover", 1)
+            if (k) root.showTransportNotice("Karaoke cover: " + root.settingText(k))
+        } else if (root.lyricsView) {
+            var l = root.cycleSetting("lyricsCover", 1)
+            if (l) root.showTransportNotice("Cover beside lyrics: " + root.settingText(l))
+        } else {
+            // The row's options run off, on, auto; stepping back from auto
+            // lands on on, so the key reads auto → on → off → auto rather than
+            // dropping the pane first.
+            var b = root.cycleSetting("coverBandMode", -1)
+            if (b) root.showTransportNotice("Cover pane: " + root.settingText(b))
+        }
+    }
+
+    // Alt+O: how much of the karaoke background cover shows through. Only the
+    // background placement reads it, so the key says so rather than turning a
+    // knob nobody can see.
+    function cycleCoverOpacity() {
+        if (!root.karaokeView || !root.karaokeCoverBackground) {
+            root.showTransportNotice("Cover opacity: only with the background cover")
+            return
+        }
+        var e = root.cycleSetting("karaokeCoverOpacity", 1)
+        if (e) root.showTransportNotice("Cover opacity: " + root.settingText(e))
+    }
+
+    // Alt+= / Alt+-: the text size of the view on screen -- karaoke's own offset
+    // there, the reading view's in lyrics, the whole panel's scale in the
+    // browser. This is the one size key that always does something visible.
+    function cycleTextSize(delta) {
+        if (root.karaokeView) {
+            var k = root.cycleSetting("karaokeFont", delta)
+            if (k) root.showTransportNotice("Karaoke text: " + root.settingText(k))
+        } else if (root.lyricsView) {
+            var l = root.cycleSetting("lyricsFont", delta)
+            if (l) root.showTransportNotice("Lyrics text: " + root.settingText(l))
+        } else {
+            var u = root.cycleSetting("uiScale", delta)
+            if (u) root.showTransportNotice("UI scale: " + root.settingText(u))
+        }
+    }
+
+    // Alt+Shift+= / Alt+Shift+-: the artwork's size in the browser and lyrics
+    // view. Karaoke's cover is tied to the reading area rather than a stored
+    // share, so there is no separate number to turn; say what the current
+    // placement does instead of moving a setting nothing there reads.
+    function cycleCoverSize(delta) {
+        if (root.karaokeView) {
+            if (root.karaokeCoverBackground) {
+                root.showTransportNotice("Karaoke cover fills the view")
+            } else if (!root.karaokeCoverVisible) {
+                root.showTransportNotice("Karaoke cover is hidden")
+            } else {
+                root.showTransportNotice("Karaoke cover follows the view")
+            }
+            return
+        }
+        var e = root.cycleSetting("coverScale", delta)
+        if (e) {
+            root.showTransportNotice("Cover size: " + root.settingText(e))
+        } else {
+            root.showTransportNotice("Cover size: set by the cover pane")
+        }
     }
 
     function toggleMute() {

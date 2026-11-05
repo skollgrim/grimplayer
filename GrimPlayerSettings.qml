@@ -3,10 +3,10 @@ pragma ComponentBehavior: Bound
 //
 // The settings are laid out as columns cut by topic, each a single list under its
 // own heading: the list and what plays it, the panes and their rules, the text
-// and its scale, the cover art, and the player-wide extras. A column is one
-// subject rather than one kind of control, so a slider and a switch sit together
-// in a column where the thing they share says they should, and a setting is
-// always in the same place every time the card opens.
+// and its scale, the cover art, the lyrics view, and karaoke's own surface. A
+// column is one subject rather than one kind of control, so a slider and a
+// switch sit together in a column where the thing they share says they should,
+// and a setting is always in the same place every time the card opens.
 //
 // A setting that waits on another is drawn greyed rather than hidden, and is
 // indented beneath the row it waits on, so the row above is why it is greyed and

@@ -244,10 +244,24 @@ Item {
         // width. "hide" affects the lyrics view's side pane only; the browser
         // and karaoke are untouched.
         property string lyricsCover: "show"
-        // Whether karaoke draws the cover above the lyrics. A separate switch
-        // from the side pane: the two layouts are different enough that hiding
-        // one should not silently hide the other.
-        property bool karaokeCover: true
+
+        // ---- karaoke view ----
+        //
+        // Karaoke has its own size rather than borrowing the lyrics view's: it
+        // is read from across the room, so wanting the words larger there should
+        // not also enlarge the reading view. It starts at the lyrics default so
+        // the view opens exactly as it did before the setting existed.
+        property int karaokeFont: 2
+        // Where karaoke puts the cover: "side" sets it to the right of the
+        // lyrics and shifts the text left, "background" lays it over the whole
+        // view at low opacity behind the text, and "hide" leaves the lyrics
+        // centred on their own. A separate choice from the side pane: the two
+        // layouts are different enough that hiding one should not silently hide
+        // the other.
+        property string karaokeCover: "side"
+        // How strongly the background cover shows through. Only read in the
+        // "background" mode; a side cover is drawn at full strength.
+        property real karaokeCoverOpacity: 0.2
         // How long a manual scroll suspends following before the view returns
         // to the playing line. Zero never resumes: the reader keeps the view
         // where they put it until the track changes or the view is reopened.
@@ -345,8 +359,8 @@ Item {
                     "fontCaption", "noticeScale", "coverDecodeSize",
                     "lyricsAlign", "lyricsFont", "lyricsInfo", "lyricsFollow",
                     "lyricsDim", "lyricsResume", "lyricsSpacing", "lyricsWidth",
-                    "lyricsCover", "karaokeCover", "lyricsOffset", "lyricsClickSeek",
-                    "lyricsDownloads"]
+                    "lyricsCover", "karaokeFont", "karaokeCover", "karaokeCoverOpacity",
+                    "lyricsOffset", "lyricsClickSeek", "lyricsDownloads"]
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i]
             if (store[k] !== undefined) out[k] = store[k]
@@ -391,6 +405,20 @@ Item {
         // now the band above the strip, so a file that chose the corner keeps the
         // band placement rather than falling back to the default by accident.
         if (obj.typeaheadPlace === "corner") obj.typeaheadPlace = "bottom"
+        // Karaoke used to share the lyrics view's size. A file written before
+        // the split has no karaokeFont, so seed it from the lyrics size: the
+        // karaoke text keeps the size it had, and the two only part company once
+        // one of them is changed. A file that has neither keeps the default.
+        if (obj.karaokeFont === undefined && obj.lyricsFont !== undefined) {
+            obj.karaokeFont = obj.lyricsFont
+        }
+        // The karaoke cover was a plain switch before it gained placements. A
+        // stored true keeps the cover on the new default side; false keeps it
+        // hidden rather than letting the old value fail the type check and
+        // silently turn the cover back on.
+        if (typeof obj.karaokeCover === "boolean") {
+            obj.karaokeCover = obj.karaokeCover ? "side" : "hide"
+        }
         for (var k in obj) {
             if (store[k] === undefined) continue
             var v = obj[k]
@@ -505,7 +533,9 @@ Item {
     readonly property int lyricsSpacing: store.lyricsSpacing
     readonly property string lyricsWidth: store.lyricsWidth
     readonly property string lyricsCover: store.lyricsCover
-    readonly property bool karaokeCover: store.karaokeCover
+    readonly property int karaokeFont: store.karaokeFont
+    readonly property string karaokeCover: store.karaokeCover
+    readonly property real karaokeCoverOpacity: store.karaokeCoverOpacity
     readonly property int lyricsOffset: store.lyricsOffset
     readonly property bool lyricsClickSeek: store.lyricsClickSeek
     readonly property bool lyricsDownloads: store.lyricsDownloads
@@ -849,17 +879,6 @@ Item {
             format: root.deltaText
         },
         {
-            key: "adaptiveColors",
-            section: "wide",
-            label: "Adaptive colours",
-            hint: "Follow the current album cover instead of the shell theme",
-            options: [true, false],
-            defaultValue: false,
-            get: function () { return store.adaptiveColors },
-            set: function (v) { store.adaptiveColors = v },
-            format: root.boolText
-        },
-        {
             key: "albumYears",
             section: "text",
             label: "Album years",
@@ -1038,6 +1057,28 @@ Item {
             set: function (v) { store.coverBandMinPct = v },
             format: function (v) { return v + "%" }
         },
+        {
+            key: "fetchCovers",
+            section: "artwork",
+            label: "Fetch covers",
+            hint: "Look a cover up on iTunes or Deezer when an album has none, and cache it",
+            options: [true, false],
+            defaultValue: true,
+            get: function () { return store.fetchCovers },
+            set: function (v) { store.fetchCovers = v },
+            format: root.boolText
+        },
+        {
+            key: "adaptiveColors",
+            section: "artwork",
+            label: "Adaptive colours",
+            hint: "Follow the current album cover instead of the shell theme",
+            options: [true, false],
+            defaultValue: false,
+            get: function () { return store.adaptiveColors },
+            set: function (v) { store.adaptiveColors = v },
+            format: root.boolText
+        },
 
         // ---- Lyrics ----
         //
@@ -1149,22 +1190,55 @@ Item {
             set: function (v) { store.lyricsCover = v },
             format: root.titleText
         },
+        // ---- Karaoke ----
+        //
+        // Karaoke is its own surface: larger text read from a distance and a
+        // cover that can share the view, sit behind it or stay away. These rows
+        // used to live under Lyrics, where the reading view's size and cover
+        // switch made them read as more of the same; they are separate choices
+        // and now have a tab of their own.
+        {
+            key: "karaokeFont",
+            section: "karaoke",
+            label: "Text size",
+            hint: "Karaoke size as an offset from the theme; independent of the lyrics view",
+            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            defaultValue: 2,
+            get: function () { return store.karaokeFont },
+            set: function (v) { store.karaokeFont = v },
+            format: root.deltaText
+        },
         {
             key: "karaokeCover",
-            section: "lyrics",
-            label: "Karaoke cover",
-            hint: "Show the album cover above the lyrics in karaoke mode",
-            options: [true, false],
-            defaultValue: true,
+            section: "karaoke",
+            label: "Cover",
+            hint: "Put the album cover beside the lyrics, behind them at low opacity, or away entirely",
+            options: ["side", "background", "hide"],
+            defaultValue: "side",
             get: function () { return store.karaokeCover },
             set: function (v) { store.karaokeCover = v },
-            format: root.boolText
+            format: function (v) {
+                return v === "side" ? "Beside" : v === "background" ? "Background" : "Hidden"
+            }
+        },
+        {
+            key: "karaokeCoverOpacity",
+            section: "karaoke",
+            label: "Cover opacity",
+            hint: "How strongly the background cover shows through behind the lyrics",
+            options: [0.1, 0.2, 0.3, 0.4],
+            defaultValue: 0.2,
+            dependsOn: function () { return store.karaokeCover === "background" },
+            after: "karaokeCover",
+            get: function () { return store.karaokeCoverOpacity },
+            set: function (v) { store.karaokeCoverOpacity = v },
+            format: function (v) { return Math.round(v * 100) + "%" }
         },
         {
             key: "lyricsOffset",
             section: "lyrics",
             label: "Sync offset",
-            hint: "Shift synced lyrics that run early or late; positive delays the highlight",
+            hint: "Shift synced lyrics that run early or late in both views; positive delays the highlight",
             options: [-2000, -1500, -1000, -500, 0, 500, 1000, 1500, 2000],
             defaultValue: 0,
             get: function () { return store.lyricsOffset },
@@ -1177,7 +1251,7 @@ Item {
             key: "lyricsClickSeek",
             section: "lyrics",
             label: "Click to seek",
-            hint: "Click a timed line to jump to that point in the track",
+            hint: "Click a timed line in either view to jump to that point in the track",
             options: [true, false],
             defaultValue: true,
             get: function () { return store.lyricsClickSeek },
@@ -1188,24 +1262,11 @@ Item {
             key: "lyricsDownloads",
             section: "lyrics",
             label: "Fetch lyrics",
-            hint: "Ask lrclib when a track has no lyrics on disk; off keeps the player local-only",
+            hint: "Ask lrclib when a track has no lyrics on disk, for both views; off keeps the player local-only",
             options: [true, false],
             defaultValue: true,
             get: function () { return store.lyricsDownloads },
             set: function (v) { store.lyricsDownloads = v },
-            format: root.boolText
-        },
-
-        // ---- Player wide ----
-        {
-            key: "fetchCovers",
-            section: "wide",
-            label: "Fetch covers",
-            hint: "Look a cover up on iTunes or Deezer when an album has none, and cache it",
-            options: [true, false],
-            defaultValue: true,
-            get: function () { return store.fetchCovers },
-            set: function (v) { store.fetchCovers = v },
             format: root.boolText
         },
     ]
@@ -1240,19 +1301,15 @@ Item {
     // The sections the card draws, in column order, each a name and the tag its
     // entries carry. A section is one topic -- the lists and what plays them, the
     // panes and their rules, the text and scale, the cover art, the lyrics view,
-    // the extras -- rather than one kind of control, so a slider and a switch sit
-    // together wherever their subject says they should.
-    //
-    // The last section hugs its content instead of taking an equal share: it
-    // holds a single row with a short label, so filling a full column with it
-    // only starved the sections beside it.
+    // karaoke's own surface -- rather than one kind of control, so a slider and a
+    // switch sit together wherever their subject says they should.
     readonly property var sections: [
         { tag: "list", name: "List & playing" },
         { tag: "panes", name: "Panes & layout" },
         { tag: "text", name: "Text & scale" },
         { tag: "artwork", name: "Artwork" },
         { tag: "lyrics", name: "Lyrics" },
-        { tag: "wide", name: "Player wide", fill: false }
+        { tag: "karaoke", name: "Karaoke" }
     ]
 
     // Each row carries its entry, that entry's index into the table, and whether
