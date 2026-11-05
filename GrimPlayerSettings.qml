@@ -344,7 +344,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.topMargin: Math.round(10 * root.uiScale)
                 Layout.bottomMargin: Math.round(10 * root.uiScale)
-                spacing: Math.round(8 * root.uiScale)
+                spacing: Math.round(6 * root.uiScale)
 
                 Repeater {
                     model: root.columns
@@ -353,7 +353,7 @@ Item {
                         required property var modelData
                         required property int index
                         Layout.preferredHeight: Math.round(28 * root.uiScale)
-                        Layout.preferredWidth: tabText.implicitWidth + Math.round(20 * root.uiScale)
+                        Layout.preferredWidth: tabText.implicitWidth + Math.round(14 * root.uiScale)
                         radius: Math.round(6 * root.uiScale)
                         color: tab.index === root.categoryIndex ? Util.alpha(root.colAccent, 0.18) : "transparent"
                         border.width: tab.index === root.categoryIndex ? 0 : 1

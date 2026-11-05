@@ -216,12 +216,17 @@ Item {
         // subtitle size, which is what it used before this setting existed.
         property int noticeScale: 0
 
-        // ---- lyrics view ----
+        // ---- lyrics ----
         //
-        // The lyrics view is a reading surface, so its text is set apart from
-        // the lists: it has its own size offset, line spacing and measure rather
-        // than borrowing the pane rows' values. Every default here reproduces
-        // the view as it looked before these settings existed.
+        // The lyric surfaces are set apart from the lists: they have their own
+        // size offsets, line spacing and measure rather than borrowing the pane
+        // rows' values. Every default here reproduces the views as they looked
+        // before these settings existed.
+        //
+        // Some choices are shared by both surfaces -- spacing, dimming, resume,
+        // offset, click-to-seek and fetching -- and some belong to one surface
+        // only. The reading view's own size, alignment, track block, follow
+        // behaviour, measure and cover are separate from karaoke's.
         property string lyricsAlign: "left"
         // A lyrics-only offset from the theme, like the other font sizes. It
         // starts at the body text's own +2 so the view opens exactly as it did.
@@ -232,13 +237,14 @@ Item {
         // marks it without moving the view, "off" leaves the text still and
         // unmarked -- the reading mode for plain lyrics or for reading ahead.
         property string lyricsFollow: "follow"
-        // Gap between lyric lines, in logical pixels.
+        // Gap between lyric lines, in logical pixels. Shared with karaoke.
         property int lyricsSpacing: 8
         // How wide the reading column may get: "full", "wide" (80%) or "narrow"
         // (65%). The column stays centred, so a narrow measure reads as a column
         // rather than as text pushed against one side.
         property string lyricsWidth: "full"
         // How far the non-current lines fade: "subtle", "medium" or "strong".
+        // Shared with karaoke.
         property string lyricsDim: "medium"
         // Whether the cover stays beside the lyrics or gives them the full
         // width. "hide" affects the lyrics view's side pane only; the browser
@@ -252,6 +258,10 @@ Item {
         // not also enlarge the reading view. It starts at the lyrics default so
         // the view opens exactly as it did before the setting existed.
         property int karaokeFont: 2
+        // What karaoke keeps above the scrolling lyrics: "off", "track", "both"
+        // (track and artist) or "all" (track, artist and album). The header sits
+        // outside the scroll, so the details stay put while the words move.
+        property string karaokeInfo: "both"
         // Where karaoke puts the cover: "side" sets it to the right of the
         // lyrics and shifts the text left, "background" lays it over the whole
         // view at low opacity behind the text, and "hide" leaves the lyrics
@@ -359,7 +369,7 @@ Item {
                     "fontCaption", "noticeScale", "coverDecodeSize",
                     "lyricsAlign", "lyricsFont", "lyricsInfo", "lyricsFollow",
                     "lyricsDim", "lyricsResume", "lyricsSpacing", "lyricsWidth",
-                    "lyricsCover", "karaokeFont", "karaokeCover", "karaokeCoverOpacity",
+                    "lyricsCover", "karaokeFont", "karaokeInfo", "karaokeCover", "karaokeCoverOpacity",
                     "lyricsOffset", "lyricsClickSeek", "lyricsDownloads"]
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i]
@@ -534,6 +544,7 @@ Item {
     readonly property string lyricsWidth: store.lyricsWidth
     readonly property string lyricsCover: store.lyricsCover
     readonly property int karaokeFont: store.karaokeFont
+    readonly property string karaokeInfo: store.karaokeInfo
     readonly property string karaokeCover: store.karaokeCover
     readonly property real karaokeCoverOpacity: store.karaokeCoverOpacity
     readonly property int lyricsOffset: store.lyricsOffset
@@ -1082,64 +1093,28 @@ Item {
 
         // ---- Lyrics ----
         //
-        // Every entry here carries section: "lyrics", which gathers the reading
-        // surface's own settings into their own tab rather than mixing them in
-        // with the list and text rows they otherwise resemble. The follow row
-        // heads its block: the two rows that only matter while following sit
-        // beneath it and grey out with it.
+        // The settings both lyric surfaces share: the reading view (Alt+L) and
+        // karaoke. They live in their own tab so a shared choice is not mistaken
+        // for one that only shapes the reading view; the rows that do that are
+        // under Lyrics view, and karaoke's own are under Karaoke.
         {
-            key: "lyricsAlign",
+            key: "lyricsSpacing",
             section: "lyrics",
-            label: "Alignment",
-            hint: "Align the lyric lines left, or centre them in the reading column",
-            options: ["left", "center"],
-            defaultValue: "left",
-            get: function () { return store.lyricsAlign },
-            set: function (v) { store.lyricsAlign = v },
-            format: root.titleText
-        },
-        {
-            key: "lyricsFont",
-            section: "lyrics",
-            label: "Text size",
-            hint: "Lyric size as an offset from the theme",
-            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
-            defaultValue: 2,
-            get: function () { return store.lyricsFont },
-            set: function (v) { store.lyricsFont = v },
-            format: root.deltaText
-        },
-        {
-            key: "lyricsInfo",
-            section: "lyrics",
-            label: "Track info",
-            hint: "Show the title and artist above the lyrics, the title alone, or neither",
-            options: ["both", "title", "off"],
-            defaultValue: "both",
-            get: function () { return store.lyricsInfo },
-            set: function (v) { store.lyricsInfo = v },
-            format: root.titleText
-        },
-        {
-            key: "lyricsFollow",
-            section: "lyrics",
-            label: "Follow along",
-            hint: "Scroll to the current line and highlight it, highlight it without scrolling, or leave the text still",
-            options: ["follow", "highlight", "off"],
-            defaultValue: "follow",
-            get: function () { return store.lyricsFollow },
-            set: function (v) { store.lyricsFollow = v },
-            format: root.titleText
+            label: "Line spacing",
+            hint: "Gap between lyric lines in both views: tight, normal or airy",
+            options: [4, 8, 12],
+            defaultValue: 8,
+            get: function () { return store.lyricsSpacing },
+            set: function (v) { store.lyricsSpacing = v },
+            format: function (v) { return v === 4 ? "Tight" : v === 8 ? "Normal" : "Airy" }
         },
         {
             key: "lyricsDim",
             section: "lyrics",
             label: "Dim other lines",
-            hint: "How far the lines around the current one fade back",
+            hint: "How far the lines around a marked one fade back in both views",
             options: ["subtle", "medium", "strong"],
             defaultValue: "medium",
-            dependsOn: function () { return store.lyricsFollow !== "off" },
-            after: "lyricsFollow",
             get: function () { return store.lyricsDim },
             set: function (v) { store.lyricsDim = v },
             format: root.titleText
@@ -1148,91 +1123,12 @@ Item {
             key: "lyricsResume",
             section: "lyrics",
             label: "Resume after scroll",
-            hint: "How long the view waits after a manual scroll before returning to the playing line",
+            hint: "How long either view waits after a manual scroll before returning to the playing line",
             options: [5000, 15000, 0],
             defaultValue: 5000,
-            dependsOn: function () { return store.lyricsFollow === "follow" },
-            after: "lyricsFollow",
             get: function () { return store.lyricsResume },
             set: function (v) { store.lyricsResume = v },
             format: function (v) { return v === 0 ? "Never" : (v / 1000) + " s" }
-        },
-        {
-            key: "lyricsSpacing",
-            section: "lyrics",
-            label: "Line spacing",
-            hint: "Gap between lyric lines: tight, normal or airy",
-            options: [4, 8, 12],
-            defaultValue: 8,
-            get: function () { return store.lyricsSpacing },
-            set: function (v) { store.lyricsSpacing = v },
-            format: function (v) { return v === 4 ? "Tight" : v === 8 ? "Normal" : "Airy" }
-        },
-        {
-            key: "lyricsWidth",
-            section: "lyrics",
-            label: "Text width",
-            hint: "How wide the reading column may get; a narrower column keeps long lines readable",
-            options: ["full", "wide", "narrow"],
-            defaultValue: "full",
-            get: function () { return store.lyricsWidth },
-            set: function (v) { store.lyricsWidth = v },
-            format: root.titleText
-        },
-        {
-            key: "lyricsCover",
-            section: "lyrics",
-            label: "Cover beside lyrics",
-            hint: "Keep the artwork beside the lyrics, or give the text the full width",
-            options: ["show", "hide"],
-            defaultValue: "show",
-            get: function () { return store.lyricsCover },
-            set: function (v) { store.lyricsCover = v },
-            format: root.titleText
-        },
-        // ---- Karaoke ----
-        //
-        // Karaoke is its own surface: larger text read from a distance and a
-        // cover that can share the view, sit behind it or stay away. These rows
-        // used to live under Lyrics, where the reading view's size and cover
-        // switch made them read as more of the same; they are separate choices
-        // and now have a tab of their own.
-        {
-            key: "karaokeFont",
-            section: "karaoke",
-            label: "Text size",
-            hint: "Karaoke size as an offset from the theme; independent of the lyrics view",
-            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
-            defaultValue: 2,
-            get: function () { return store.karaokeFont },
-            set: function (v) { store.karaokeFont = v },
-            format: root.deltaText
-        },
-        {
-            key: "karaokeCover",
-            section: "karaoke",
-            label: "Cover",
-            hint: "Put the album cover beside the lyrics, behind them at low opacity, or away entirely",
-            options: ["side", "background", "hide"],
-            defaultValue: "side",
-            get: function () { return store.karaokeCover },
-            set: function (v) { store.karaokeCover = v },
-            format: function (v) {
-                return v === "side" ? "Beside" : v === "background" ? "Background" : "Hidden"
-            }
-        },
-        {
-            key: "karaokeCoverOpacity",
-            section: "karaoke",
-            label: "Cover opacity",
-            hint: "How strongly the background cover shows through behind the lyrics",
-            options: [0.1, 0.2, 0.3, 0.4],
-            defaultValue: 0.2,
-            dependsOn: function () { return store.karaokeCover === "background" },
-            after: "karaokeCover",
-            get: function () { return store.karaokeCoverOpacity },
-            set: function (v) { store.karaokeCoverOpacity = v },
-            format: function (v) { return Math.round(v * 100) + "%" }
         },
         {
             key: "lyricsOffset",
@@ -1269,6 +1165,139 @@ Item {
             set: function (v) { store.lyricsDownloads = v },
             format: root.boolText
         },
+
+        // ---- Lyrics view ----
+        //
+        // The reading view's own choices. Karaoke has a separate text size,
+        // track-info choice, cover placement and follow behaviour, so changing
+        // these must not move the karaoke surface.
+        {
+            key: "lyricsAlign",
+            section: "lyricsView",
+            label: "Alignment",
+            hint: "In the lyrics view, align the lines left or centre them in the reading column",
+            options: ["left", "center"],
+            defaultValue: "left",
+            get: function () { return store.lyricsAlign },
+            set: function (v) { store.lyricsAlign = v },
+            format: root.titleText
+        },
+        {
+            key: "lyricsFont",
+            section: "lyricsView",
+            label: "Text size",
+            hint: "Lyrics view size as an offset from the theme; karaoke has its own",
+            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            defaultValue: 2,
+            get: function () { return store.lyricsFont },
+            set: function (v) { store.lyricsFont = v },
+            format: root.deltaText
+        },
+        {
+            key: "lyricsInfo",
+            section: "lyricsView",
+            label: "Track info",
+            hint: "In the lyrics view, show the title and artist above the text, the title alone, or neither",
+            options: ["both", "title", "off"],
+            defaultValue: "both",
+            get: function () { return store.lyricsInfo },
+            set: function (v) { store.lyricsInfo = v },
+            format: root.titleText
+        },
+        {
+            key: "lyricsFollow",
+            section: "lyricsView",
+            label: "Follow along",
+            hint: "In the lyrics view, scroll to the current line and highlight it, highlight it without scrolling, or leave the text still",
+            options: ["follow", "highlight", "off"],
+            defaultValue: "follow",
+            get: function () { return store.lyricsFollow },
+            set: function (v) { store.lyricsFollow = v },
+            format: root.titleText
+        },
+        {
+            key: "lyricsWidth",
+            section: "lyricsView",
+            label: "Text width",
+            hint: "How wide the lyrics view's reading column may get; a narrower column keeps long lines readable",
+            options: ["full", "wide", "narrow"],
+            defaultValue: "full",
+            get: function () { return store.lyricsWidth },
+            set: function (v) { store.lyricsWidth = v },
+            format: root.titleText
+        },
+        {
+            key: "lyricsCover",
+            section: "lyricsView",
+            label: "Cover beside lyrics",
+            hint: "In the lyrics view, keep the artwork beside the lyrics or give the text the full width",
+            options: ["show", "hide"],
+            defaultValue: "show",
+            get: function () { return store.lyricsCover },
+            set: function (v) { store.lyricsCover = v },
+            format: root.titleText
+        },
+
+        // ---- Karaoke ----
+        //
+        // Karaoke is its own surface: larger text read from a distance, its own
+        // track header, and a cover that can share the view, sit behind it or
+        // stay away. These rows used to live under Lyrics, where the reading
+        // view's size and cover switch made them read as more of the same; they
+        // are separate choices and now have a tab of their own.
+        {
+            key: "karaokeFont",
+            section: "karaoke",
+            label: "Text size",
+            hint: "Karaoke size as an offset from the theme; independent of the lyrics view",
+            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            defaultValue: 2,
+            get: function () { return store.karaokeFont },
+            set: function (v) { store.karaokeFont = v },
+            format: root.deltaText
+        },
+        {
+            key: "karaokeInfo",
+            section: "karaoke",
+            label: "Track info",
+            hint: "Keep the track details above the scrolling lyrics: the track, the track and artist, or those plus the album",
+            options: ["off", "track", "both", "all"],
+            defaultValue: "both",
+            get: function () { return store.karaokeInfo },
+            set: function (v) { store.karaokeInfo = v },
+            format: function (v) {
+                return v === "off" ? "Off"
+                    : v === "track" ? "Track"
+                    : v === "both" ? "Track & artist"
+                    : "Track, artist & album"
+            }
+        },
+        {
+            key: "karaokeCover",
+            section: "karaoke",
+            label: "Cover",
+            hint: "Put the album cover beside the lyrics, behind them at low opacity, or away entirely",
+            options: ["side", "background", "hide"],
+            defaultValue: "side",
+            get: function () { return store.karaokeCover },
+            set: function (v) { store.karaokeCover = v },
+            format: function (v) {
+                return v === "side" ? "Beside" : v === "background" ? "Background" : "Hidden"
+            }
+        },
+        {
+            key: "karaokeCoverOpacity",
+            section: "karaoke",
+            label: "Cover opacity",
+            hint: "How strongly the background cover shows through behind the lyrics",
+            options: [0.1, 0.2, 0.3, 0.4],
+            defaultValue: 0.2,
+            dependsOn: function () { return store.karaokeCover === "background" },
+            after: "karaokeCover",
+            get: function () { return store.karaokeCoverOpacity },
+            set: function (v) { store.karaokeCoverOpacity = v },
+            format: function (v) { return Math.round(v * 100) + "%" }
+        },
     ]
 
     function textOf(entry) {
@@ -1300,15 +1329,17 @@ Item {
 
     // The sections the card draws, in column order, each a name and the tag its
     // entries carry. A section is one topic -- the lists and what plays them, the
-    // panes and their rules, the text and scale, the cover art, the lyrics view,
-    // karaoke's own surface -- rather than one kind of control, so a slider and a
-    // switch sit together wherever their subject says they should.
+    // panes and their rules, the text and scale, the cover art, the lyric choices
+    // both surfaces share, the reading view's own, karaoke's own surface --
+    // rather than one kind of control, so a slider and a switch sit together
+    // wherever their subject says they should.
     readonly property var sections: [
         { tag: "list", name: "List & playing" },
         { tag: "panes", name: "Panes & layout" },
         { tag: "text", name: "Text & scale" },
         { tag: "artwork", name: "Artwork" },
         { tag: "lyrics", name: "Lyrics" },
+        { tag: "lyricsView", name: "Lyrics view" },
         { tag: "karaoke", name: "Karaoke" }
     ]
 

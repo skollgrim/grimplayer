@@ -1045,6 +1045,28 @@ Item {
     readonly property real lyricsDimOpacity: prefs.lyricsDim === "subtle" ? 0.85
         : (prefs.lyricsDim === "strong" ? 0.5 : 0.7)
 
+    // The header above the lyrics. Both surfaces read the same metadata but each
+    // decides how much of it to show: the reading view from lyricsInfo, karaoke
+    // from karaokeInfo. The header sits outside the Flickable in both, so the
+    // details stay put while the words scroll.
+    readonly property string lyricsTrackTitle: (mpd && mpd.current && (mpd.current.Title || mpd.current.file))
+        ? (mpd.current.Title || mpd.current.file) : ""
+    readonly property string lyricsTrackArtist: (mpd && mpd.current && (mpd.current.Artist || mpd.current.AlbumArtist))
+        ? (mpd.current.Artist || mpd.current.AlbumArtist) : ""
+    readonly property string lyricsTrackAlbum: (mpd && mpd.current && mpd.current.Album)
+        ? mpd.current.Album : ""
+    readonly property bool lyricsHeaderTitleVisible: root.karaokeView
+        ? prefs.karaokeInfo !== "off"
+        : prefs.lyricsInfo !== "off"
+    readonly property bool lyricsHeaderArtistVisible: (root.karaokeView
+        ? (prefs.karaokeInfo === "both" || prefs.karaokeInfo === "all")
+        : prefs.lyricsInfo === "both") && root.lyricsTrackArtist !== ""
+    readonly property bool lyricsHeaderAlbumVisible: root.karaokeView
+        && prefs.karaokeInfo === "all" && root.lyricsTrackAlbum !== ""
+    // Karaoke reads its header from further away, so its type is a little larger
+    // than the reading view's; the ratio keeps the same hierarchy between rows.
+    readonly property real lyricsHeaderScale: root.karaokeView ? 1.25 : 1
+
     // Relative luminance and the WCAG contrast ratio between two colours.
     // Palette.derive only guarantees the accent about 3:1 against the ground,
     // which on a near-white sleeve reads as a faint tint; the highlight is
@@ -1819,18 +1841,19 @@ Item {
                             + root.karaokeTextRightInset
                         spacing: Math.round(12 * prefs.uiScale)
 
-                        // Karaoke is the lyrics alone: the track block would only
-                        // eat the room the larger text needs.
+                        // The track header. It sits above the Flickable rather
+                        // than inside it, so the details hold still while the
+                        // lyrics scroll past. Both surfaces use it; each decides
+                        // from its own setting how many rows it carries.
                         Text {
                             Layout.preferredWidth: root.lyricsColumnWidth
                             Layout.alignment: Qt.AlignHCenter
-                            visible: prefs.lyricsInfo !== "off" && !root.karaokeView
-                            text: (root.mpd && root.mpd.current && (root.mpd.current.Title || root.mpd.current.file))
-                                  ? (root.mpd.current.Title || root.mpd.current.file)
-                                  : "Lyrics"
+                            visible: root.lyricsHeaderTitleVisible
+                            text: root.lyricsTrackTitle !== "" ? root.lyricsTrackTitle : "Lyrics"
                             horizontalAlignment: root.lyricsTextAlign
                             color: theme.foreground
-                            font.pixelSize: Math.round((Style.font.title + prefs.fontTitle) * prefs.uiScale)
+                            font.pixelSize: Math.round((Style.font.title + prefs.fontTitle)
+                                * root.lyricsHeaderScale * prefs.uiScale)
                             font.weight: Font.DemiBold
                             elide: Text.ElideRight
                         }
@@ -1838,13 +1861,27 @@ Item {
                         Text {
                             Layout.preferredWidth: root.lyricsColumnWidth
                             Layout.alignment: Qt.AlignHCenter
-                            text: (root.mpd && root.mpd.current && (root.mpd.current.Artist || root.mpd.current.AlbumArtist))
-                                  ? (root.mpd.current.Artist || root.mpd.current.AlbumArtist)
-                                  : ""
-                            visible: prefs.lyricsInfo === "both" && text !== "" && !root.karaokeView
+                            text: root.lyricsTrackArtist
+                            visible: root.lyricsHeaderArtistVisible
                             horizontalAlignment: root.lyricsTextAlign
                             color: theme.muted
-                            font.pixelSize: Math.round((Style.font.body + prefs.fontBody) * prefs.uiScale)
+                            font.pixelSize: Math.round((Style.font.body + prefs.fontBody)
+                                * root.lyricsHeaderScale * prefs.uiScale)
+                            elide: Text.ElideRight
+                        }
+
+                        // The album row is karaoke's alone: the reading view has
+                        // no setting for it, and one more line above the text
+                        // would only shorten the reading column.
+                        Text {
+                            Layout.preferredWidth: root.lyricsColumnWidth
+                            Layout.alignment: Qt.AlignHCenter
+                            text: root.lyricsTrackAlbum
+                            visible: root.lyricsHeaderAlbumVisible
+                            horizontalAlignment: root.lyricsTextAlign
+                            color: theme.muted
+                            font.pixelSize: Math.round((Style.font.bodySmall + prefs.fontBodySmall)
+                                * root.lyricsHeaderScale * prefs.uiScale)
                             elide: Text.ElideRight
                         }
 

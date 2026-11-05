@@ -139,13 +139,14 @@ first or last setting, `R` resets everything, `?` switches to the key reference,
 `Esc` steps back out and `Q` closes.
 
 The card is cut into columns by topic — the list and what plays it, the panes and
-their rules, the text and its scale, the cover art, the lyrics view, and
-karaoke's own surface — so a slider and a switch sit together where their subject
-says they should, and a setting is always in the same place. A setting that only
-matters while another is on — a cover border's width, the artwork pane's
-position — stays on the card but is greyed, sitting directly beneath the setting
-it waits on, so the row above is why it is greyed and you never edit a value
-nothing reads. Its value is kept for when the parent comes back.
+their rules, the text and its scale, the cover art, the lyric choices both
+surfaces share, the reading view's own, and karaoke's own surface — so a slider
+and a switch sit together where their subject says they should, and a setting is
+always in the same place. A setting that only matters while another is on — a
+cover border's width, the artwork pane's position — stays on the card but is
+greyed, sitting directly beneath the setting it waits on, so the row above is why
+it is greyed and you never edit a value nothing reads. Its value is kept for when
+the parent comes back.
 
 In the lyrics view: `j` / `k` or `↑` / `↓` scroll a line, `PgUp` / `PgDn` a page,
 `Home` / `End` jump to the top or bottom, `Space` plays and pauses, and a click on
@@ -280,32 +281,33 @@ fade so the reading line stands out. A manual scroll pauses following for the
 configured wait rather than fighting the wheel. Plain lyrics still display, just
 without a time to mark or seek to; clicking a timed line seeks to it.
 
-The **Lyrics** tab in the settings card holds the reading surface's own choices:
+The lyric settings are split across three tabs. **Lyrics** holds the choices both
+surfaces share: line spacing, how far the lines around the current one dim, how
+long a manual scroll holds before following resumes, the global sync offset,
+click-to-seek, and fetching. **Lyrics view** holds the reading view's own:
 alignment, text size (an offset from the theme, so it tracks the rest of the
-panel), whether the title and artist sit above the text, how following and dimming
-behave, how long a manual scroll holds, line spacing, the width of the reading
-column, whether the cover sits beside the lyrics, a global sync offset for lyrics
-that run early or late, and click-to-seek. The sync offset, click-to-seek and
-fetching apply in karaoke too. Every default reproduces the view as it looked
-before the tab existed.
-
-The **Karaoke** tab holds karaoke's own choices: its text size, independent of the
-reading view's, and the cover's placement — beside the lyrics, behind them as a
-low-opacity background, or nowhere — with the background opacity. The fetch switch
-sits under **Artwork**, where the rest of the cover art lives.
+panel), whether the title and artist sit above the text, how following behaves,
+the width of the reading column, and whether the cover sits beside the lyrics.
+**Karaoke** holds karaoke's own text size, its track header, and the cover's
+placement — beside the lyrics, behind them as a low-opacity background, or
+nowhere — with the background opacity. Every default reproduces the views as
+they looked before the tabs existed.
 
 `Alt` + `K` turns the open player into karaoke: the lists and the now-playing
 strip are hidden, the text is set large and centred, and the current line is
-always marked and followed. The **Cover** setting puts a full-size cover to the
-right of the lyrics, matching the artwork pane at full size, which shifts the
-text left into the room that leaves; in **Background** it lays the cover over the
-whole view at the chosen opacity with the lyrics on top, and **Hidden** leaves the
-text centred on its own. It is a view of the same window, toggled exactly like
-`Alt` + `L` — press it again to go back to the browser. The reading settings still
-apply where they make sense — spacing, dimming, width — but karaoke has its own
-text size, and alignment and following are fixed by karaoke itself. `Esc` or `Q`
-also returns to the browser. Karaoke is not remembered: the next summon opens the
-normal browser.
+always marked and followed. The track header sits above the scrolling words and
+stays put as they move; **Track info** chooses whether it shows the track, the
+track and artist, those plus the album, or nothing. The **Cover** setting puts a
+full-size cover to the right of the lyrics, matching the artwork pane at full
+size, which shifts the text left into the room that leaves; in **Background** it
+lays the cover over the whole view at the chosen opacity with the lyrics on top,
+and **Hidden** leaves the text centred on its own. It is a view of the same
+window, toggled exactly like `Alt` + `L` — press it again to go back to the
+browser. The shared reading settings still apply where they make sense — spacing,
+dimming, resume, offset, click-to-seek — but karaoke has its own text size, track
+header and cover, and alignment and following are fixed by karaoke itself. `Esc`
+or `Q` also returns to the browser. Karaoke is not remembered: the next summon
+opens the normal browser.
 
 The highlight stays readable on light sleeves. Adaptive colours only promise the
 accent about 3:1 against the panel, which on a near-white cover reads as a faint
