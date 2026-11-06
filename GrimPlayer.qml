@@ -551,10 +551,25 @@ Item {
     // height, capped at 60% of the window width so the three lists keep a readable
     // share of the width. On a short, wide window a height-driven square would
     // otherwise grow straight over them.
-    readonly property int paneCoverSize: root.coverBand
-        ? Math.max(Math.round(48 * prefs.uiScale),
-                   Math.min(root.heroCover,
-                            Math.round(window.width * 0.60)))
+    //
+    // Album view borrows this pane even when the browser folds the cover back to
+    // a floating corner, and always asks for the full pane height there: its
+    // left column is a single track list rather than three panes, so the cover
+    // can take the room the lists would otherwise want. The last cap keeps a
+    // readable track list on a narrow window.
+    readonly property int albumMinListWidth: Math.round(220 * prefs.uiScale)
+    readonly property int albumCoverSize: {
+        var room = window.width - root.albumMinListWidth
+            - root.coverPad * 2 - (prefs.coverPadding ? root.coverPaneRule : 0)
+        return Math.max(Math.round(48 * prefs.uiScale),
+            Math.min(root.paneHeight, Math.round(window.width * 0.60), room))
+    }
+    readonly property bool coverPaneShown: root.coverBand || root.albumView
+    readonly property int paneCoverSize: root.coverPaneShown
+        ? (root.albumView ? root.albumCoverSize
+            : Math.max(Math.round(48 * prefs.uiScale),
+                       Math.min(root.heroCover,
+                                Math.round(window.width * 0.60))))
         : 0
     // Width of the artwork pane. With a margin (the padding setting on) the cover
     // is held in from the edges, so the pane spans that margin on each side plus
@@ -562,7 +577,7 @@ Item {
     // both edges and rides over the rule, so the pane is sized to the cover alone
     // -- no strip reserved -- and the rule shows only above and below the art, as
     // if the cover had eaten the stretch it covers (see the CoverArt item below).
-    readonly property int coverPaneWidth: root.coverBand
+    readonly property int coverPaneWidth: root.coverPaneShown
         ? root.paneCoverSize + root.coverPad * 2 + (prefs.coverPadding ? root.coverPaneRule : 0)
         : 0
     // Thickness of the rule on the artwork pane's inner edge, shared with the pane
@@ -579,7 +594,7 @@ Item {
     // durations would run right up against the art; this holds them off it. Only
     // the tracks pane meets the cover, and only when the cover band is on --
     // floating, the pane keeps the shared inset.
-    readonly property int trackArtGutter: root.coverBand ? Math.round(8 * prefs.uiScale) : 0
+    readonly property int trackArtGutter: root.coverPaneShown ? Math.round(8 * prefs.uiScale) : 0
     // How far the cover is held off the pane edge it is aligned to, from the
     // padding setting. Fixed at coverPad until the cover is large enough that the
     // space left over shrinks to less than that, at which point the inset gives
@@ -666,6 +681,10 @@ Item {
     // the text set large. Alt+K toggles it in the open player, the way Alt+L
     // toggles the lyrics view; Esc leaves it for the browser.
     property bool karaokeView: false
+    // Album view: the playing album's tracks on the left and its cover on the
+    // right. It reuses the browser's selection, so j/k, typeahead and Enter keep
+    // working; entering the view snaps that selection to the playing album.
+    property bool albumView: false
     readonly property int lyricsScrollStep: Math.max(1, Math.round(48 * prefs.uiScale))
 
     // The settings card and the key reference are both modal: while either is up
@@ -687,6 +706,28 @@ Item {
         ? artistList[artistIndex].albums : []
     readonly property var trackList: albumIndex >= 0 && albumIndex < albumList.length
         ? albumList[albumIndex].tracks : []
+
+    // Where the playing file sits in the library tree. trackLocations is rebuilt
+    // with the tree, so album view can follow the playing album with a lookup
+    // rather than a walk. Null while nothing is playing or the file is not in the
+    // library (a stream, or a track whose tags changed under it).
+    readonly property var playingLocation: {
+        if (!root.mpd || !root.mpd.current || !root.mpd.current.file) return null
+        var locations = root.mpd.trackLocations
+        return locations ? (locations[root.mpd.current.file] || null) : null
+    }
+    // Album view's heading: artist and album of the playing record, falling back
+    // to the browser's selection when nothing is playing.
+    readonly property string albumViewTitle: {
+        var loc = root.playingLocation
+        var ai = loc ? loc.artist : root.artistIndex
+        var bi = loc ? loc.album : root.albumIndex
+        var artist = ai >= 0 && ai < root.artistList.length ? root.artistList[ai] : null
+        var album = artist && bi >= 0 && bi < artist.albums.length ? artist.albums[bi] : null
+        if (!album) return "Album"
+        var name = root.albumText(album.year, album.name)
+        return artist.name ? artist.name + ": " + name : name
+    }
 
     // ---- host contract ----
     //
@@ -713,6 +754,7 @@ Item {
         window.visible = true
         closingFromHost = false
         if (!keepSelection) pane = "artists"
+        if (!keepSelection && albumView) syncAlbumView()
         settingsOpen = false
         settingsEditMode = false
         helpOpen = false
@@ -760,8 +802,27 @@ Item {
         root.settingsOpen = false
         root.settingsEditMode = false
         root.helpOpen = false
+        root.albumView = false
         root.karaokeView = !root.karaokeView
         root.lyricsView = root.karaokeView
+    }
+
+    // Alt+A. The playing album's tracks, its cover on the right. It is a view of
+    // the open player like lyrics and karaoke, so it swaps what the panes region
+    // shows and closes the two modal cards on the way in. The selection is snapped
+    // to the playing album so the track list has something to show and the usual
+    // keys act on it.
+    function toggleAlbumView() {
+        root.settingsOpen = false
+        root.settingsEditMode = false
+        root.helpOpen = false
+        root.albumView = !root.albumView
+        if (root.albumView) {
+            root.karaokeView = false
+            root.lyricsView = false
+            root.syncAlbumView()
+        }
+        root.showTransportNotice(root.albumView ? "Album view" : "Browser")
     }
 
     // ---- activation ----
@@ -1091,11 +1152,16 @@ Item {
     // the measure and the column is centred, so a long line does not run the
     // full width of a large window. Karaoke uses the whole width; its margins
     // are what keep the line off the window edges.
+    //
+    // This reads the layout's width rather than the flickable's: the flickable's
+    // width is what this property feeds (through the column and the header
+    // rows), so asking the flickable would close a loop that leaves the text at
+    // its old full width when the side cover appears.
     readonly property real lyricsColumnWidth: root.karaokeView
-        ? lyricsFlick.width
+        ? lyricsLayout.width
         : (prefs.lyricsWidth === "wide"
-            ? lyricsFlick.width * 0.8
-            : (prefs.lyricsWidth === "narrow" ? lyricsFlick.width * 0.65 : lyricsFlick.width))
+            ? lyricsLayout.width * 0.8
+            : (prefs.lyricsWidth === "narrow" ? lyricsLayout.width * 0.65 : lyricsLayout.width))
     // Whether the cover shares the reading view with the lyrics, and whether it
     // does so beside them (the browser's artwork pane) or in karaoke's own
     // placement. Only the lyrics view is affected; the browser keeps whatever
@@ -1490,10 +1556,37 @@ Item {
         pane = "tracks"
     }
 
+    // Album view is a view of the playing record, so entering it -- and every
+    // track change while it is up -- snaps the browser's selection to the
+    // playing album. Keeping one selection rather than a second copy is what
+    // lets the existing move/typeahead/activate paths work unchanged there.
+    // Nothing playing leaves the current selection alone, so the view still has
+    // an album to show.
+    function syncAlbumView() {
+        pane = "tracks"
+        // Read the current song and the location map directly rather than through
+        // playingLocation: this runs from onCurrentChanged, where a dependent
+        // binding may not have been re-evaluated yet and would still hand back
+        // the previous track.
+        if (!root.mpd || !root.mpd.current || !root.mpd.current.file) return
+        var locations = root.mpd.trackLocations
+        var loc = locations ? locations[root.mpd.current.file] : null
+        if (!loc) return
+        if (loc.artist < 0 || loc.artist >= root.artistList.length) return
+        var albums = root.artistList[loc.artist].albums
+        if (loc.album < 0 || loc.album >= albums.length) return
+        if (loc.track < 0 || loc.track >= albums[loc.album].tracks.length) return
+        artistIndex = loc.artist
+        albumIndex = loc.album
+        trackIndex = loc.track
+    }
+
     // h/l and the left/right arrows walk the panes, matching ncmpcpp's
     // previous_column/next_column. The ends are stops rather than wrap-arounds:
     // l on the last pane is a no-op, and there is nowhere further right to go.
     function shiftPane(delta) {
+        // Album view has a single column; there is no pane to walk to.
+        if (root.albumView) return
         if (delta < 0) {
             if (pane === "artists") return
             pane = pane === "tracks" ? "albums" : "artists"
@@ -1623,6 +1716,7 @@ Item {
         }
         function onCurrentChanged() {
             root.reanchor()
+            if (root.albumView) root.syncAlbumView()
             if (root.lyricsView) {
                 var f = root.mpd && root.mpd.current ? root.mpd.current.file : ""
                 root.loadLyricsFor(f)
@@ -1643,6 +1737,7 @@ Item {
                 root.selectAlbum(Math.max(0, root.albumList.length - 1), false)
             else if (root.trackIndex >= root.trackList.length)
                 root.trackIndex = Math.max(0, root.trackList.length - 1)
+            if (root.albumView) root.syncAlbumView()
         }
         // The service owns the repeat policy and holds no reference to the config,
         // so persisting the mode is the panel's half of the arrangement.
@@ -1774,7 +1869,9 @@ Item {
                     theme: theme
                     paneWidth: width
                     pixelRatio: root.pixelRatio
-                    activePane: root.pane
+                    activePane: root.albumView ? "tracks" : root.pane
+                    albumOnly: root.albumView
+                    tracksTitle: root.albumView ? root.albumViewTitle : "Tracks"
                     artistList: root.artistList
                     albumList: root.albumList
                     trackList: root.trackList
@@ -1803,7 +1900,7 @@ Item {
 
                 Item {
                     id: lyricsViewArea
-                    visible: root.lyricsView
+                    visible: root.lyricsView && !root.albumView
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
@@ -1826,6 +1923,7 @@ Item {
                     }
 
                     ColumnLayout {
+                        id: lyricsLayout
                         anchors.fill: parent
                         anchors.leftMargin: root.karaokeView
                             ? root.karaokeMargin : Math.round(24 * prefs.uiScale)
@@ -1990,7 +2088,7 @@ Item {
                 Rectangle {
                     id: coverPane
 
-                    visible: root.coverBand && root.lyricsSideCoverVisible
+                    visible: root.coverPaneShown && root.lyricsSideCoverVisible
                     anchors.right: parent.right
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
@@ -2171,7 +2269,7 @@ Item {
             // size applies.
             width: root.karaokeCoverBackground ? parent.width
                 : (root.karaokeCoverSide ? root.karaokeCoverSize
-                    : (root.coverBand ? root.paneCoverSize : root.floatingCoverSize))
+                    : (root.coverPaneShown ? root.paneCoverSize : root.floatingCoverSize))
             height: root.karaokeCoverBackground ? parent.height : width
             // In the artwork pane the cover keeps the padding setting's margin on
             // the right, flush when it is off; the pane is sized to match, so with
@@ -2183,13 +2281,13 @@ Item {
             x: root.karaokeCoverBackground ? 0
                 : (root.karaokeCoverSide
                     ? parent.width - root.karaokeMargin - width
-                    : (root.coverBand
+                    : (root.coverPaneShown
                         ? parent.width - root.coverPad - width
                         : parent.width - width - root.floatGutter))
             y: root.karaokeCoverBackground ? 0
                 : (root.karaokeCoverSide
                     ? Math.round((parent.height - height) / 2)
-                    : (root.coverBand
+                    : (root.coverPaneShown
                         ? root.coverBandY
                         : parent.height - root.stripHeight - root.floatGutter - height))
             z: root.karaokeCoverBackground ? -1 : 0
@@ -2407,6 +2505,7 @@ Item {
                 var sizeDown = event.key === Qt.Key_Minus || event.key === Qt.Key_Underscore
                 if (alt && (event.key === Qt.Key_S || event.key === Qt.Key_T
                             || event.key === Qt.Key_L || event.key === Qt.Key_K
+                            || event.key === Qt.Key_A
                             || event.key === Qt.Key_C || event.key === Qt.Key_O
                             || sizeUp || sizeDown)) {
                     if (event.key === Qt.Key_S) {
@@ -2416,10 +2515,13 @@ Item {
                         root.helpOpen = false
                         root.openTagEditor()
                     } else if (event.key === Qt.Key_L) {
+                        root.albumView = false
                         root.karaokeView = false
                         root.lyricsView = !root.lyricsView
                     } else if (event.key === Qt.Key_K) {
                         root.toggleKaraoke()
+                    } else if (event.key === Qt.Key_A) {
+                        root.toggleAlbumView()
                     } else if (event.key === Qt.Key_C) {
                         root.cycleCover()
                     } else if (event.key === Qt.Key_O) {
@@ -2632,6 +2734,15 @@ Item {
                         // list that is not on screen.
                         break
                     }
+                    event.accepted = true
+                    return
+                }
+
+                // Album view is a single-pane browsing surface, so the normal
+                // browser keys below still drive it. Esc is the one key it claims
+                // for leaving the view, the way Esc leaves the lyrics view.
+                if (root.albumView && event.key === Qt.Key_Escape) {
+                    root.albumView = false
                     event.accepted = true
                     return
                 }

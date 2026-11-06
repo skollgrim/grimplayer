@@ -89,7 +89,8 @@ Item {
                 { keys: "Alt + S", action: "Settings" },
                 { keys: "Alt + T", action: "Tag editor — edit the selection's tags and cover" },
                 { keys: "Alt + L", action: "Lyrics — toggle lyrics in the panes area" },
-                { keys: "Alt + K", action: "Karaoke — toggle the lyrics-only view in the player" }
+                { keys: "Alt + K", action: "Karaoke — toggle the lyrics-only view in the player" },
+                { keys: "Alt + A", action: "Album view — the playing album's tracks and cover" }
             ]
         },
         {
@@ -108,6 +109,15 @@ Item {
                 { keys: "PgUp  PgDn", action: "Scroll a page" },
                 { keys: "Home  End", action: "Top / bottom" },
                 { keys: "Click", action: "Seek to that line" }
+            ]
+        },
+        {
+            title: "Album view",
+            rows: [
+                { keys: "↑ ↓ / j   k", action: "Change track" },
+                { keys: "Enter", action: "Play the track under the caret" },
+                { keys: "any letter, digit or -", action: "Jump by typing a track name or number" },
+                { keys: "Esc", action: "Back to the browser" }
             ]
         }
     ]

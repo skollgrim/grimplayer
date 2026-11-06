@@ -21,6 +21,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing. In the tracks pane a number jumps to that track, and a multi-disc album accepts its row number (`2-5`).
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
+- **Album view** (`Alt` + `A`) — the playing album's tracks on the left and its cover on the right, with the playing track highlighted.
 - **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, lyrics, themes and optional features.
 - **Vim motions (optional)** — `j` `k` `h` `l` `g` `G` alongside arrows; with them on, `Shift` + `h`/`l` seek.
 - **Key reference** (`?`) — quick overview of keys.
@@ -109,6 +110,7 @@ then a one-liner around whichever of the three you prefer.
 | `Alt` + `T` | Tag editor |
 | `Alt` + `L` | Lyrics view (toggle) |
 | `Alt` + `K` | Karaoke view (toggle) |
+| `Alt` + `A` | Album view (toggle) |
 | `Alt` + `C` | Cycle the cover for the current view |
 | `Alt` + `O` | Karaoke background opacity |
 | `Alt` + `=` / `-` | Text size for the current view |
@@ -314,6 +316,19 @@ accent about 3:1 against the panel, which on a near-white cover reads as a faint
 tint, so the current line is also set in a heavier weight, and the accent is used
 for it only when it clears 4.5:1 against the background; otherwise the line takes
 the panel's ordinary foreground ink.
+
+### Album view
+
+`Alt` + `A` shows the record that is playing: its tracks on the left, its cover
+on the right, and the playing track highlighted. Entering the view snaps the
+browser's selection to the playing album, and a track change moves it along, so
+the same keys work there — `↑`/`↓` or `j`/`k` to move, typing to jump, `Enter` to
+play the row under the caret. The cover takes the full pane height (capped at 60%
+of the window, and held back on a narrow window so the track list keeps a
+readable width); the cover-pane margin, position and border settings apply as
+they do in the browser. `Alt` + `A` again, or `Esc`, returns to the browser.
+Nothing playing leaves the current selection in place, so the view still has an
+album to show.
 
 The mouse works too: click a row to select it and move the caret into the next
 pane (playback still needs `Enter`), click a setting to change it, drag the seek
