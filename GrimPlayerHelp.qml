@@ -90,7 +90,7 @@ Item {
                 { keys: "Alt + T", action: "Tag editor — edit the selection's tags and cover" },
                 { keys: "Alt + L", action: "Lyrics — toggle lyrics in the panes area" },
                 { keys: "Alt + K", action: "Karaoke — toggle the lyrics-only view in the player" },
-                { keys: "Alt + A", action: "Album view — the playing album's tracks and cover" }
+                { keys: "Alt + A", action: "Album view — the playing album's titles and cover" }
             ]
         },
         {

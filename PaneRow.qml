@@ -32,10 +32,6 @@ Item {
 
     property real paneWidth: 0
     property string activePane: "artists"
-    // Album view borrows this row for its single track column: the two library
-    // panes and their rules step aside, and the tracks pane keeps the full width.
-    property bool albumOnly: false
-    property string tracksTitle: "Tracks"
 
     property var artistList: []
     property var albumList: []
@@ -164,9 +160,7 @@ Item {
     rowSpacing: root.prefs ? root.prefs.rowSpacing : 0
     rowSeparators: root.prefs ? root.prefs.rowSeparators : false
     focusGlow: root.prefs ? root.prefs.focusGlow : true
-    // Album view always names the record above its track list; the browser keeps
-    // obeying the pane-headings setting.
-    showHeading: root.albumOnly || (root.prefs ? root.prefs.paneHeadings : true)
+    showHeading: root.prefs ? root.prefs.paneHeadings : true
     playingMarkerSides: root.playingMarkerSides
     uiScale: root.prefs ? root.prefs.uiScale : 1
     borderWidth: root.prefs ? root.prefs.borderWidth : 1
@@ -191,7 +185,6 @@ Item {
         spacing: 0
 
         PaneSlot {
-            visible: !root.albumOnly
             Layout.preferredWidth: root.artistsWidth
             title: "Artists"
             active: root.activePane === "artists"
@@ -202,7 +195,6 @@ Item {
         }
 
         PaneSlot {
-            visible: !root.albumOnly
             Layout.preferredWidth: root.albumsWidth
             title: "Albums"
             active: root.activePane === "albums"
@@ -217,7 +209,7 @@ Item {
             // own: the rules are pinned to the boundaries, so this is the one pane
             // that has to give way when the window is narrow.
             Layout.fillWidth: true
-            title: root.tracksTitle
+            title: "Tracks"
             active: root.activePane === "tracks"
             model: root.trackList
             currentIndex: root.trackIndex
@@ -243,8 +235,8 @@ Item {
         thickness: root.dividerThickness
         ruleColor: root.ruleColor
         // The column-separator setting. Off hides the rule; the panes still meet
-        // at the same boundary, so nothing moves. Album view has no boundary.
-        visible: !root.albumOnly && (root.prefs ? root.prefs.paneSeparators : true)
+        // at the same boundary, so nothing moves.
+        visible: root.prefs ? root.prefs.paneSeparators : true
     }
 
     PaneDivider {
@@ -253,6 +245,6 @@ Item {
         height: parent.height
         thickness: root.dividerThickness
         ruleColor: root.ruleColor
-        visible: !root.albumOnly && (root.prefs ? root.prefs.paneSeparators : true)
+        visible: root.prefs ? root.prefs.paneSeparators : true
     }
 }

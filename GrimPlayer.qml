@@ -553,16 +553,16 @@ Item {
     // otherwise grow straight over them.
     //
     // Album view borrows this pane even when the browser folds the cover back to
-    // a floating corner, and always asks for the full pane height there: its
-    // left column is a single track list rather than three panes, so the cover
-    // can take the room the lists would otherwise want. The last cap keeps a
-    // readable track list on a narrow window.
-    readonly property int albumMinListWidth: Math.round(220 * prefs.uiScale)
+    // a floating corner. There it is a square beside a single centred column of
+    // titles rather than a full-height pane, so it is capped at half the window
+    // width: the titles are the content, and the cover should leave them room.
+    // The last cap keeps a readable track list on a narrow window.
+    readonly property int albumMinListWidth: Math.round(240 * prefs.uiScale)
     readonly property int albumCoverSize: {
         var room = window.width - root.albumMinListWidth
-            - root.coverPad * 2 - (prefs.coverPadding ? root.coverPaneRule : 0)
+            - root.coverPad * 2
         return Math.max(Math.round(48 * prefs.uiScale),
-            Math.min(root.paneHeight, Math.round(window.width * 0.60), room))
+            Math.min(root.paneHeight, Math.round(window.width * 0.50), room))
     }
     readonly property bool coverPaneShown: root.coverBand || root.albumView
     readonly property int paneCoverSize: root.coverPaneShown
@@ -578,7 +578,8 @@ Item {
     // -- no strip reserved -- and the rule shows only above and below the art, as
     // if the cover had eaten the stretch it covers (see the CoverArt item below).
     readonly property int coverPaneWidth: root.coverPaneShown
-        ? root.paneCoverSize + root.coverPad * 2 + (prefs.coverPadding ? root.coverPaneRule : 0)
+        ? root.paneCoverSize + root.coverPad * 2
+          + (prefs.coverPadding && !root.albumView ? root.coverPaneRule : 0)
         : 0
     // Thickness of the rule on the artwork pane's inner edge, shared with the pane
     // row so the two never drift. Zero when the column separators are off.
@@ -706,28 +707,6 @@ Item {
         ? artistList[artistIndex].albums : []
     readonly property var trackList: albumIndex >= 0 && albumIndex < albumList.length
         ? albumList[albumIndex].tracks : []
-
-    // Where the playing file sits in the library tree. trackLocations is rebuilt
-    // with the tree, so album view can follow the playing album with a lookup
-    // rather than a walk. Null while nothing is playing or the file is not in the
-    // library (a stream, or a track whose tags changed under it).
-    readonly property var playingLocation: {
-        if (!root.mpd || !root.mpd.current || !root.mpd.current.file) return null
-        var locations = root.mpd.trackLocations
-        return locations ? (locations[root.mpd.current.file] || null) : null
-    }
-    // Album view's heading: artist and album of the playing record, falling back
-    // to the browser's selection when nothing is playing.
-    readonly property string albumViewTitle: {
-        var loc = root.playingLocation
-        var ai = loc ? loc.artist : root.artistIndex
-        var bi = loc ? loc.album : root.albumIndex
-        var artist = ai >= 0 && ai < root.artistList.length ? root.artistList[ai] : null
-        var album = artist && bi >= 0 && bi < artist.albums.length ? artist.albums[bi] : null
-        if (!album) return "Album"
-        var name = root.albumText(album.year, album.name)
-        return artist.name ? artist.name + ": " + name : name
-    }
 
     // ---- host contract ----
     //
@@ -1564,10 +1543,9 @@ Item {
     // an album to show.
     function syncAlbumView() {
         pane = "tracks"
-        // Read the current song and the location map directly rather than through
-        // playingLocation: this runs from onCurrentChanged, where a dependent
-        // binding may not have been re-evaluated yet and would still hand back
-        // the previous track.
+        // Read the current song and the location map directly: this runs from
+        // onCurrentChanged, where a dependent binding may not have been
+        // re-evaluated yet and would still hand back the previous track.
         if (!root.mpd || !root.mpd.current || !root.mpd.current.file) return
         var locations = root.mpd.trackLocations
         var loc = locations ? locations[root.mpd.current.file] : null
@@ -1855,7 +1833,7 @@ Item {
                 PaneRow {
                     id: paneRow
 
-                    visible: !root.lyricsView
+                    visible: !root.lyricsView && !root.albumView
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
@@ -1869,9 +1847,7 @@ Item {
                     theme: theme
                     paneWidth: width
                     pixelRatio: root.pixelRatio
-                    activePane: root.albumView ? "tracks" : root.pane
-                    albumOnly: root.albumView
-                    tracksTitle: root.albumView ? root.albumViewTitle : "Tracks"
+                    activePane: root.pane
                     artistList: root.artistList
                     albumList: root.albumList
                     trackList: root.trackList
@@ -1896,6 +1872,29 @@ Item {
                     onArtistActivated: function (index) { root.selectArtist(index, true) }
                     onAlbumActivated: function (index) { root.selectAlbum(index, true) }
                     onTrackActivated: function (index) { root.selectTrack(index) }
+                }
+
+                // Album view's own surface: a single centred column of titles,
+                // with the cover in the pane to its right. It is not a PaneRow
+                // with two panes hidden -- the browser's numbers, durations,
+                // heading and rules have no place here.
+                AlbumView {
+                    id: albumTrackView
+                    visible: root.albumView
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: Math.max(0, parent.width - root.coverPaneWidth)
+                    theme: theme
+                    prefs: prefs
+                    model: root.trackList
+                    currentIndex: root.trackIndex
+                    isCurrent: prefs.playingHighlight ? function (item) {
+                        return root.mpd && root.mpd.current && item.file === root.mpd.current.file
+                    } : null
+                    titleFor: function (item) { return item.title || "Untitled" }
+                    playingColor: root.lyricsHighlightColor
+                    onActivated: function (index) { root.selectTrack(index) }
                 }
 
                 Item {
@@ -2103,8 +2102,10 @@ Item {
                         // The same column-separator setting the list rules obey.
                         // With no padding the cover rides over this rule and hides
                         // the stretch it spans, so only the parts above and below
-                        // the art show.
-                        visible: root.coverPaneRule > 0
+                        // the art show. Album view has no boundary to draw: its
+                        // cover floats beside the titles rather than capping a
+                        // column.
+                        visible: root.coverPaneRule > 0 && !root.albumView
                         // Stepped up on a light ground, like the PaneRow rules: a
                         // 0.16 rule that is clear on a dark pane vanishes on a
                         // near-white one.
