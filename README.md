@@ -117,6 +117,11 @@ then a one-liner around whichever of the three you prefer.
 | `Alt` + `Shift` + `=` / `-` | Cover size in the browser and lyrics view |
 | `?` | Key reference |
 
+`Alt` + `L`, `Alt` + `K` and `Alt` + `A` each switch straight to their view from
+either of the other two, and pressing the key of the view already showing returns
+to the browser. Closing the panel keeps the view, so the next summon comes back
+to lyrics, karaoke or album view rather than resetting to the browser.
+
 The Ctrl keys and the Alt cover and size keys say what they did: a mode change,
 a volume step or a new size flashes a one-line readout above the strip — or, in
 karaoke, in the margin under the words — and it fades after a moment. The strip's
@@ -153,7 +158,8 @@ the parent comes back.
 In the lyrics view: `j` / `k` or `↑` / `↓` scroll a line, `PgUp` / `PgDn` a page,
 `Home` / `End` jump to the top or bottom, `Space` plays and pauses, and a click on
 a timed line seeks to it. `Esc` or `Q` closes the view — or leaves karaoke for the
-browser. Scrolling by hand pauses following for the wait set under **Resume after
+browser; from karaoke, `Alt` + `L` steps back to the reading view instead.
+Scrolling by hand pauses following for the wait set under **Resume after
 scroll**; with that set to **Never** the view stays where you put it until the
 track changes.
 
@@ -305,11 +311,12 @@ size, which shifts the text left into the room that leaves; in **Background** it
 lays the cover over the whole view at the chosen opacity with the lyrics on top,
 and **Hidden** leaves the text centred on its own. It is a view of the same
 window, toggled exactly like `Alt` + `L` — press it again to go back to the
-browser. The shared reading settings still apply where they make sense — spacing,
-dimming, resume, offset, click-to-seek — but karaoke has its own text size, track
-header and cover, and alignment and following are fixed by karaoke itself. `Esc`
-or `Q` also returns to the browser. Karaoke is not remembered: the next summon
-opens the normal browser.
+browser, or press `Alt` + `L` to step straight to the reading view. The shared
+reading settings still apply where they make sense — spacing, dimming, resume,
+offset, click-to-seek — but karaoke has its own text size, track header and
+cover, and alignment and following are fixed by karaoke itself. `Esc` or `Q`
+also returns to the browser. The view is remembered: closing and reopening the
+player comes back to karaoke, as it does to the lyrics and album views.
 
 The highlight stays readable on light sleeves. Adaptive colours only promise the
 accent about 3:1 against the panel, which on a near-white cover reads as a faint
@@ -319,16 +326,17 @@ the panel's ordinary foreground ink.
 
 ### Album view
 
-`Alt` + `A` shows the record that is playing: its tracks on the left, its cover
-on the right, and the playing track highlighted. Entering the view snaps the
-browser's selection to the playing album, and a track change moves it along, so
-the same keys work there — `↑`/`↓` or `j`/`k` to move, typing to jump, `Enter` to
-play the row under the caret. The cover takes the full pane height (capped at 60%
-of the window, and held back on a narrow window so the track list keeps a
-readable width); the cover-pane margin, position and border settings apply as
-they do in the browser. `Alt` + `A` again, or `Esc`, returns to the browser.
-Nothing playing leaves the current selection in place, so the view still has an
-album to show.
+`Alt` + `A` shows the record that is playing as a now-playing surface rather than
+a browser: the album's titles in large centred type, every track but the playing
+one held back, and the cover beside them. Entering the view snaps the browser's
+selection to the playing album, and a track change moves it along, so the same
+keys work there — `↑`/`↓` or `j`/`k` to move, typing to jump, `Enter` to play the
+row under the caret. The cover is a square capped at half the window width and
+held back on a narrow window so the titles keep a readable measure; the
+cover-pane margin, position and border settings apply as they do in the browser.
+`Alt` + `A` again, or `Esc`, returns to the browser, and `Alt` + `L` or
+`Alt` + `K` switches straight to the lyrics or karaoke view. Nothing playing
+leaves the current selection in place, so the view still has an album to show.
 
 The mouse works too: click a row to select it and move the caret into the next
 pane (playback still needs `Enter`), click a setting to change it, drag the seek

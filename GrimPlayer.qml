@@ -686,6 +686,12 @@ Item {
     // right. It reuses the browser's selection, so j/k, typeahead and Enter keep
     // working; entering the view snaps that selection to the playing album.
     property bool albumView: false
+    // The one view that is showing. The three flags above are alternatives, not
+    // layers: entering one clears the other two. Named here so a mode key can
+    // tell "switch to this view" from "its key again leaves for the browser".
+    readonly property string viewName: root.albumView ? "album"
+        : root.karaokeView ? "karaoke"
+        : root.lyricsView ? "lyrics" : "browser"
     readonly property int lyricsScrollStep: Math.max(1, Math.round(48 * prefs.uiScale))
 
     // The settings card and the key reference are both modal: while either is up
@@ -762,46 +768,27 @@ Item {
         closingFromHost = true
         window.visible = false
         closingFromHost = false
-        // Karaoke is a mode, not a state to reopen in: a later Alt+K should
-        // give the normal player. The lyrics view it forced on goes with it,
-        // or reopening would land back on the reading surface karaoke left
-        // behind rather than on the browser.
-        if (karaokeView) {
-            karaokeView = false
-            lyricsView = false
-        }
+        // The view is a mode of the panel, not a property of this summon: the
+        // next open comes back to whichever of browser, lyrics, karaoke or
+        // album was showing when it was put away.
     }
 
-    // Alt+K. Karaoke is a mode of the open player, not a separate window, so
-    // this only swaps what the window shows: on goes to the lyrics surface with
-    // the chrome gone, off goes back to the browser. The card and the key
-    // reference draw over the panes and cannot stay in front of a full-window
-    // reading surface, so they close on the way in.
-    function toggleKaraoke() {
+    // Alt+L, Alt+K and Alt+A. Each key selects its own view from any other, and
+    // pressing the key of the view already showing returns to the browser, so
+    // the three modes are siblings rather than layers. The modal cards close on
+    // the way in -- they cannot stay in front of a full-window surface -- and
+    // album view snaps the selection to the playing record so its track list
+    // has something to show.
+    function toggleView(name) {
+        var next = root.viewName === name ? "browser" : name
         root.settingsOpen = false
         root.settingsEditMode = false
         root.helpOpen = false
-        root.albumView = false
-        root.karaokeView = !root.karaokeView
-        root.lyricsView = root.karaokeView
-    }
-
-    // Alt+A. The playing album's tracks, its cover on the right. It is a view of
-    // the open player like lyrics and karaoke, so it swaps what the panes region
-    // shows and closes the two modal cards on the way in. The selection is snapped
-    // to the playing album so the track list has something to show and the usual
-    // keys act on it.
-    function toggleAlbumView() {
-        root.settingsOpen = false
-        root.settingsEditMode = false
-        root.helpOpen = false
-        root.albumView = !root.albumView
-        if (root.albumView) {
-            root.karaokeView = false
-            root.lyricsView = false
-            root.syncAlbumView()
-        }
-        root.showTransportNotice(root.albumView ? "Album view" : "Browser")
+        root.albumView = next === "album"
+        root.karaokeView = next === "karaoke"
+        root.lyricsView = next === "lyrics" || next === "karaoke"
+        if (root.albumView) root.syncAlbumView()
+        if (name === "album") root.showTransportNotice(root.albumView ? "Album view" : "Browser")
     }
 
     // ---- activation ----
@@ -2516,13 +2503,11 @@ Item {
                         root.helpOpen = false
                         root.openTagEditor()
                     } else if (event.key === Qt.Key_L) {
-                        root.albumView = false
-                        root.karaokeView = false
-                        root.lyricsView = !root.lyricsView
+                        root.toggleView("lyrics")
                     } else if (event.key === Qt.Key_K) {
-                        root.toggleKaraoke()
+                        root.toggleView("karaoke")
                     } else if (event.key === Qt.Key_A) {
-                        root.toggleAlbumView()
+                        root.toggleView("album")
                     } else if (event.key === Qt.Key_C) {
                         root.cycleCover()
                     } else if (event.key === Qt.Key_O) {
