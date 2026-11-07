@@ -85,6 +85,17 @@ Item {
     // leaving it on would run the colour pass for a cover nothing recolours.
     property bool quantize: true
 
+    // The largest size this cover may be drawn at, in logical pixels, so both
+    // Image layers decode at one stable size instead of following the current
+    // placement. Changing sourceSize makes Qt reload the picture, and a view
+    // switch that moved the cover between placements (browser pane to karaoke,
+    // say) blanked it for a frame or two while that happened. A stable bound
+    // means the move is a scale, not a reload. Zero keeps the old behaviour --
+    // decode at the current width/height -- which is right for a cover whose
+    // size never changes, such as the tag editor's preview or the up-next tile.
+    property int decodeBoundWidth: 0
+    property int decodeBoundHeight: 0
+
     // The panel's colour tokens, injected the same way as the service. The
     // aliases below fall back to the shell theme so this file still draws
     // correctly if it is ever placed on its own.
@@ -1187,9 +1198,11 @@ Item {
             mipmap: true
             // Decode at display size in physical pixels rather than at the
             // source's full resolution, which is what keeps a large sidecar
-            // from filling the pixmap cache while the lists scroll.
-            sourceSize.width: root.decodeSize(width)
-            sourceSize.height: root.decodeSize(height)
+            // from filling the pixmap cache while the lists scroll. When the
+            // panel supplies a stable bound, decode at that instead, so a
+            // placement change is a scale rather than a reload.
+            sourceSize.width: root.decodeSize(root.decodeBoundWidth > 0 ? root.decodeBoundWidth : width)
+            sourceSize.height: root.decodeSize(root.decodeBoundHeight > 0 ? root.decodeBoundHeight : height)
         }
 
         Image {
@@ -1202,8 +1215,8 @@ Item {
             cache: true
             smooth: true
             mipmap: true
-            sourceSize.width: root.decodeSize(width)
-            sourceSize.height: root.decodeSize(height)
+            sourceSize.width: root.decodeSize(root.decodeBoundWidth > 0 ? root.decodeBoundWidth : width)
+            sourceSize.height: root.decodeSize(root.decodeBoundHeight > 0 ? root.decodeBoundHeight : height)
 
             onStatusChanged: {
                 if (status === Image.Ready) {

@@ -633,6 +633,22 @@ Item {
                  Math.round(window.width * 0.60),
                  window.width - root.karaokeMargin * 2 - root.karaokeCoverGap
                      - root.karaokeMinTextWidth))
+    // The largest size the main cover can take in any view, so both of its Image
+    // layers decode once and are scaled between placements instead of reloaded.
+    // A reload blanks the picture for a frame or two, which is what flashed when
+    // a view switch changed the cover's size -- the browser pane and karaoke's
+    // side cover differ by a few pixels, and that was enough. A configured
+    // placement that is not showing still counts, because a key can switch to it
+    // at any moment. The background placement is the one non-square case: it
+    // fills the window, so it sets the bounds itself.
+    readonly property int coverDecodeBoundWidth: Math.max(
+        root.heroCover, root.albumCoverSize, root.karaokeCoverSize,
+        root.floatingCoverSize,
+        prefs.karaokeCover === "background" ? window.width : 0)
+    readonly property int coverDecodeBoundHeight: Math.max(
+        root.heroCover, root.albumCoverSize, root.karaokeCoverSize,
+        root.floatingCoverSize,
+        prefs.karaokeCover === "background" ? window.height : 0)
     // The reading surface's margin, shared by the karaoke column and the side
     // cover so the text's edge and the art's edge line up.
     readonly property int karaokeMargin: Math.round(40 * prefs.uiScale)
@@ -2261,6 +2277,11 @@ Item {
             mpd: root.mpd
             uiScale: prefs.uiScale
             pixelRatio: root.pixelRatio
+            // Decode once at the largest placement, not at whatever size the
+            // current view gives it: a view switch then scales the picture
+            // instead of reloading it (see coverDecodeBoundWidth).
+            decodeBoundWidth: root.coverDecodeBoundWidth
+            decodeBoundHeight: root.coverDecodeBoundHeight
             // Only work while the panel is on screen. The window is closed most of
             // the time (the shell mounts this once and summons it on demand), and
             // an instance left active probed every album change with nothing
