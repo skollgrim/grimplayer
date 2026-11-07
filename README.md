@@ -21,7 +21,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing. In the tracks pane a number jumps to that track, and a multi-disc album accepts its row number (`2-5`).
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
-- **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. `Esc` returns to the browser.
+- **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. A small preview of the next album's cover sits above the bar. `Esc` returns to the browser.
 - **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, lyrics, themes and optional features.
 - **Vim motions (optional)** — `j` `k` `h` `l` `g` `G` alongside arrows; with them on, `Shift` + `h`/`l` seek.
 - **Key reference** (`?`) — quick overview of keys.
@@ -339,6 +339,12 @@ cover-pane margin, position and border settings apply as they do in the browser.
 plays it at once, rather than selecting it and waiting for `Enter`. Nothing
 playing leaves the current selection in place, so the view still has an album to
 show.
+
+Above the now-playing bar, tucked into the lower-left corner, sits a small cover
+for the album that follows this one in the library, captioned **Up next**. It is
+a glance rather than a control: it takes no input, and it disappears when there
+is no next album, when shuffle or repeat is on (neither walks the library in
+tree order), and when **Up next cover** under **Artwork** is off.
 
 The mouse works too: click a row in the browser to select it and move the caret
 into the next pane (playback still needs `Enter`; in album view a click plays the

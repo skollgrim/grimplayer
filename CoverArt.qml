@@ -80,6 +80,11 @@ Item {
     // with the code default here for a component placed on its own.
     property bool fetchCovers: true
 
+    // Whether to extract a palette from the cover. The panel's main cover feeds
+    // its theme from it; the small up-next preview has no use for one, and
+    // leaving it on would run the colour pass for a cover nothing recolours.
+    property bool quantize: true
+
     // The panel's colour tokens, injected the same way as the service. The
     // aliases below fall back to the shell theme so this file still draws
     // correctly if it is ever placed on its own.
@@ -102,7 +107,7 @@ Item {
     // `palette` and folds it into its theme.
     ColorQuantizer {
         id: quantizer
-        source: root.resolvedSource
+        source: root.quantize ? root.resolvedSource : ""
         depth: 3
         // Downscale aggressively for palette extraction - full resolution not needed
         rescaleSize: 48

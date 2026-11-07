@@ -717,6 +717,31 @@ Item {
     readonly property var trackList: albumIndex >= 0 && albumIndex < albumList.length
         ? albumList[albumIndex].tracks : []
 
+    // The album that follows the playing one in the library, for album view's
+    // small "up next" preview above the bar. Null at the end of the library,
+    // and while shuffle or repeat is on: neither walks past the current album
+    // in tree order, so a preview would promise an album the queue never plays.
+    readonly property var upNextAlbum: {
+        if (!prefs.upNextCover || !root.albumView) return null
+        if (!mpd || !mpd.current || !mpd.current.file) return null
+        if (mpd.shuffleMode !== 0 || mpd.repeatMode !== 0) return null
+        var locations = mpd.trackLocations
+        var loc = locations ? locations[String(mpd.current.file)] : null
+        if (!loc) return null
+        var artists = root.artistList
+        for (var a = loc.artist; a < artists.length; a++) {
+            var albums = artists[a].albums
+            var first = a === loc.artist ? loc.album + 1 : 0
+            if (first < albums.length) return albums[first]
+        }
+        return null
+    }
+    readonly property var upNextSubject: {
+        var album = root.upNextAlbum
+        if (!album || !album.tracks || album.tracks.length === 0) return null
+        return { file: album.tracks[0].file, song: album.tracks[0] }
+    }
+
     // ---- host contract ----
     //
     // The shell owns whether this panel is open: it tracks that in openPanelIds
@@ -2289,6 +2314,63 @@ Item {
                         ? root.coverBandY
                         : parent.height - root.stripHeight - root.floatGutter - height))
             z: root.karaokeCoverBackground ? -1 : 0
+        }
+
+        // The next album's cover, tucked into the lower-left corner of album
+        // view. Album view is about the record that is playing, so the preview
+        // belongs at the edge of that surface rather than in the footer: it sits
+        // above the strip with the same gutter the lists keep, not flush to the
+        // window. It is a glance at what follows, not a control, so it takes no
+        // input and disappears when there is no next album or the queue is
+        // shuffled or repeating.
+        Item {
+            id: upNextBadge
+            readonly property int tileSize: Math.round(64 * prefs.uiScale)
+            readonly property int gutter: Math.round(20 * prefs.uiScale)
+            visible: root.albumView && prefs.upNextCover
+                && root.upNextSubject !== null && upNextCover.showingArt
+            width: tileSize
+            height: upNextCaption.implicitHeight
+                + Math.round(4 * prefs.uiScale) + tileSize
+            x: gutter
+            y: parent.height - root.stripHeight - gutter - height
+            z: 1
+
+            Text {
+                id: upNextCaption
+                anchors.left: parent.left
+                anchors.bottom: upNextCover.top
+                anchors.bottomMargin: Math.round(4 * prefs.uiScale)
+                text: "Up next"
+                color: theme.muted
+                font.family: root.themeFont.family
+                font.pixelSize: Math.round((root.themeFont.caption + prefs.fontCaption) * prefs.uiScale)
+            }
+
+            CoverArt {
+                id: upNextCover
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                width: parent.tileSize
+                height: parent.tileSize
+                theme: theme
+                mpd: root.mpd
+                subject: root.upNextSubject
+                uiScale: prefs.uiScale
+                pixelRatio: root.pixelRatio
+                active: window.visible && root.albumView && prefs.upNextCover
+                    && root.upNextSubject !== null
+                coverBorder: prefs.coverBorder
+                coverBorderWidth: prefs.coverBorderWidth
+                rounded: prefs.coverRounded
+                // No CD in the corner: a preview with no artwork is better left
+                // out than standing in a placeholder for an album that has none.
+                placeholder: false
+                fetchCovers: prefs.fetchCovers
+                transitionDuration: prefs.coverTransition
+                // Only the main cover feeds the panel's colours.
+                quantize: false
+            }
         }
 
         // Typeahead readout: the letters being jumped to, shown only while they

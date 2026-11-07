@@ -120,6 +120,10 @@ Item {
         property bool coverPlaceholder: true
         property int coverBorderWidth: 1
 
+        // The small preview of the album that follows the playing one, shown in
+        // album view above the now-playing bar. Off leaves that corner empty.
+        property bool upNextCover: true
+
         // Rounded corners on the artwork. Off draws it as a plain square, corner
         // to corner.
         property bool coverRounded: true
@@ -361,7 +365,7 @@ Item {
                     "vimKeys", "rowSpacing", "typeaheadSearch", "typeaheadPlace",
                     "typeaheadScale", "rowSeparators",
                     "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "coverBorder", "coverPlaceholder",
-                    "coverBorderWidth", "coverRounded", "activeRowBorder", "repeatMode", "shuffleMode", "coverScale",
+                    "coverBorderWidth", "coverRounded", "upNextCover", "activeRowBorder", "repeatMode", "shuffleMode", "coverScale",
                     "coverTransition", "coverBandMode", "coverBandAlign", "coverPadding",
                     "coverBandMinPct",
                     "uiScale", "iconSize",
@@ -503,6 +507,7 @@ Item {
     readonly property bool coverBorder: store.coverBorder
     readonly property bool coverPlaceholder: store.coverPlaceholder
     readonly property int coverBorderWidth: store.coverBorderWidth
+    readonly property bool upNextCover: store.upNextCover
     readonly property bool coverRounded: store.coverRounded
     readonly property bool activeRowBorder: store.activeRowBorder
     readonly property int repeatMode: store.repeatMode
@@ -960,6 +965,17 @@ Item {
             defaultValue: true,
             get: function () { return store.coverPlaceholder },
             set: function (v) { store.coverPlaceholder = v },
+            format: root.boolText
+        },
+        {
+            key: "upNextCover",
+            section: "artwork",
+            label: "Up next cover",
+            hint: "In album view, preview the next album's art above the bar",
+            options: [true, false],
+            defaultValue: true,
+            get: function () { return store.upNextCover },
+            set: function (v) { store.upNextCover = v },
             format: root.boolText
         },
 
