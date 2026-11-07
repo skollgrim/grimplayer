@@ -33,6 +33,9 @@ import qs.Commons
 
 Item {
     id: root
+    // A var alias for the shell's theme font object: qmllint cannot see the
+    // tokens inside Style.font, so reading them directly warns on every one.
+    readonly property var themeFont: Style.font
 
     property var config: null
     property int index: 0
@@ -204,7 +207,7 @@ Item {
                     text: row.entryData.label
                     textFormat: Text.PlainText
                     color: row.selected ? root.colAccent : root.colForeground
-                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                    font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
                     opacity: row.selected ? 1.0 : (row.dependent ? 0.58 : 0.72)
                     elide: Text.ElideRight
                 }
@@ -283,7 +286,7 @@ Item {
                         // muted so it reads as held-but-inactive rather than
                         // current.
                         color: row.active ? root.colAccent : root.colMuted
-                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
                         horizontalAlignment: Text.AlignRight
                         Layout.preferredWidth: root.valueWidth
                     }
@@ -335,7 +338,7 @@ Item {
                 text: "Settings"
                 textFormat: Text.PlainText
                 color: root.colForeground
-                font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
                 font.weight: Font.DemiBold
                 font.letterSpacing: 0.6
             }
@@ -376,7 +379,7 @@ Item {
                             anchors.centerIn: parent
                             text: tab.modelData.name
                             color: tab.index === root.categoryIndex ? root.colForeground : root.colMuted
-                            font.pixelSize: Math.round(Style.font.bodySmall * root.uiScale)
+                            font.pixelSize: Math.round(root.themeFont.bodySmall * root.uiScale)
                             font.weight: tab.index === root.categoryIndex ? Font.DemiBold : Font.Normal
                         }
                     }
@@ -438,7 +441,7 @@ Item {
                 text: root.current ? root.current.hint : ""
                 textFormat: Text.PlainText
                 color: root.colMuted
-                font.pixelSize: Math.round((Style.font.bodySmall - (root.compact ? 1 : 0)) * root.uiScale)
+                font.pixelSize: Math.round((root.themeFont.bodySmall - (root.compact ? 1 : 0)) * root.uiScale)
                 wrapMode: Text.WordWrap
                 elide: Text.ElideRight
                 maximumLineCount: root.compact ? 1 : 2
@@ -451,7 +454,7 @@ Item {
                         : "↑↓←→ or J K H L move  ·  Enter toggles, or opens a slider  ·  g/G first/last  ·  R resets  ·  ? keys  ·  Esc/Q closes")
                 textFormat: Text.PlainText
                 color: root.editMode ? root.colAccent : root.colMuted
-                font.pixelSize: Math.round(Style.font.caption * root.uiScale)
+                font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
                 opacity: 0.8
             }
         }

@@ -26,6 +26,9 @@ import "." as Cfg
 
 Item {
     id: root
+    // A var alias for the shell's theme font object: qmllint cannot see the
+    // tokens inside Style.font, so reading them directly warns on every one.
+    readonly property var themeFont: Style.font
 
     // ---- injected by shell.qml (panel Loader) ----
     property var shell: null
@@ -1146,7 +1149,7 @@ Item {
     // not also enlarge the reading view; the 1.9 multiplier is what makes karaoke
     // read from across the room, and it applies on top of whichever size is in
     // charge.
-    readonly property int lyricsFontPx: Math.round((Style.font.body
+    readonly property int lyricsFontPx: Math.round((root.themeFont.body
         + (root.karaokeView ? prefs.karaokeFont : prefs.lyricsFont))
         * (root.karaokeView ? 1.9 : 1) * prefs.uiScale)
 
@@ -1881,7 +1884,13 @@ Item {
                     } : null
                     titleFor: function (item) { return item.title || "Untitled" }
                     playingColor: root.lyricsHighlightColor
-                    onActivated: function (index) { root.selectTrack(index) }
+                    // A click in album view is a play, not just a selection:
+                    // this is a now-playing surface, so the first click should
+                    // start the track rather than leave it waiting for Enter.
+                    onActivated: function (index) {
+                        root.selectTrack(index)
+                        root.activate()
+                    }
                 }
 
                 Item {
@@ -1936,7 +1945,7 @@ Item {
                             text: root.lyricsTrackTitle !== "" ? root.lyricsTrackTitle : "Lyrics"
                             horizontalAlignment: root.lyricsTextAlign
                             color: theme.foreground
-                            font.pixelSize: Math.round((Style.font.title + prefs.fontTitle)
+                            font.pixelSize: Math.round((root.themeFont.title + prefs.fontTitle)
                                 * root.lyricsHeaderScale * prefs.uiScale)
                             font.weight: Font.DemiBold
                             elide: Text.ElideRight
@@ -1949,7 +1958,7 @@ Item {
                             visible: root.lyricsHeaderArtistVisible
                             horizontalAlignment: root.lyricsTextAlign
                             color: theme.muted
-                            font.pixelSize: Math.round((Style.font.body + prefs.fontBody)
+                            font.pixelSize: Math.round((root.themeFont.body + prefs.fontBody)
                                 * root.lyricsHeaderScale * prefs.uiScale)
                             elide: Text.ElideRight
                         }
@@ -1964,7 +1973,7 @@ Item {
                             visible: root.lyricsHeaderAlbumVisible
                             horizontalAlignment: root.lyricsTextAlign
                             color: theme.muted
-                            font.pixelSize: Math.round((Style.font.bodySmall + prefs.fontBodySmall)
+                            font.pixelSize: Math.round((root.themeFont.bodySmall + prefs.fontBodySmall)
                                 * root.lyricsHeaderScale * prefs.uiScale)
                             elide: Text.ElideRight
                         }
@@ -2136,7 +2145,7 @@ Item {
                             text: root.mpd && root.mpd.current && root.mpd.current.Title
                                 ? root.mpd.current.Title : "Nothing playing"
                             color: theme.foreground
-                            font.pixelSize: Math.round((Style.font.title + prefs.fontTitle) * prefs.uiScale)
+                            font.pixelSize: Math.round((root.themeFont.title + prefs.fontTitle) * prefs.uiScale)
                             font.weight: Font.DemiBold
                             elide: Text.ElideRight
                         }
@@ -2158,7 +2167,7 @@ Item {
                                     + (root.nowPlayingFlag ? "  " + root.nowPlayingFlag : "")
                                 : (root.mpd && root.mpd.connected ? "Library ready" : "Not connected to MPD")
                             color: theme.muted
-                            font.pixelSize: Math.round((Style.font.body + prefs.fontBody) * prefs.uiScale)
+                            font.pixelSize: Math.round((root.themeFont.body + prefs.fontBody) * prefs.uiScale)
                             elide: Text.ElideRight
                         }
 
@@ -2175,7 +2184,7 @@ Item {
                         Text {
                             text: root.formatTime(root.elapsed) + " / " + root.formatTime(root.duration)
                             color: theme.muted
-                            font.pixelSize: Math.round((Style.font.body + prefs.fontBody) * prefs.uiScale)
+                            font.pixelSize: Math.round((root.themeFont.body + prefs.fontBody) * prefs.uiScale)
                         }
                     }
 
@@ -2346,8 +2355,8 @@ Item {
                 // away from the caret. The size setting is an offset on top, so the
                 // centred placement can be pushed larger without touching the
                 // panel's other type.
-                font.pixelSize: Math.round((Style.font.subtitle + prefs.typeaheadScale) * prefs.uiScale)
-                font.family: Style.font.family
+                font.pixelSize: Math.round((root.themeFont.subtitle + prefs.typeaheadScale) * prefs.uiScale)
+                font.family: root.themeFont.family
             }
         }
 
@@ -2394,7 +2403,7 @@ Item {
                 // has to be read at a glance, and caption was the smallest text in
                 // the panel. The user offset still applies on top, so anyone who
                 // wants it larger from the settings card can have it.
-                font.pixelSize: Math.round((Style.font.bodySmall + prefs.fontCaption) * prefs.uiScale)
+                font.pixelSize: Math.round((root.themeFont.bodySmall + prefs.fontCaption) * prefs.uiScale)
             }
         }
 
@@ -2439,8 +2448,8 @@ Item {
                 // Accent, the same as the typeahead and a live value in the
                 // settings card.
                 color: theme.accent
-                font.pixelSize: Math.round((Style.font.subtitle + prefs.noticeScale) * prefs.uiScale)
-                font.family: Style.font.family
+                font.pixelSize: Math.round((root.themeFont.subtitle + prefs.noticeScale) * prefs.uiScale)
+                font.family: root.themeFont.family
             }
         }
 

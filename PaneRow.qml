@@ -19,6 +19,9 @@ import qs.Commons
 
 Item {
     id: root
+    // A var alias for the shell's theme font object: qmllint cannot see the
+    // tokens inside Style.font, so reading them directly warns on every one.
+    readonly property var themeFont: Style.font
 
     // The config object, taken whole rather than as the dozen individual values
     // the panes want. That indirection is the whole reason the styling block had
@@ -142,11 +145,11 @@ Item {
     // stored offset, scaled -- the expression the panel used to repeat nine times.
     readonly property real fontScale: prefs ? prefs.uiScale : 1
     readonly property int fontSizeHeading: prefs
-        ? Math.round((Style.font.bodySmall + prefs.fontBodySmall) * root.fontScale) : 0
+        ? Math.round((root.themeFont.bodySmall + prefs.fontBodySmall) * root.fontScale) : 0
     readonly property int fontSizeRow: prefs
-        ? Math.round((Style.font.subtitle + prefs.fontSubtitle) * root.fontScale) : 0
+        ? Math.round((root.themeFont.subtitle + prefs.fontSubtitle) * root.fontScale) : 0
     readonly property int fontSizeSublabel: prefs
-        ? Math.round((Style.font.subtitle + prefs.fontSubtitle) * root.fontScale) : 0
+        ? Math.round((root.themeFont.subtitle + prefs.fontSubtitle) * root.fontScale) : 0
 
     // ---- panes ----
 

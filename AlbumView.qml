@@ -16,6 +16,9 @@ import qs.Commons
 
 Item {
     id: root
+    // A var alias for the shell's theme font object: qmllint cannot see the
+    // tokens inside Style.font, so reading them directly warns on every one.
+    readonly property var themeFont: Style.font
 
     property var theme: null
     property var prefs: null
@@ -44,7 +47,7 @@ Item {
     // Bigger than a browser row, but not karaoke-sized: this is read at a glance
     // while the record plays, not from across the room. The offset follows the
     // same theme-plus-stored-delta rule as every other font in the panel.
-    readonly property int fontSize: Math.round((Style.font.subtitle
+    readonly property int fontSize: Math.round((root.themeFont.subtitle
         + (prefs ? prefs.fontSubtitle : 0)) * 1.9 * uiScale)
     readonly property int rowHeight: Math.round(fontSize * 2.0)
     readonly property int rowGap: Math.round(fontSize * 0.45)

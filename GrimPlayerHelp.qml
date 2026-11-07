@@ -14,6 +14,9 @@ import qs.Commons
 
 Item {
     id: root
+    // A var alias for the shell's theme font object: qmllint cannot see the
+    // tokens inside Style.font, so reading them directly warns on every one.
+    readonly property var themeFont: Style.font
 
     property real uiScale: 1.0
 
@@ -153,7 +156,7 @@ Item {
                 text: "Keyboard"
                 textFormat: Text.PlainText
                 color: root.colForeground
-                font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
                 font.weight: Font.Bold
                 font.letterSpacing: 0.6
             }
@@ -195,7 +198,7 @@ Item {
                                 text: section.modelData.title
                                 textFormat: Text.PlainText
                                 color: root.colMuted
-                                font.pixelSize: Math.round(Style.font.bodySmall * root.uiScale)
+                                font.pixelSize: Math.round(root.themeFont.bodySmall * root.uiScale)
                                 font.weight: Font.Bold
                                 font.letterSpacing: 0.8
                                 font.capitalization: Font.AllUppercase
@@ -218,7 +221,7 @@ Item {
                                         text: row.modelData.keys
                                         textFormat: Text.PlainText
                                         color: root.colAccent
-                                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
                                         font.weight: Font.Bold
                                         elide: Text.ElideRight
                                     }
@@ -228,7 +231,7 @@ Item {
                                         text: row.modelData.action
                                         textFormat: Text.PlainText
                                         color: root.colForeground
-                                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
+                                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
                                         elide: Text.ElideRight
                                     }
                                 }
@@ -250,7 +253,7 @@ Item {
                 text: "j / k scroll · Esc / Q closes"
                 textFormat: Text.PlainText
                 color: root.colMuted
-                font.pixelSize: Math.round(Style.font.caption * root.uiScale)
+                font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
                 opacity: 0.8
             }
         }

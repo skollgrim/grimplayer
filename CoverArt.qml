@@ -108,20 +108,6 @@ Item {
         rescaleSize: 48
     }
 
-    Timer {
-        id: paletteDebounce
-        interval: 180
-        repeat: false
-        property string pendingDir: ""
-        onTriggered: {
-            if (paletteDebounce.pendingDir === root.loadedDir || paletteDebounce.pendingDir === root.currentAlbumDir()) {
-                if (quantizer && quantizer.colors && quantizer.colors.length > 0) {
-                    root.palette = quantizer.colors
-                }
-            }
-        }
-    }
-
     readonly property var palette: quantizer.colors
 
     // Real artwork, as opposed to the placeholder the CD is drawn for. The
@@ -1260,16 +1246,6 @@ Item {
                     root.requestEmbedded(root.loadedDir)
                     root.walkDone = true
                 }
-            }
-        }
-    }
-
-    Connections {
-        target: quantizer
-        function onColorsChanged() {
-            if (root.adaptiveColors && quantizer.colors && quantizer.colors.length > 0) {
-                paletteDebounce.pendingDir = root.loadedDir
-                paletteDebounce.restart()
             }
         }
     }

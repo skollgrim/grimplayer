@@ -2437,7 +2437,10 @@ Item {
         // built it. Omitting this leaves the socket idle with no error, which is
         // why the panel reported "not connected" while MPD was perfectly
         // reachable.
-        onLoaded: item.connected = true
+        onLoaded: {
+            var socket = item as Socket
+            if (socket) socket.connected = true
+        }
     }
 
     Loader {
@@ -2473,7 +2476,10 @@ Item {
                 root.scheduleReconnect()
             }
         }
-        onLoaded: item.connected = true
+        onLoaded: {
+            var socket = item as Socket
+            if (socket) socket.connected = true
+        }
     }
 
     // The greeting is what proves a connection is usable, so the first read
@@ -2507,7 +2513,8 @@ Item {
             // Checked against the socket rather than `connected`, which also goes
             // true for the event socket alone: pinging a closed command socket
             // would queue a response that can never arrive.
-            if (cmdLoader.item && cmdLoader.item.connected) root.send("ping")
+            var socket = cmdLoader.item as Socket
+            if (socket && socket.connected) root.send("ping")
         }
     }
 

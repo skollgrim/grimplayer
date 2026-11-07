@@ -335,12 +335,15 @@ row under the caret. The cover is a square capped at half the window width and
 held back on a narrow window so the titles keep a readable measure; the
 cover-pane margin, position and border settings apply as they do in the browser.
 `Alt` + `A` again, or `Esc`, returns to the browser, and `Alt` + `L` or
-`Alt` + `K` switches straight to the lyrics or karaoke view. Nothing playing
-leaves the current selection in place, so the view still has an album to show.
+`Alt` + `K` switches straight to the lyrics or karaoke view. Clicking a title
+plays it at once, rather than selecting it and waiting for `Enter`. Nothing
+playing leaves the current selection in place, so the view still has an album to
+show.
 
-The mouse works too: click a row to select it and move the caret into the next
-pane (playback still needs `Enter`), click a setting to change it, drag the seek
-bar or the volume slider, click the volume icon to mute.
+The mouse works too: click a row in the browser to select it and move the caret
+into the next pane (playback still needs `Enter`; in album view a click plays the
+track at once), click a setting to change it, drag the seek bar or the volume
+slider, click the volume icon to mute.
 
 ## Notes and limitations
 
@@ -405,6 +408,18 @@ and keeps the tag editor's path arithmetic testable outside the shell:
 ```bash
 node extras/test-paths.js
 ```
+
+Lint the QML against the shell's own module root:
+
+```bash
+./lint.sh
+```
+
+A bare `qmllint` cannot resolve `qs.Commons`, so it reports every `Color.*`,
+`Style.*` and `Util.*` token as an unknown member. The script puts the shell's
+modules on the import path first; the only remaining concession is the `var`
+alias for `Style.font` at the top of the components that use it, because
+qmllint cannot see the tokens inside that dynamic object.
 
 Edit the files under `~/.config/omarchy/plugins/skollgrim.grimplayer/` and the
 shell notices on save — but in practice a save still does not swap the running

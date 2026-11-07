@@ -25,6 +25,9 @@ import qs.Commons
 
 Item {
     id: root
+    // A var alias for the shell's theme font object: qmllint cannot see the
+    // tokens inside Style.font, so reading them directly warns on every one.
+    readonly property var themeFont: Style.font
 
     property string icon: ""
     property bool prominent: false
@@ -186,7 +189,7 @@ Item {
         y: -Math.round(3 * root.uiScale)
         text: root.modeBadge
         color: root.active ? root.colAccent : root.colForeground
-        font.family: Style.font.family
+        font.family: root.themeFont.family
         font.pixelSize: Math.max(8, Math.round(root.iconSize * 0.5 * root.uiScale))
         font.weight: Font.DemiBold
     }

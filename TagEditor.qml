@@ -22,6 +22,9 @@ import "Paths.js" as Paths
 
 Item {
     id: root
+    // A var alias for the shell's theme font object: qmllint cannot see the
+    // tokens inside Style.font, so reading them directly warns on every one.
+    readonly property var themeFont: Style.font
 
     property var mpd: null
     // The panel owns the selection; this only reads it.
@@ -1067,9 +1070,9 @@ Item {
                 Text {
                     text: "Edit tags"
                     color: root.colForeground
-                    font.pixelSize: Math.round(Style.font.subtitle * root.uiScale)
+                    font.pixelSize: Math.round(root.themeFont.subtitle * root.uiScale)
                     font.weight: Font.DemiBold
-                    font.family: Style.font.family
+                    font.family: root.themeFont.family
                 }
 
                 Rectangle {
@@ -1083,8 +1086,8 @@ Item {
                         anchors.centerIn: parent
                         text: root.scopeText()
                         color: root.colAccent
-                        font.pixelSize: Math.round(Style.font.caption * root.uiScale)
-                        font.family: Style.font.family
+                        font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
+                        font.family: root.themeFont.family
                     }
                 }
 
@@ -1099,8 +1102,8 @@ Item {
                 Layout.topMargin: Math.round(5 * root.uiScale)
                 text: root.pathText
                 color: root.colMuted
-                font.pixelSize: Math.round(Style.font.caption * root.uiScale)
-                font.family: Style.font.family
+                font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
+                font.family: root.themeFont.family
                 elide: Text.ElideMiddle
             }
 
@@ -1161,8 +1164,8 @@ Item {
                                 text: row.modelData.label
                                 color: row.focused ? root.colForeground
                                                      : root.colMuted
-                                font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                                font.family: Style.font.family
+                                font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                                font.family: root.themeFont.family
                             }
 
                             Item {
@@ -1182,8 +1185,8 @@ Item {
                                     placeholderText: root.isMixed(row.modelData.key) ? "multiple" : ""
                                     placeholderTextColor: Util.alpha(root.colAccent, 0.75)
                                     color: root.colForeground
-                                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                                    font.family: Style.font.family
+                                    font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                                    font.family: root.themeFont.family
                                     selectByMouse: true
                                     // While a save is in flight the fields are
                                     // frozen: the taggers are rewriting the very
@@ -1269,8 +1272,8 @@ Item {
                             visible: row.changed
                             text: "was: " + root.baseLabel(row.fieldKey)
                             color: Util.alpha(root.colMuted, 0.85)
-                            font.pixelSize: Math.round(Style.font.caption * root.uiScale)
-                            font.family: Style.font.family
+                            font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
+                            font.family: root.themeFont.family
                             elide: Text.ElideRight
                         }
                     }
@@ -1293,8 +1296,8 @@ Item {
                     text: "Match"
                     color: root.matchFocused ? root.colForeground
                                              : root.colMuted
-                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                    font.family: Style.font.family
+                    font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                    font.family: root.themeFont.family
                 }
 
                 Rectangle {
@@ -1316,8 +1319,8 @@ Item {
                         anchors.centerIn: parent
                         text: root.lookupBusy ? "Looking…" : "Look up"
                         color: root.colForeground
-                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                        font.family: Style.font.family
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.family: root.themeFont.family
                     }
 
                     MouseArea {
@@ -1348,8 +1351,8 @@ Item {
                         anchors.centerIn: parent
                         text: "‹ Prev"
                         color: root.colForeground
-                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                        font.family: Style.font.family
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.family: root.themeFont.family
                     }
 
                     MouseArea {
@@ -1380,8 +1383,8 @@ Item {
                         anchors.centerIn: parent
                         text: "Next ›"
                         color: root.colForeground
-                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                        font.family: Style.font.family
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.family: root.themeFont.family
                     }
 
                     MouseArea {
@@ -1414,8 +1417,8 @@ Item {
                         anchors.centerIn: parent
                         text: "Revert"
                         color: root.colForeground
-                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                        font.family: Style.font.family
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.family: root.themeFont.family
                     }
 
                     MouseArea {
@@ -1433,8 +1436,8 @@ Item {
                     text: root.matchSummary
                     color: root.colMuted
                     elide: Text.ElideRight
-                    font.pixelSize: Math.round(Style.font.caption * root.uiScale)
-                    font.family: Style.font.family
+                    font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
+                    font.family: root.themeFont.family
                 }
             }
 
@@ -1454,8 +1457,8 @@ Item {
                     text: "Cover art"
                     color: root.coverFocused ? root.colForeground
                                              : root.colMuted
-                    font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                    font.family: Style.font.family
+                    font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                    font.family: root.themeFont.family
                 }
 
                 Item {
@@ -1498,8 +1501,8 @@ Item {
                             anchors.centerIn: parent
                             text: "None"
                             color: root.colMuted
-                            font.pixelSize: Math.round(Style.font.caption * root.uiScale)
-                            font.family: Style.font.family
+                            font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
+                            font.family: root.themeFont.family
                         }
                     }
                 }
@@ -1523,8 +1526,8 @@ Item {
                         anchors.centerIn: parent
                         text: "Browse…"
                         color: root.colForeground
-                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                        font.family: Style.font.family
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.family: root.themeFont.family
                     }
 
                     MouseArea {
@@ -1558,8 +1561,8 @@ Item {
                         anchors.centerIn: parent
                         text: root.coverAction === "remove" ? "Undo" : "Remove"
                         color: root.colForeground
-                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                        font.family: Style.font.family
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.family: root.themeFont.family
                     }
 
                     MouseArea {
@@ -1592,8 +1595,8 @@ Item {
                     color: root.status === "" ? root.colMuted
                                                : Util.alpha(root.colAccent, 1.0)
                     elide: Text.ElideRight
-                    font.pixelSize: Math.round(Style.font.caption * root.uiScale)
-                    font.family: Style.font.family
+                    font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
+                    font.family: root.themeFont.family
                 }
 
                 Rectangle {
@@ -1616,8 +1619,8 @@ Item {
                         anchors.centerIn: parent
                         text: "Cancel"
                         color: root.colForeground
-                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                        font.family: Style.font.family
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.family: root.themeFont.family
                     }
 
                     MouseArea {
@@ -1653,8 +1656,8 @@ Item {
                         anchors.centerIn: parent
                         text: root.busy ? "Writing…" : (root.saveIsClose ? "Close" : "Save")
                         color: root.colForeground
-                        font.pixelSize: Math.round(Style.font.body * root.uiScale)
-                        font.family: Style.font.family
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.family: root.themeFont.family
                     }
 
                     MouseArea {

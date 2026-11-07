@@ -13,6 +13,9 @@ import qs.Commons
 
 Item {
     id: root
+    // A var alias for the shell's theme font object: qmllint cannot see the
+    // tokens inside Style.font, so reading them directly warns on every one.
+    readonly property var themeFont: Style.font
 
     property string title: ""
     property bool active: false
@@ -108,11 +111,11 @@ Item {
     // Resolved font sizes, injected by GrimPlayer as theme size plus the player's
     // offset, already scaled by uiScale. The defaults are the bare theme values,
     // which keep the pane correct if it is ever placed on its own.
-    property int fontSizeHeading: Math.round(Style.font.bodySmall * uiScale)
-    property int fontSizeRow: Math.round(Style.font.subtitle * uiScale)
+    property int fontSizeHeading: Math.round(root.themeFont.bodySmall * uiScale)
+    property int fontSizeRow: Math.round(root.themeFont.subtitle * uiScale)
     // Sublabels (track times) follow the row text, not the pane heading, so
     // the heading setting only ever touches the headings.
-    property int fontSizeSublabel: Math.round(Style.font.subtitle * uiScale)
+    property int fontSizeSublabel: Math.round(root.themeFont.subtitle * uiScale)
 
     // Thickness of the heading underline.
     property int borderWidth: 1
@@ -389,7 +392,7 @@ Item {
             anchors.bottom: flick.bottom
 
             WheelHandler {
-                id: wheel
+                id: wheelHandler
                 // TouchPad is listed explicitly: without it Qt drops wheel
                 // events whose source is synthesized rather than a physical
                 // mouse, which also drops some real touchpad gestures.
@@ -399,16 +402,16 @@ Item {
                     var pitch = root.rowPitch
                     var dy = event.pixelDelta.y
                     if (dy !== 0) {
-                        wheel.banked += dy
-                        if (Math.abs(wheel.banked) < pitch) {
+                        wheelHandler.banked += dy
+                        if (Math.abs(wheelHandler.banked) < pitch) {
                             event.accepted = true
                             return
                         }
-                        var rows = Math.trunc(wheel.banked / pitch)
-                        wheel.banked -= rows * pitch
+                        const rows = Math.trunc(wheelHandler.banked / pitch)
+                        wheelHandler.banked -= rows * pitch
                         root.scrollRows(-rows)
                     } else {
-                        var angle = event.angleDelta.y
+                        const angle = event.angleDelta.y
                         if (angle !== 0) root.scrollRows(angle < 0 ? 1 : -1)
                     }
                     event.accepted = true
