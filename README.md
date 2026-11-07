@@ -379,8 +379,10 @@ slider, click the volume icon to mute.
   regex at the bottom of the key handler in `GrimPlayer.qml` for other scripts.
 - **Album repeat is client-side**, so there is a fraction of a second of silence
   at the album boundary.
-- **No stored playlists and no queue view**, by design: the queue is always the
-  tail of the library from wherever you are.
+- **No stored playlists and no queue view**, by design: the queue is the
+  current album from its first track, then the rest of the library from there.
+  Starting mid-album keeps the earlier tracks in front of you so `Ctrl` + `←`
+  can walk back to the top of the record.
 
 ## Development
 

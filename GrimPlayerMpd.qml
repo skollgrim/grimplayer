@@ -1874,30 +1874,44 @@ Item {
         return ["random " + (root.shuffleMode > 0 ? 1 : 0)]
     }
 
-    // Replaces the queue with everything below the activated track and starts
-    // there. playFilesScoped already builds the clear/single/consume + add +
-    // play 0 list, so this is the same thing with no resume point -- but the
-    // current mode's flags are appended, because the rebuild resets `single` and
-    // repeat-song would otherwise come out of it as repeat-all.
-    function playFiles(files) {
+    // Replaces the queue with the activated album and everything after it and
+    // starts on the chosen track. playFilesScoped already builds the
+    // clear/single/consume + add + play list, so this is the same thing with no
+    // resume point -- but the current mode's flags are appended, because the
+    // rebuild resets `single` and repeat-song would otherwise come out of it as
+    // repeat-all. startAt is the queue position to start on, which is what lets
+    // the album's earlier tracks stay in front of the one being activated.
+    function playFiles(files, startAt) {
         root.playFilesScoped(files, 0,
-                             root.modeFlags(root.repeatMode).concat(root.randomFlags()))
+                             root.modeFlags(root.repeatMode).concat(root.randomFlags()),
+                             startAt)
     }
 
     function playArtistAndBelow(artistIndex, albumIndex, trackIndex) {
         // Album repeat narrows the queue to the playing album whatever shuffle
         // says -- choosing it moves the shuffle scope to album too (see
-        // applyRepeatMode). With shuffle off the queue keeps its old shape: the
-        // album's remainder, refilled from the top when it runs out. Shuffled,
-        // the whole album has to be in the pool, or the tracks before the
-        // activated one could never come round.
+        // applyRepeatMode). With shuffle off the queue is the whole album, and
+        // playback starts on the activated track rather than at its top: the
+        // tracks before it have to sit in the queue, or Previous would hit the
+        // start of the queue and stay on the same song. Shuffled, the whole
+        // album is the pool as well, turned so the activated track comes first.
         if (root.repeatMode === 1) {
             root.albumLoopPoint = { artist: artistIndex, album: albumIndex }
-            var files = root.shuffleMode === 0
-                ? root.albumFilesAfter(artistIndex, albumIndex, trackIndex)
-                : root.queueForScope(1, artistIndex, albumIndex, trackIndex)
-            root.playFilesScoped(files, 0,
-                                 root.modeFlags(1).concat(root.randomFlags()))
+            if (root.shuffleMode === 0) {
+                root.playFilesScoped(root.albumFilesAfter(artistIndex, albumIndex, 0), 0,
+                                     root.modeFlags(1).concat(root.randomFlags()),
+                                     trackIndex)
+            } else {
+                root.playFilesScoped(root.queueForScope(1, artistIndex, albumIndex, trackIndex), 0,
+                                     root.modeFlags(1).concat(root.randomFlags()))
+            }
+            return
+        }
+        if (root.shuffleMode === 0) {
+            // The same shape as repeat album, widened past the album: its tracks
+            // from the first one, then the rest of the library in tree order,
+            // with playback starting on the activated track.
+            root.playFiles(root.filesFrom(artistIndex, albumIndex, 0), trackIndex)
             return
         }
         root.playFiles(root.queueForScope(root.shuffleMode, artistIndex, albumIndex, trackIndex))
@@ -1963,7 +1977,11 @@ Item {
     // costs one round trip and puts the song back where it actually was. The
     // same read tells us whether it was playing, so a paused player stays
     // paused instead of being kicked into playback by the rebuild.
-    function replaceQueueResuming(files, trailing) {
+    //
+    // startAt is where the playing song sits in the new queue. Rotated pools
+    // pass 0 (the song is first); the unshuffled queue passes the album track's
+    // own position, because that queue keeps the album's earlier tracks in front.
+    function replaceQueueResuming(files, trailing, startAt) {
         if (!files || files.length === 0) return false
         root.send("status", function (lines, error) {
             var at = 0
@@ -1975,7 +1993,7 @@ Item {
             }
             var tail = trailing ? trailing.slice(0) : []
             if (!playing) tail.push("pause 1")
-            root.playFilesScoped(files, at, tail)
+            root.playFilesScoped(files, at, tail, startAt)
         })
         return true
     }
@@ -1985,11 +2003,17 @@ Item {
     // than playFiles: MPD's repeat flag repeats whatever the queue holds, so
     // narrowing the queue is the only way "repeat album" can mean album, and a
     // bare clear+add would drop the listener back to 0:00 mid-album.
-    function playFilesScoped(files, resumeAt, trailing) {
+    //
+    // startAt is the queue position playback begins on. It is 0 for every rebuild
+    // that puts the current song first; activation passes the activated track's
+    // position instead, so the album's earlier tracks can stay in front of it.
+    function playFilesScoped(files, resumeAt, trailing, startAt) {
         if (!files || files.length === 0) return false
+        var start = Number(startAt) || 0
+        start = Math.max(0, Math.min(start, files.length - 1))
         var commands = ["clear", "single 0", "consume 0"]
         for (var i = 0; i < files.length; i++) commands.push("add " + root.quote(files[i]))
-        commands.push("play 0")
+        commands.push("play " + start)
         // seekcur, not seek: `seek` takes a song id and a time, so `seek 90` is a
         // wrong-arity error -- and MPD aborts the rest of a command list on the
         // first failure, which silently ate the repeat command queued after it.
@@ -2354,9 +2378,19 @@ Item {
             root.commandList(root.randomFlags())
             return
         }
+        // Off is not a rotated pool. Rebuild it as the album from its first
+        // track and resume on the playing one, so stepping out of shuffle does
+        // not throw away the earlier tracks that Previous walks back through.
+        var files = root.queueForScope(mode, loc.artist, loc.album, loc.track)
+        var startAt = 0
+        if (mode === 0) {
+            files = root.filesFrom(loc.artist, loc.album, 0)
+            startAt = loc.track
+        }
         root.replaceQueueResuming(
-            root.queueForScope(mode, loc.artist, loc.album, loc.track),
-            root.randomFlags().concat(root.modeFlags(root.repeatMode)))
+            files,
+            root.randomFlags().concat(root.modeFlags(root.repeatMode)),
+            startAt)
     }
 
     // The flag is written from the mode rather than read back into it: random

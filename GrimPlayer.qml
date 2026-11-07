@@ -796,8 +796,10 @@ Item {
 
     // ---- activation ----
 
-    // Playing means "this track and everything below it in the order shown".
-    // The service owns that queue, so nothing here has to remember it.
+    // Playing means "this track in the context of its album, then everything
+    // below the album in the order shown". The service keeps the album's earlier
+    // tracks in the queue behind the play position, so Previous can walk back up
+    // the record; nothing here has to remember the queue.
     function activate() {
         if (!mpd) return
         if (pane === "artists") {
