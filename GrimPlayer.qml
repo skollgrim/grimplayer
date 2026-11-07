@@ -791,7 +791,6 @@ Item {
         root.karaokeView = next === "karaoke"
         root.lyricsView = next === "lyrics" || next === "karaoke"
         if (root.albumView) root.syncAlbumView()
-        if (name === "album") root.showTransportNotice(root.albumView ? "Album view" : "Browser")
     }
 
     // ---- activation ----
