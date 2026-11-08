@@ -339,10 +339,7 @@ held back on a narrow window so the titles keep a readable measure; the
 cover-pane margin, position and border settings apply as they do in the browser.
 `Alt` + `A` again, or `Esc`, returns to the browser, and `Alt` + `L` or
 `Alt` + `K` switches straight to the lyrics or karaoke view. Clicking a title
-plays it at once, rather than selecting it and waiting for `Enter`; the row under
-the pointer shows a small play triangle in its margin, so that one-click
-behaviour is visible before you commit to it, and the playing row keeps its
-accent instead. Nothing
+plays it at once, rather than selecting it and waiting for `Enter`. Nothing
 playing leaves the current selection in place, so the view still has an album to
 show. The record is named in a quiet caption above the titles — album, artist,
 year and running time, read from the album's tags — and the `Album caption`
