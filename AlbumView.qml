@@ -12,6 +12,7 @@ pragma ComponentBehavior: Bound
 // column when it fits. The parent still owns the selection: currentIndex and
 // isCurrent are read, never written.
 import QtQuick
+import QtQuick.Shapes
 import qs.Commons
 
 Item {
@@ -201,14 +202,51 @@ Item {
                     // the list answers the mouse without adding a permanent
                     // stripe. It follows the text block's width rather than the
                     // whole column, keeping the hovered row aligned with what
-                    // it highlights.
+                    // it highlights. The extra margin on each side is the room
+                    // the play hint sits in.
                     Rectangle {
+                        id: hoverFill
                         anchors.centerIn: parent
-                        width: Math.min(parent.width, root.textWidth + Math.round(24 * root.uiScale))
+                        width: Math.min(parent.width, root.textWidth + Math.round(36 * root.uiScale))
                         height: parent.height
                         radius: Math.round(6 * root.uiScale)
                         color: row.hovered ? Util.alpha(root.colForeground, 0.04) : "transparent"
                         Behavior on color { ColorAnimation { duration: Style.duration(90) } }
+                    }
+
+                    // A click here starts the track at once rather than selecting
+                    // it, so the hovered row says so with a play triangle in the
+                    // margin. It is drawn rather than typed, like the transport
+                    // glyphs, and fades instead of appearing. The playing row
+                    // keeps its accent and gets no hint: it is already the answer.
+                    Item {
+                        id: playHint
+                        anchors.left: hoverFill.left
+                        anchors.leftMargin: Math.round(6 * root.uiScale)
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.round(9 * root.uiScale)
+                        height: Math.round(11 * root.uiScale)
+                        opacity: row.hovered && !row.playing ? 0.55 : 0
+                        Behavior on opacity { NumberAnimation { duration: Style.duration(90) } }
+
+                        // PathSvg does not scale to the Shape's box, so the
+                        // triangle is drawn on a fixed 9x11 grid and scaled as a
+                        // whole, the same way the transport buttons scale theirs.
+                        Item {
+                            anchors.centerIn: parent
+                            width: 9
+                            height: 11
+                            scale: root.uiScale
+
+                            Shape {
+                                anchors.fill: parent
+                                ShapePath {
+                                    fillColor: root.colForeground
+                                    strokeColor: "transparent"
+                                    PathSvg { path: "M0 0 L9 5.5 L0 11 Z" }
+                                }
+                            }
+                        }
                     }
 
                     Text {

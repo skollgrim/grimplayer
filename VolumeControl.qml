@@ -19,6 +19,9 @@ RowLayout {
     property var theme: null
     property int iconSize: 16
     property int sliderWidth: 120
+    // A narrow strip keeps the speaker but drops the track: mute still works,
+    // and the RowLayout then measures the control as the icon alone.
+    property bool sliderVisible: true
     property real uiScale: 1.0
 
     signal muteToggled()
@@ -68,6 +71,7 @@ RowLayout {
     // read as one pair.
     Slider {
         id: volumeSlider
+        visible: root.sliderVisible
         Layout.preferredWidth: Math.round(root.sliderWidth * root.uiScale)
         implicitHeight: Math.round(22 * root.uiScale)
         from: 0

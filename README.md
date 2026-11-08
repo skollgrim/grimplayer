@@ -18,6 +18,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Cover art** — finds covers in the album folder, falls back to embedded art (extracted with `ffmpeg` and cached), and can optionally fetch missing covers online.
 - **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Cover pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Pane above` tunes the window size floor the pane is kept to.
 - **Adaptive colours** — optionally matches the panel's colors to the playing album.
+- **A strip that gives way** — on a narrow window the now-playing strip tightens its margins and shortens the volume track, then drops the track and keeps the speaker, so the title and the transport never squeeze each other.
 - **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing. In the tracks pane a number jumps to that track, and a multi-disc album accepts its row number (`2-5`).
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
@@ -338,7 +339,10 @@ held back on a narrow window so the titles keep a readable measure; the
 cover-pane margin, position and border settings apply as they do in the browser.
 `Alt` + `A` again, or `Esc`, returns to the browser, and `Alt` + `L` or
 `Alt` + `K` switches straight to the lyrics or karaoke view. Clicking a title
-plays it at once, rather than selecting it and waiting for `Enter`. Nothing
+plays it at once, rather than selecting it and waiting for `Enter`; the row under
+the pointer shows a small play triangle in its margin, so that one-click
+behaviour is visible before you commit to it, and the playing row keeps its
+accent instead. Nothing
 playing leaves the current selection in place, so the view still has an album to
 show. The record is named in a quiet caption above the titles — album, artist,
 year and running time, read from the album's tags — and the `Album caption`

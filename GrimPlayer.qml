@@ -665,6 +665,14 @@ Item {
     // height would have left the error banner sitting on top of it.
     readonly property int stripHeight: Math.round(84 * prefs.uiScale)
 
+    // The strip tightens in two steps before the title runs out of room. The
+    // transport keeps a fixed footprint, so a narrow panel is paid for by the
+    // text beside it: first the margins and volume track give some back, then
+    // the volume track goes and the speaker alone stays for mute. Thresholds are
+    // logical widths scaled with the interface, because the text grows with it.
+    readonly property bool stripCompact: window.width < Math.round(700 * prefs.uiScale)
+    readonly property bool stripTight: window.width < Math.round(560 * prefs.uiScale)
+
     // ---- selection ----
     property string pane: "artists"
     property int artistIndex: 0
@@ -2235,9 +2243,9 @@ Item {
                 // and the artwork pane holds only the art.
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: Math.round(20 * prefs.uiScale)
-                    anchors.rightMargin: Math.round(20 * prefs.uiScale)
-                    spacing: Math.round(16 * prefs.uiScale)
+                    anchors.leftMargin: Math.round((root.stripCompact ? 12 : 20) * prefs.uiScale)
+                    anchors.rightMargin: Math.round((root.stripCompact ? 12 : 20) * prefs.uiScale)
+                    spacing: Math.round((root.stripCompact ? 10 : 16) * prefs.uiScale)
 
                     ColumnLayout {
                         Layout.fillWidth: true
@@ -2301,7 +2309,7 @@ Item {
                     // text beside it.
                     RowLayout {
                         Layout.alignment: Qt.AlignVCenter
-                        spacing: Math.round(16 * prefs.uiScale)
+                        spacing: Math.round((root.stripCompact ? 10 : 16) * prefs.uiScale)
 
                         TransportRow {
                             Layout.alignment: Qt.AlignVCenter
@@ -2316,7 +2324,11 @@ Item {
                             theme: theme
                             mpd: root.mpd
                             iconSize: prefs.iconSize
-                            sliderWidth: 120
+                            // The track gives way before the speaker does: at
+                            // the tight step mute still works, and the level is
+                            // one tap away in any full-width view.
+                            sliderVisible: !root.stripTight
+                            sliderWidth: root.stripCompact ? 64 : 120
                             uiScale: prefs.uiScale
                             onMuteToggled: root.toggleMute()
                             onAudibleVolumeChanged: function (v) { root.lastAudibleVolume = v }
