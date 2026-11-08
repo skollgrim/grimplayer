@@ -32,10 +32,13 @@ Item {
 
     // The album this column belongs to. A now-playing surface that shows only
     // titles leaves the record unnamed; the panel supplies the identity so this
-    // file stays free of library shape. `albumDetail` is the muted second line,
-    // already joined by the panel (artist, year, track count, running time).
+    // file stays free of library shape. `albumDetail` is the rest of the caption
+    // (artist, year, running time), already joined by the panel.
     property string albumTitle: ""
     property string albumDetail: ""
+    // Whether that caption is drawn. Album view can be left to the songs alone,
+    // so this is a stored preference rather than a fixed part of the surface.
+    property bool showCaption: true
 
     // Shown when the column has no rows. The panel supplies the reason -- still
     // connecting, loading, or an album with no tracks -- so the empty surface
@@ -116,28 +119,29 @@ Item {
         if (root.visible) Qt.callLater(function () { root.followCurrent(false) })
     }
 
-    // The record's identity, held quietly above the titles. It is deliberately
-    // smaller than the track type: album view is still about the songs, and this
-    // is the label on the sleeve rather than a second heading competing with
-    // them. The panel joins the detail line so this file does not need to know
-    // how an album is described.
+    // The record's identity, as a quiet caption above the titles. Album view is
+    // about the songs, so this is a sleeve label rather than a heading: small,
+    // muted, tracked like the panel's other captions, and elided rather than
+    // wrapped when the column is narrow. The panel supplies the parts; this file
+    // does not need to know how an album is described.
     Column {
-        id: header
-        visible: root.albumTitle !== ""
+        id: caption
         anchors.top: parent.top
-        anchors.topMargin: Math.round(24 * root.uiScale)
+        anchors.topMargin: Math.round(20 * root.uiScale)
         anchors.horizontalCenter: parent.horizontalCenter
         width: root.textWidth
-        spacing: Math.round(3 * root.uiScale)
+        spacing: Math.round(2 * root.uiScale)
+        visible: root.showCaption && (root.albumTitle !== "" || root.albumDetail !== "")
 
         Text {
             width: parent.width
+            visible: text !== ""
             text: root.albumTitle
-            color: root.colForeground
+            color: root.colMuted
             font.family: root.themeFont.family
-            font.pixelSize: Math.round((root.themeFont.subtitle
-                + (root.prefs ? root.prefs.fontSubtitle : 0)) * root.uiScale)
-            font.weight: Font.DemiBold
+            font.pixelSize: Math.round((root.themeFont.bodySmall
+                + (root.prefs ? root.prefs.fontCaption : 0)) * root.uiScale)
+            font.letterSpacing: 0.6
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
         }
@@ -147,15 +151,12 @@ Item {
             visible: text !== ""
             text: root.albumDetail
             color: root.colMuted
+            opacity: 0.75
             font.family: root.themeFont.family
-            font.pixelSize: Math.round((root.themeFont.bodySmall
-                + (root.prefs ? root.prefs.fontBodySmall : 0)) * root.uiScale)
+            font.pixelSize: Math.round((root.themeFont.caption
+                + (root.prefs ? root.prefs.fontCaption : 0)) * root.uiScale)
+            font.letterSpacing: 0.6
             horizontalAlignment: Text.AlignHCenter
-            // The detail is the one line that can outgrow a narrow album
-            // column. It wraps rather than being cut mid-word, and gives up at
-            // two lines on a window too narrow even for that.
-            wrapMode: Text.WordWrap
-            maximumLineCount: 2
             elide: Text.ElideRight
         }
     }
@@ -164,8 +165,8 @@ Item {
         id: flick
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: header.visible ? header.bottom : parent.top
-        anchors.topMargin: header.visible ? Math.round(18 * root.uiScale) : 0
+        anchors.top: caption.visible ? caption.bottom : parent.top
+        anchors.topMargin: caption.visible ? Math.round(14 * root.uiScale) : 0
         anchors.bottom: parent.bottom
         clip: true
         boundsBehavior: Flickable.StopAtBounds

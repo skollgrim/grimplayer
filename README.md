@@ -340,7 +340,9 @@ cover-pane margin, position and border settings apply as they do in the browser.
 `Alt` + `K` switches straight to the lyrics or karaoke view. Clicking a title
 plays it at once, rather than selecting it and waiting for `Enter`. Nothing
 playing leaves the current selection in place, so the view still has an album to
-show.
+show. The record is named in a quiet caption above the titles — album, artist,
+year and running time, read from the album's tags — and the `Album caption`
+setting turns that line off for a surface of titles alone.
 
 Above the now-playing bar, tucked into the lower-left corner, sits a small cover
 for the album that follows this one in the library, captioned **Up next**. It is

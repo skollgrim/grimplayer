@@ -749,8 +749,6 @@ Item {
         if (artist && artist.name) parts.push(artist.name)
         if (album.year) parts.push(String(album.year))
         var tracks = album.tracks || []
-        if (tracks.length > 0)
-            parts.push(tracks.length + (tracks.length === 1 ? " track" : " tracks"))
         var total = 0
         for (var i = 0; i < tracks.length; i++) total += Number(tracks[i].duration) || 0
         var running = root.formatAlbumDuration(total)
@@ -1983,6 +1981,7 @@ Item {
                     currentIndex: root.trackIndex
                     albumTitle: root.albumViewTitle
                     albumDetail: root.albumViewDetail
+                    showCaption: prefs.albumCaption
                     emptyText: root.albumViewEmptyText
                     isCurrent: prefs.playingHighlight ? function (item) {
                         return root.mpd && root.mpd.current && item.file === root.mpd.current.file

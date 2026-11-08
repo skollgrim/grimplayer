@@ -124,6 +124,10 @@ Item {
         // album view above the now-playing bar. Off leaves that corner empty.
         property bool upNextCover: true
 
+        // The record's name and details, as a quiet caption above the titles in
+        // album view. Off leaves the surface to the songs alone.
+        property bool albumCaption: true
+
         // Rounded corners on the artwork. Off draws it as a plain square, corner
         // to corner.
         property bool coverRounded: true
@@ -365,7 +369,7 @@ Item {
                     "vimKeys", "rowSpacing", "typeaheadSearch", "typeaheadPlace",
                     "typeaheadScale", "rowSeparators",
                     "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "coverBorder", "coverPlaceholder",
-                    "coverBorderWidth", "coverRounded", "upNextCover", "activeRowBorder", "repeatMode", "shuffleMode", "coverScale",
+                    "coverBorderWidth", "coverRounded", "upNextCover", "albumCaption", "activeRowBorder", "repeatMode", "shuffleMode", "coverScale",
                     "coverTransition", "coverBandMode", "coverBandAlign", "coverPadding",
                     "coverBandMinPct",
                     "uiScale", "iconSize",
@@ -508,6 +512,7 @@ Item {
     readonly property bool coverPlaceholder: store.coverPlaceholder
     readonly property int coverBorderWidth: store.coverBorderWidth
     readonly property bool upNextCover: store.upNextCover
+    readonly property bool albumCaption: store.albumCaption
     readonly property bool coverRounded: store.coverRounded
     readonly property bool activeRowBorder: store.activeRowBorder
     readonly property int repeatMode: store.repeatMode
@@ -751,6 +756,17 @@ Item {
             set: function (v) { store.activeRowBorder = v },
             format: root.boolText
         },
+        {
+            key: "albumCaption",
+            section: "panes",
+            label: "Album caption",
+            hint: "Name the record above the titles in album view; off leaves just the songs",
+            options: [true, false],
+            defaultValue: true,
+            get: function () { return store.albumCaption },
+            set: function (v) { store.albumCaption = v },
+            format: root.boolText
+        },
 
         // ---- Navigation ----
         {
@@ -872,8 +888,8 @@ Item {
         {
             key: "fontCaption",
             section: "text",
-            label: "Status banner",
-            hint: "The MPD error banner, as an offset from the theme",
+            label: "Captions",
+            hint: "The album caption, the up-next label and the MPD banner, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
             defaultValue: 0,
             get: function () { return store.fontCaption },
