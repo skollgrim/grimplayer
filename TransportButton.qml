@@ -119,7 +119,9 @@ Item {
         // every album, so only the glyph inside it ever moved. Its glyph is the
         // ground colour, which is the opposite end from the accent on both a dark
         // and a light panel, so it stays legible either way.
-        color: root.prominent ? root.colAccent : "transparent"
+        color: root.prominent ? root.colAccent
+            : (hover.hovered ? Util.alpha(root.colForeground, 0.06) : "transparent")
+        Behavior on color { ColorAnimation { duration: Style.duration(90) } }
         // A resting control is dimmed, but only a little: at the old 0.55 the
         // prev/next arrows and, on a light cover, the grey resting glyph all read
         // as washed out rather than as controls waiting to be used. 0.66 keeps
@@ -195,5 +197,8 @@ Item {
     }
 
     HoverHandler { id: hover }
-    TapHandler { onTapped: root.clicked() }
+    TapHandler {
+        cursorShape: Qt.PointingHandCursor
+        onTapped: root.clicked()
+    }
 }

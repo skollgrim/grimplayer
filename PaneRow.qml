@@ -43,6 +43,34 @@ Item {
     property int albumIndex: 0
     property int trackIndex: 0
 
+    // The service's own state, so an empty pane can say why it is empty rather
+    // than showing the same placeholder for "still connecting", "loading the
+    // library" and "this album really has no tracks".
+    property bool connected: false
+    property bool libraryLoaded: false
+    property bool everConnected: false
+
+    readonly property string connectionText: !root.connected
+        ? (root.everConnected ? "Reconnecting to MPD…" : "Waiting for MPD…")
+        : ""
+    readonly property string loadingText: root.libraryLoaded ? "" : "Loading library…"
+    readonly property string emptyArtistsText: root.connectionText !== ""
+        ? root.connectionText
+        : (root.loadingText !== "" ? root.loadingText : "No artists in the library")
+    // The panes to the right of an empty one would otherwise blame a selection
+    // that does not exist: with no artists there is no "this artist", and with
+    // no albums there is no "this album".
+    readonly property string emptyAlbumsText: root.connectionText !== ""
+        ? root.connectionText
+        : (root.loadingText !== "" ? root.loadingText
+            : (root.artistList.length === 0 ? "No artists in the library"
+                                            : "No albums by this artist"))
+    readonly property string emptyTracksText: root.connectionText !== ""
+        ? root.connectionText
+        : (root.loadingText !== "" ? root.loadingText
+            : (root.albumList.length === 0 ? "No albums by this artist"
+                                           : "No tracks in this album"))
+
     // Which edges of the playing row carry the accent bar. Forwarded to the panes
     // untouched; only the tracks pane is handed a current item, so it only ever
     // shows there.
@@ -194,6 +222,7 @@ Item {
             model: root.artistList
             currentIndex: root.artistIndex
             label: root.artistLabel
+            emptyText: root.emptyArtistsText
             onActivated: function (index) { root.artistActivated(index) }
         }
 
@@ -204,6 +233,7 @@ Item {
             model: root.albumList
             currentIndex: root.albumIndex
             label: root.albumLabel
+            emptyText: root.emptyAlbumsText
             onActivated: function (index) { root.albumActivated(index) }
         }
 
@@ -219,6 +249,7 @@ Item {
             label: root.trackLabel
             sublabel: root.trackSublabel
             isCurrent: root.isCurrent
+            emptyText: root.emptyTracksText
             // The one pane that ends against the artwork pane; held off it so the
             // durations do not crowd the cover.
             rightGutter: root.trackArtGutter

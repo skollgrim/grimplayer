@@ -22,6 +22,9 @@ Item {
     // so a drag on a dead bar does nothing rather than seeking to zero.
     property real duration: 0
     property real thickness: 3
+    // Injected by the panel: the one clock format used everywhere else, so the
+    // preview reads "1:23" rather than a second implementation of it.
+    property var formatTime: function (seconds) { return String(Math.floor(seconds || 0)) }
 
     // The fraction the user dropped the handle on. The panel decides what to do
     // with it, so the release path stays in one place.
@@ -68,21 +71,57 @@ Item {
             root.width * root.shown - width / 2))
     }
 
+    // A small clock bubble under the pointer, so a scrub is aimed rather than
+    // guessed at. It only exists on hover or drag and sits above the bar, so
+    // the resting surface is still just a line.
+    Item {
+        id: preview
+        visible: root.duration > 0 && (seekArea.containsMouse || seekArea.pressed)
+        width: previewLabel.implicitWidth + Math.round(14 * root.uiScale)
+        height: Math.round(20 * root.uiScale)
+        z: 2
+        x: Math.max(0, Math.min(root.width - width,
+            root.width * (seekArea.pressed ? seekArea.scrubFraction : seekArea.pointerFraction) - width / 2))
+        y: -height - Math.round(6 * root.uiScale)
+
+        Rectangle {
+            anchors.fill: parent
+            radius: Math.round(5 * root.uiScale)
+            color: root.theme ? Util.alpha(root.theme.background, 0.96) : Util.alpha(Color.background, 0.96)
+            border.width: 1
+            border.color: root.theme ? Util.alpha(root.theme.foreground, 0.18) : Util.alpha(Color.foreground, 0.18)
+        }
+
+        Text {
+            id: previewLabel
+            anchors.centerIn: parent
+            text: root.formatTime(root.duration * (seekArea.pressed ? seekArea.scrubFraction : seekArea.pointerFraction))
+            color: root.theme ? root.theme.foreground : Color.foreground
+            font.pixelSize: Math.round(11 * root.uiScale)
+        }
+    }
+
     MouseArea {
         id: seekArea
         anchors.fill: parent
         enabled: root.duration > 0
         hoverEnabled: true
+        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
 
         property real scrubFraction: 0
+        // Where the pointer is while merely hovering; the bubble follows this,
+        // and the fill ignores it so the bar does not twitch on mouse-over.
+        property real pointerFraction: 0
 
         function fractionAt(x) {
             return Math.max(0, Math.min(1, x / Math.max(1, root.width)))
         }
 
         onPressed: function (mouse) { scrubFraction = fractionAt(mouse.x) }
+        onEntered: pointerFraction = fractionAt(mouseX)
         onPositionChanged: function (mouse) {
-            if (pressed) scrubFraction = fractionAt(mouse.x)
+            pointerFraction = fractionAt(mouse.x)
+            if (pressed) scrubFraction = pointerFraction
         }
         onReleased: function (mouse) {
             root.seekRequested(fractionAt(mouse.x))

@@ -1495,6 +1495,34 @@ Item {
         saveSoon()
     }
 
+    // The value an entry rests at: its own default, or the first option for an
+    // entry that predates `defaultValue`. Kept in one place so reset-all, the
+    // per-row reset and the changed-from-default dot cannot disagree about what
+    // "default" means.
+    function defaultOf(entry) {
+        if (!entry || !entry.options || entry.options.length === 0) return undefined
+        return entry.defaultValue !== undefined ? entry.defaultValue : entry.options[0]
+    }
+
+    // Whether the entry still holds its resting value. The card marks the rows
+    // that do not, so a changed setting is visible without opening its value.
+    function isDefault(entry) {
+        if (!entry) return true
+        var value = defaultOf(entry)
+        return value === undefined || entry.get() === value
+    }
+
+    // Restore one row without touching the rest. Called from the card's
+    // Backspace, and shared with reset() below so the two paths restore the
+    // same value.
+    function resetEntry(entry) {
+        if (!entry) return
+        var value = defaultOf(entry)
+        if (value === undefined) return
+        entry.set(value)
+        saveSoon()
+    }
+
     // Restores each entry's own default rather than options[0]. Those two used to
     // be the same thing, but they part company the moment a setting's natural
     // resting point is not the low end of its range: the font offsets run -4..+4
@@ -1504,7 +1532,7 @@ Item {
     function reset() {
         for (var i = 0; i < entries.length; i++) {
             var entry = entries[i]
-            entry.set(entry.defaultValue !== undefined ? entry.defaultValue : entry.options[0])
+            entry.set(defaultOf(entry))
         }
         saveSoon()
     }

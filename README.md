@@ -142,8 +142,10 @@ readout names the change that came along with the key you pressed.
 In the settings card: arrows or `hjkl` move — up/down moves within a column,
 left/right crosses the columns — `Enter` (or `Space`) toggles a switch or
 opens a slider, `←` `→` (or `h` `l`) adjust the open slider, `g` / `G` jump to the
-first or last setting, `R` resets everything, `?` switches to the key reference,
-`Esc` steps back out and `Q` closes.
+first or last setting, `Backspace` resets the row under the caret, `R` resets
+everything, `?` switches to the key reference, `Esc` steps back out and `Q`
+closes. A row that has moved off its default carries a small accent dot, so a
+changed setting is visible without opening its value.
 
 The card is cut into columns by topic — the list and what plays it, the panes and
 their rules, the text and its scale, the cover art, the lyric choices both

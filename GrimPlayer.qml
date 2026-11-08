@@ -733,6 +733,50 @@ Item {
     readonly property var trackList: albumIndex >= 0 && albumIndex < albumList.length
         ? albumList[albumIndex].tracks : []
 
+    // The album view's identity. It is read from the selected album rather than
+    // from `mpd.current`, so the surface still has a name when nothing is
+    // playing; entering album view snaps the selection to the playing album when
+    // there is one, which is what keeps the two in step.
+    readonly property var albumViewAlbum: albumIndex >= 0 && albumIndex < albumList.length
+        ? albumList[albumIndex] : null
+    readonly property string albumViewTitle: root.albumViewAlbum
+        ? (root.albumViewAlbum.name || "") : ""
+    readonly property string albumViewDetail: {
+        var album = root.albumViewAlbum
+        if (!album) return ""
+        var parts = []
+        var artist = root.artistList[root.artistIndex]
+        if (artist && artist.name) parts.push(artist.name)
+        if (album.year) parts.push(String(album.year))
+        var tracks = album.tracks || []
+        if (tracks.length > 0)
+            parts.push(tracks.length + (tracks.length === 1 ? " track" : " tracks"))
+        var total = 0
+        for (var i = 0; i < tracks.length; i++) total += Number(tracks[i].duration) || 0
+        var running = root.formatAlbumDuration(total)
+        if (running !== "") parts.push(running)
+        return parts.join(" · ")
+    }
+    readonly property string albumViewEmptyText: {
+        if (!root.mpd) return "Waiting for MPD…"
+        if (!root.mpd.connected)
+            return root.mpd.everConnected ? "Reconnecting to MPD…" : "Waiting for MPD…"
+        if (!root.mpd.libraryLoaded) return "Loading library…"
+        if (root.albumList.length === 0) return "No albums by this artist"
+        return "No tracks in this album"
+    }
+
+    // The now-playing strip's second line when nothing is playing. It answers
+    // "why is this empty?" in the same voice as the panes, instead of repeating
+    // the connection banner.
+    readonly property string idleSubtitle: {
+        if (!root.mpd) return "Waiting for MPD…"
+        if (!root.mpd.connected)
+            return root.mpd.everConnected ? "Reconnecting to MPD…" : "Waiting for MPD…"
+        if (!root.mpd.libraryLoaded) return "Loading library…"
+        return "Select an album and press Enter"
+    }
+
     // The album that follows the playing one in the library, for album view's
     // small "up next" preview above the bar. Null at the end of the library,
     // and while shuffle or repeat is on: neither walks past the current album
@@ -1804,6 +1848,19 @@ Item {
         return (h > 0 ? h + ":" + (m < 10 ? "0" : "") + m : m) + ":" + (s < 10 ? "0" : "") + s
     }
 
+    // A running time for the album header, in the shape people say it rather
+    // than the seek bar's clock: "48 min", or "1 hr 12 min". Returns "" for an
+    // album MPD has no durations for, so the header simply omits that part.
+    function formatAlbumDuration(seconds) {
+        var total = Math.floor(Number(seconds) || 0)
+        if (total <= 0) return ""
+        var minutes = Math.round(total / 60)
+        if (minutes < 60) return minutes + " min"
+        var h = Math.floor(minutes / 60)
+        var m = minutes % 60
+        return m === 0 ? h + " hr" : h + " hr " + m + " min"
+    }
+
     // "2024 - Little Weight", or the bare name for an album MPD has no Date tag
     // for. Only the albums pane uses this; the now-playing strip shows the track
     // and artist alone.
@@ -1886,6 +1943,9 @@ Item {
                     artistIndex: root.artistIndex
                     albumIndex: root.albumIndex
                     trackIndex: root.trackIndex
+                    connected: root.mpd ? root.mpd.connected : false
+                    libraryLoaded: root.mpd ? root.mpd.libraryLoaded : false
+                    everConnected: root.mpd ? root.mpd.everConnected : false
 
                     artistLabel: function (item) { return item.name }
                     albumLabel: function (item) { return root.albumText(item.year, item.name) }
@@ -1921,6 +1981,9 @@ Item {
                     prefs: prefs
                     model: root.trackList
                     currentIndex: root.trackIndex
+                    albumTitle: root.albumViewTitle
+                    albumDetail: root.albumViewDetail
+                    emptyText: root.albumViewEmptyText
                     isCurrent: prefs.playingHighlight ? function (item) {
                         return root.mpd && root.mpd.current && item.file === root.mpd.current.file
                     } : null
@@ -2207,7 +2270,7 @@ Item {
                             text: root.mpd && root.mpd.current && root.mpd.current.file
                                 ? (root.mpd.current.Artist || root.mpd.current.AlbumArtist || "Unknown artist")
                                     + (root.nowPlayingFlag ? "  " + root.nowPlayingFlag : "")
-                                : (root.mpd && root.mpd.connected ? "Library ready" : "Not connected to MPD")
+                                : root.idleSubtitle
                             color: theme.muted
                             font.pixelSize: Math.round((root.themeFont.body + prefs.fontBody) * prefs.uiScale)
                             elide: Text.ElideRight
@@ -2220,6 +2283,7 @@ Item {
                             progress: root.progress
                             duration: root.duration
                             thickness: prefs.seekThickness
+                            formatTime: root.formatTime
                             onSeekRequested: function (fraction) { root.seekToFraction(fraction) }
                         }
 
@@ -2770,6 +2834,12 @@ Item {
                         // every setting just as easily as R. Reset is destructive
                         // enough to want the plain key.
                         if (!root.settingsEditMode && !shift && !ctrl && !alt) prefs.reset()
+                        break
+                    case Qt.Key_Backspace:
+                        // Restore just the row under the caret, whether or not a
+                        // slider is open. R still resets the whole card.
+                        if (prefs.visibleEntries.length > 0)
+                            prefs.resetEntry(prefs.visibleEntries[root.settingIndex])
                         break
                     default:
                         handled = false

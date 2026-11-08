@@ -130,5 +130,9 @@ RowLayout {
             // or press.
             visible: volumeSlider.pressed || volumeSlider.hovered
         }
+
+        // A slider has no clickable body of its own, so the hand has to come
+        // from a handler over it.
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
     }
 }

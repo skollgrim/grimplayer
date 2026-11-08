@@ -110,6 +110,13 @@ Item {
             // A dependent whose parent is off. It is drawn, but greyed and kept
             // out of the caret's way, so it cannot change a value nothing reads.
             readonly property bool active: modelData.active !== false
+            // Whether the row has moved off its resting value. Computed here
+            // rather than carried in the model on purpose: `columns` is the
+            // Repeater's model, so stamping this into it would rebuild every
+            // delegate on every setting change -- including each step of a
+            // slider drag. Read through the entry's own get() so only this row
+            // re-evaluates.
+            readonly property bool changed: root.config ? !root.config.isDefault(entryData) : false
             // A row that names a parent in `after` is a child of that row, and
             // tucks in a step so the block reads as one setting's details. The
             // indent is what lets a child carry a bare name -- "Size", "Position"
@@ -131,7 +138,9 @@ Item {
                 + Math.round(12 * root.uiScale) + Math.round(10 * root.uiScale)
                 + (dependent ? indent : 0)
             radius: Math.round(6 * root.uiScale)
-            color: selected ? root.colSelectedFill : "transparent"
+            color: selected ? root.colSelectedFill
+                : (rowMouse.containsMouse ? Util.alpha(root.colForeground, 0.04) : "transparent")
+            Behavior on color { ColorAnimation { duration: Style.duration(90) } }
 
             // A greyed dependent stays visible but reads as switched off: the
             // whole row fades, and the value ink stops being the accent it is on a
@@ -160,7 +169,10 @@ Item {
             }
 
             MouseArea {
+                id: rowMouse
                 anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     // Clicking elsewhere just parks the caret.
                     if (root.index !== row.visIndex) {
@@ -188,6 +200,24 @@ Item {
                     + (row.dependent ? row.indent : 0)
                 anchors.rightMargin: Math.round(10 * root.uiScale)
                 spacing: Math.round(8 * root.uiScale)
+
+                // A fixed slot so the dot's appearance never shifts the label.
+                // The dot marks a value that is no longer at its default; an
+                // unchanged row leaves the slot empty.
+                Item {
+                    Layout.preferredWidth: Math.round(5 * root.uiScale)
+                    Layout.preferredHeight: 1
+                    Layout.alignment: Qt.AlignVCenter
+                    Rectangle {
+                        visible: row.changed
+                        anchors.centerIn: parent
+                        width: Math.max(3, Math.round(4 * root.uiScale))
+                        height: width
+                        radius: width / 2
+                        color: root.colAccent
+                        opacity: 0.85
+                    }
+                }
 
                 // The label is deliberately not bolded when the row is selected.
                 // Bolding changes its advance, which changes this cell's implicit
@@ -258,6 +288,8 @@ Item {
 
                         MouseArea {
                             anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
                             function pick(mx) {
                                 // A greyed row's track is drawn but inert; the only
                                 // thing a click may do is park the caret on it.
@@ -358,12 +390,17 @@ Item {
                         Layout.preferredHeight: Math.round(28 * root.uiScale)
                         Layout.preferredWidth: tabText.implicitWidth + Math.round(14 * root.uiScale)
                         radius: Math.round(6 * root.uiScale)
-                        color: tab.index === root.categoryIndex ? Util.alpha(root.colAccent, 0.18) : "transparent"
+                        color: tab.index === root.categoryIndex
+                            ? Util.alpha(root.colAccent, 0.18)
+                            : (tabMouse.containsMouse ? Util.alpha(root.colForeground, 0.05) : "transparent")
                         border.width: tab.index === root.categoryIndex ? 0 : 1
                         border.color: Util.alpha(root.colForeground, 0.12)
 
                         MouseArea {
+                            id: tabMouse
                             anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 root.categoryIndex = tab.index
                                 var items = root.columns[tab.index].items
@@ -451,7 +488,7 @@ Item {
             Text {
                 text: (root.editMode
                         ? "EDITING — ←/→ or H/L adjust  ·  Enter/Esc step back"
-                        : "↑↓←→ or J K H L move  ·  Enter toggles, or opens a slider  ·  g/G first/last  ·  R resets  ·  ? keys  ·  Esc/Q closes")
+                        : "↑↓←→ or J K H L move  ·  Enter toggles, or opens a slider  ·  g/G first/last  ·  Backspace resets row  ·  R resets all  ·  ? keys  ·  Esc/Q closes")
                 textFormat: Text.PlainText
                 color: root.editMode ? root.colAccent : root.colMuted
                 font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)

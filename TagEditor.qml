@@ -1327,6 +1327,7 @@ Item {
                         id: lookupMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.lookUp()
                     }
                 }
@@ -1359,6 +1360,7 @@ Item {
                         id: prevMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.cycleMatch(-1)
                     }
                 }
@@ -1391,6 +1393,7 @@ Item {
                         id: nextMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.cycleMatch(1)
                     }
                 }
@@ -1425,6 +1428,7 @@ Item {
                         id: revertMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.revertLookup()
                     }
                 }
@@ -1534,6 +1538,7 @@ Item {
                         id: browseMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.openBrowse()
                     }
                 }
@@ -1569,6 +1574,7 @@ Item {
                         id: removeMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.clearCover()
                     }
                 }
@@ -1627,6 +1633,7 @@ Item {
                         id: cancelMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.cancel()
                     }
                 }
@@ -1664,6 +1671,7 @@ Item {
                         id: saveMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.saveOrClose()
                     }
                 }

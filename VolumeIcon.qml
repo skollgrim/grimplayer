@@ -73,7 +73,7 @@ Item {
         muted ? root.colMuted
               : (theme ? theme.mix(root.colForeground, root.colAccent, 0.55)
                        : root.colForeground),
-        0.66)
+        hover.hovered ? 0.80 : 0.66)
 
     // Every Shape draws into its own 24x24 box and the box is scaled to the Item,
     // rather than letting a Shape fill the Item and having PathSvg clip the
@@ -149,7 +149,10 @@ Item {
         }
     }
 
+    HoverHandler { id: hover }
+
     TapHandler {
+        cursorShape: Qt.PointingHandCursor
         onTapped: root.clicked()
     }
 }

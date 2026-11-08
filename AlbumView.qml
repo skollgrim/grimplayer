@@ -30,6 +30,18 @@ Item {
     property var isCurrent: null
     property var titleFor: null
 
+    // The album this column belongs to. A now-playing surface that shows only
+    // titles leaves the record unnamed; the panel supplies the identity so this
+    // file stays free of library shape. `albumDetail` is the muted second line,
+    // already joined by the panel (artist, year, track count, running time).
+    property string albumTitle: ""
+    property string albumDetail: ""
+
+    // Shown when the column has no rows. The panel supplies the reason -- still
+    // connecting, loading, or an album with no tracks -- so the empty surface
+    // says what is happening rather than just "empty".
+    property string emptyText: ""
+
     // The playing title's ink. The panel passes the accent when it clears the
     // background, the foreground otherwise, so a pale sleeve still gets a
     // readable line.
@@ -48,7 +60,7 @@ Item {
     // while the record plays, not from across the room. The offset follows the
     // same theme-plus-stored-delta rule as every other font in the panel.
     readonly property int fontSize: Math.round((root.themeFont.subtitle
-        + (prefs ? prefs.fontSubtitle : 0)) * 1.9 * uiScale)
+        + (root.prefs ? root.prefs.fontSubtitle : 0)) * 1.9 * uiScale)
     readonly property int rowHeight: Math.round(fontSize * 2.0)
     readonly property int rowGap: Math.round(fontSize * 0.45)
     readonly property int rowPitch: rowHeight + rowGap
@@ -104,9 +116,57 @@ Item {
         if (root.visible) Qt.callLater(function () { root.followCurrent(false) })
     }
 
+    // The record's identity, held quietly above the titles. It is deliberately
+    // smaller than the track type: album view is still about the songs, and this
+    // is the label on the sleeve rather than a second heading competing with
+    // them. The panel joins the detail line so this file does not need to know
+    // how an album is described.
+    Column {
+        id: header
+        visible: root.albumTitle !== ""
+        anchors.top: parent.top
+        anchors.topMargin: Math.round(24 * root.uiScale)
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.textWidth
+        spacing: Math.round(3 * root.uiScale)
+
+        Text {
+            width: parent.width
+            text: root.albumTitle
+            color: root.colForeground
+            font.family: root.themeFont.family
+            font.pixelSize: Math.round((root.themeFont.subtitle
+                + (root.prefs ? root.prefs.fontSubtitle : 0)) * root.uiScale)
+            font.weight: Font.DemiBold
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+        }
+
+        Text {
+            width: parent.width
+            visible: text !== ""
+            text: root.albumDetail
+            color: root.colMuted
+            font.family: root.themeFont.family
+            font.pixelSize: Math.round((root.themeFont.bodySmall
+                + (root.prefs ? root.prefs.fontBodySmall : 0)) * root.uiScale)
+            horizontalAlignment: Text.AlignHCenter
+            // The detail is the one line that can outgrow a narrow album
+            // column. It wraps rather than being cut mid-word, and gives up at
+            // two lines on a window too narrow even for that.
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+        }
+    }
+
     Flickable {
         id: flick
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: header.visible ? header.bottom : parent.top
+        anchors.topMargin: header.visible ? Math.round(18 * root.uiScale) : 0
+        anchors.bottom: parent.bottom
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         contentWidth: width
@@ -136,6 +196,20 @@ Item {
                     readonly property bool selected: index === root.currentIndex
                     readonly property bool hovered: rowArea.containsMouse
 
+                    // A faint rounded fill behind the row under the pointer, so
+                    // the list answers the mouse without adding a permanent
+                    // stripe. It follows the text block's width rather than the
+                    // whole column, keeping the hovered row aligned with what
+                    // it highlights.
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: Math.min(parent.width, root.textWidth + Math.round(24 * root.uiScale))
+                        height: parent.height
+                        radius: Math.round(6 * root.uiScale)
+                        color: row.hovered ? Util.alpha(root.colForeground, 0.04) : "transparent"
+                        Behavior on color { ColorAnimation { duration: Style.duration(90) } }
+                    }
+
                     Text {
                         id: title
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -157,6 +231,7 @@ Item {
                         id: rowArea
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: root.activated(row.index)
                     }
                 }
@@ -232,10 +307,16 @@ Item {
     }
 
     Text {
-        anchors.centerIn: parent
+        anchors.centerIn: flick
+        width: Math.max(0, Math.min(flick.width - Math.round(48 * root.uiScale),
+            Math.round(420 * root.uiScale)))
         visible: root.model.length === 0
-        text: "empty"
+        text: root.emptyText !== "" ? root.emptyText : "No tracks"
         color: root.colMuted
-        font.pixelSize: Math.round(root.fontSize * 0.8)
+        font.family: root.themeFont.family
+        font.pixelSize: Math.round((root.themeFont.bodySmall
+            + (root.prefs ? root.prefs.fontBodySmall : 0)) * root.uiScale)
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
     }
 }

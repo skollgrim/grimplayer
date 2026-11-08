@@ -27,6 +27,11 @@ Item {
     property var sublabel: null
     property var isCurrent: null
 
+    // What an empty list says. The parent supplies the reason -- waiting for
+    // MPD, loading the library, or a genuinely empty selection -- so the pane
+    // explains itself instead of showing a bare placeholder.
+    property string emptyText: ""
+
     // The panel's colour tokens, injected the same way. Aliases keep the
     // fallback to the shell theme in one place, so this pane still draws
     // correctly if it is ever placed outside the panel.
@@ -338,6 +343,7 @@ Item {
                     id: rowArea
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     // Selection is owned by the parent, which is the only
                     // thing that knows what the index means -- an artist
                     // index, an album index or a track index select against
@@ -423,7 +429,8 @@ Item {
 
     // Nothing to show means the library has not loaded, or MPD is unreachable.
     // The window draws its own banner for that case, so this only covers a
-    // genuinely empty pane rather than an error.
+    // genuinely empty pane rather than an error. The message comes from the
+    // parent, which knows which of those states applies.
     //
     // Tested against model.length rather than a separate count property: it was
     // always handed the model's own length, and as a separate int it defaulted to
@@ -431,9 +438,13 @@ Item {
     // a populated list.
     Text {
         anchors.centerIn: parent
+        width: Math.max(0, parent.width - Math.round(32 * root.uiScale))
         visible: root.model.length === 0
-        text: "empty"
+        text: root.emptyText !== "" ? root.emptyText : "Nothing here"
         color: root.colMuted
         font.pixelSize: root.fontSizeSublabel
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
+        opacity: 0.85
     }
 }
