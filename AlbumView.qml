@@ -231,6 +231,14 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        // The pointer's own liveness, read from the row it is
+                        // over rather than from a handler above the whole
+                        // window: Qt delivers hover to the topmost hover target
+                        // only, so a window-wide HoverHandler kept every row
+                        // from ever seeing the pointer. Any movement over the
+                        // column re-arms the highlight a key press cleared.
+                        onEntered: root.pointerActive = true
+                        onPositionChanged: root.pointerActive = true
                         onClicked: function (mouse) {
                             if (mouse.button === Qt.RightButton) root.folderRequested(row.index)
                             else root.activated(row.index)

@@ -2719,21 +2719,15 @@ Item {
             // so an onVisibleChanged here would never fire.
             Component.onCompleted: Qt.callLater(function () { if (!root.tagOpen) keyCatcher.forceActiveFocus() })
 
-            // Restores the album view's hover the moment the pointer moves
-            // again, mirroring the compositor, which brings the hidden cursor
-            // back on movement. HoverHandler watches without taking clicks.
-            HoverHandler {
-                onPointChanged: {
-                    if (root.albumView && albumTrackView) albumTrackView.pointerActive = true
-                }
-            }
-
             Keys.onPressed: function (event) {
                 var handled = true
 
                 // Any key means the compositor has hidden the pointer, so the
                 // album view should not keep a row glowing under where it used
-                // to be. Pointer movement sets this back (see above).
+                // to be. Movement over the album's own rows sets this back; it
+                // is tracked there rather than with a handler here, because Qt
+                // gives hover to the topmost target only and a window-wide
+                // handler would starve every row of it.
                 if (root.albumView && albumTrackView) albumTrackView.pointerActive = false
 
                 // Shift, control and alt are read before the switch. shift+left
