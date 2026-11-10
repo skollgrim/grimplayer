@@ -123,6 +123,13 @@ Item {
                 { keys: "any letter, digit or -", action: "Jump by typing a track name or number" },
                 { keys: "Esc", action: "Back to the browser" }
             ]
+        },
+        {
+            title: "Mouse",
+            rows: [
+                { keys: "Click", action: "Select a row; in album view, play it" },
+                { keys: "Right-click", action: "Open the row's folder, or its file selected" }
+            ]
         }
     ]
 

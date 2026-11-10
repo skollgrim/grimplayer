@@ -128,6 +128,15 @@ Item {
         // album view. Off leaves the surface to the songs alone.
         property bool albumCaption: true
 
+        // How the tracks pane writes each number before its title. "dot" is
+        // "01. Title" and "dash" is "01 - Title"; both are zero-padded to two
+        // digits so a column of tracks lines up.
+        property string trackNumberFormat: "dot"
+
+        // Draw the track numbers in the muted ink, the same grey as the
+        // durations, so the titles lead and the numbers read as quiet indexes.
+        property bool trackNumberMuted: false
+
         // Rounded corners on the artwork. Off draws it as a plain square, corner
         // to corner.
         property bool coverRounded: true
@@ -370,6 +379,7 @@ Item {
                     "typeaheadScale", "rowSeparators",
                     "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "coverBorder", "coverPlaceholder",
                     "coverBorderWidth", "coverRounded", "upNextCover", "albumCaption", "activeRowBorder", "repeatMode", "shuffleMode", "coverScale",
+                    "trackNumberFormat", "trackNumberMuted",
                     "coverTransition", "coverBandMode", "coverBandAlign", "coverPadding",
                     "coverBandMinPct",
                     "uiScale", "iconSize",
@@ -513,6 +523,8 @@ Item {
     readonly property int coverBorderWidth: store.coverBorderWidth
     readonly property bool upNextCover: store.upNextCover
     readonly property bool albumCaption: store.albumCaption
+    readonly property string trackNumberFormat: store.trackNumberFormat
+    readonly property bool trackNumberMuted: store.trackNumberMuted
     readonly property bool coverRounded: store.coverRounded
     readonly property bool activeRowBorder: store.activeRowBorder
     readonly property int repeatMode: store.repeatMode
@@ -765,6 +777,28 @@ Item {
             defaultValue: true,
             get: function () { return store.albumCaption },
             set: function (v) { store.albumCaption = v },
+            format: root.boolText
+        },
+        {
+            key: "trackNumberFormat",
+            section: "panes",
+            label: "Number format",
+            hint: "How the tracks pane writes each number before its title; numbers are padded to two digits",
+            options: ["dot", "dash"],
+            defaultValue: "dot",
+            get: function () { return store.trackNumberFormat },
+            set: function (v) { store.trackNumberFormat = v },
+            format: function (v) { return v === "dash" ? "01 - Title" : "01. Title" }
+        },
+        {
+            key: "trackNumberMuted",
+            section: "panes",
+            label: "Quiet numbers",
+            hint: "Draw track numbers in the muted ink, like the durations, so the titles lead",
+            options: [true, false],
+            defaultValue: false,
+            get: function () { return store.trackNumberMuted },
+            set: function (v) { store.trackNumberMuted = v },
             format: root.boolText
         },
 
@@ -1512,20 +1546,11 @@ Item {
     }
 
     // The value an entry rests at: its own default, or the first option for an
-    // entry that predates `defaultValue`. Kept in one place so reset-all, the
-    // per-row reset and the changed-from-default dot cannot disagree about what
-    // "default" means.
+    // entry that predates `defaultValue`. Kept in one place so reset-all and the
+    // per-row reset cannot disagree about what "default" means.
     function defaultOf(entry) {
         if (!entry || !entry.options || entry.options.length === 0) return undefined
         return entry.defaultValue !== undefined ? entry.defaultValue : entry.options[0]
-    }
-
-    // Whether the entry still holds its resting value. The card marks the rows
-    // that do not, so a changed setting is visible without opening its value.
-    function isDefault(entry) {
-        if (!entry) return true
-        var value = defaultOf(entry)
-        return value === undefined || entry.get() === value
     }
 
     // Restore one row without touching the rest. Called from the card's

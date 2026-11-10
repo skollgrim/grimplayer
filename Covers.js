@@ -86,3 +86,14 @@ function fileUrl(path) {
     for (var i = 1; i < parts.length; i++) parts[i] = encodeURIComponent(parts[i])
     return "file://" + parts.join("/")
 }
+
+// The inverse, for handing a loaded Image's source to a command line: strip the
+// scheme and undo fileUrl's per-segment encoding. Anything that is not a file
+// URL is returned untouched, so a plain path still works.
+function pathFromUrl(url) {
+    var u = String(url === undefined || url === null ? "" : url)
+    if (u.indexOf("file://") !== 0) return u
+    u = u.substring(7)
+    try { u = decodeURIComponent(u) } catch (e) {}
+    return u
+}

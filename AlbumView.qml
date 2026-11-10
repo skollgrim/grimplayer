@@ -51,6 +51,14 @@ Item {
     property color playingColor: colAccent
 
     signal activated(int index)
+    signal folderRequested(int index)
+
+    // Whether the pointer is "live". The compositor hides the cursor on a key
+    // press (Hyprland's cursor:hide_on_key_press), so the row under a hidden
+    // pointer should stop glowing too: otherwise the last hovered row stays lit
+    // while the keyboard moves the caret. The panel clears this on any key and
+    // sets it again on pointer movement.
+    property bool pointerActive: true
 
     readonly property color colBackground: theme ? theme.background : Color.background
     readonly property color colForeground: theme ? theme.foreground : Color.foreground
@@ -195,7 +203,7 @@ Item {
                     readonly property bool playing: root.isCurrent !== null
                         && root.isCurrent(modelData)
                     readonly property bool selected: index === root.currentIndex
-                    readonly property bool hovered: rowArea.containsMouse
+                    readonly property bool hovered: root.pointerActive && rowArea.containsMouse
 
                     // A faint rounded fill behind the row under the pointer, so
                     // the list answers the mouse without adding a permanent
@@ -233,7 +241,11 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.activated(row.index)
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: function (mouse) {
+                            if (mouse.button === Qt.RightButton) root.folderRequested(row.index)
+                            else root.activated(row.index)
+                        }
                     }
                 }
             }

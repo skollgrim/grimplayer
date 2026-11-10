@@ -304,18 +304,36 @@ def public(meta):
 
 
 def release_tracks(release):
-    """Flatten the release's media into one ordered list of disc/track/title."""
+    """Flatten the release's media into one ordered list of tracks.
+
+    `disc` is the medium's position and `track` the number that medium prints,
+    which is what a file's own disc/track tags are matched against. `number` is
+    what lookup writes: a tag holds a number, not a side letter, and a
+    multi-disc rip reads better numbered straight through than restarting at 1
+    on every medium. A single medium keeps the printed number as it is, so an
+    album numbered 01, 02 stays that way.
+    """
+    media = release.get("medium-list", []) or []
+    multi = len(media) > 1
     tracks = []
-    for medium in release.get("medium-list", []) or []:
+    ordinal = 0
+    for medium in media:
         disc = medium.get("position", "")
         for track in medium.get("track-list", []) or []:
+            ordinal += 1
             title = track.get("title")
             if not title:
                 title = (track.get("recording") or {}).get("title", "")
-            number = track.get("number") or track.get("position") or ""
+            printed = str(track.get("number") or "").split("/")[0].strip()
+            position = str(track.get("position") or "").split("/")[0].strip()
             tracks.append({
                 "disc": str(disc).split("/")[0].strip(),
-                "track": str(number).split("/")[0].strip(),
+                # A vinyl medium prints A1, B2, C1 where the position is the
+                # ordinal a tag can hold, so the printed number is kept only
+                # when it is numeric itself.
+                "track": printed if printed.isdigit() else position,
+                "number": str(ordinal) if multi else (
+                    printed if printed.isdigit() else position),
                 "title": (title or "").strip(),
             })
     return tracks
@@ -332,9 +350,13 @@ def match_tracks(metas, tracks, rels):
     """
     by_number = {}
     by_track = {}
+    by_global = {}
     ambiguous = set()
     for track in tracks:
         number = as_int(track["track"])
+        ordinal = as_int(track["number"])
+        if ordinal:
+            by_global.setdefault(ordinal, track)
         if not number:
             continue
         by_number.setdefault((as_int(track["disc"]), number), track)
@@ -357,16 +379,22 @@ def match_tracks(metas, tracks, rels):
     for index, meta in enumerate(metas):
         entry = {"file": rels.get(meta["path"], "")}
         number = as_int(meta["track"]) if meta["track"] != "" else 0
+        disc = as_int(meta["disc"]) if meta["disc"] != "" else 0
         found = None
         if number:
             if single_disc and number not in ambiguous:
                 found = by_track.get(number)
-            if found is None:
-                disc = as_int(meta["disc"]) if meta["disc"] != "" else 1
+            if found is None and disc:
                 found = by_number.get((disc, number))
-            if found is None and meta["disc"] == "":
-                # A file with no disc tag against a multi-disc release: CD 1.
-                found = by_number.get((1, number))
+            if found is None:
+                # A rip numbered straight through the album has track 6 on
+                # disc 2, where that medium only reaches track 3. The
+                # album-wide number is the one that can place it, as long as
+                # the disc the file names is the one it lands on.
+                candidate = by_global.get(number)
+                if candidate is not None and (
+                        not disc or as_int(candidate["disc"]) == disc):
+                    found = candidate
         if found is None and meta["title"]:
             found = by_title.get(fold(meta["title"]))
         # Position is the last resort, and only for a file with no number of
@@ -380,8 +408,8 @@ def match_tracks(metas, tracks, rels):
             # missing value as "leave this file's tag alone".
             if found["title"]:
                 entry["title"] = found["title"]
-            if found["track"] != "":
-                entry["track"] = found["track"]
+            if found["number"] != "":
+                entry["track"] = found["number"]
             if found["disc"] != "":
                 entry["disc"] = found["disc"]
         matched.append(entry)

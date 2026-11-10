@@ -27,6 +27,14 @@ Item {
     property var sublabel: null
     property var isCurrent: null
 
+    // Optional leading text drawn in its own slot before the label, so a pane can
+    // give it its own ink. The tracks pane uses it for the number, which can be
+    // muted like the duration while the title keeps the row's full strength.
+    // Null for the panes that have no such column.
+    property var prefix: null
+    property bool prefixMuted: false
+    readonly property int prefixGap: Math.round(6 * uiScale)
+
     // What an empty list says. The parent supplies the reason -- waiting for
     // MPD, loading the library, or a genuinely empty selection -- so the pane
     // explains itself instead of showing a bare placeholder.
@@ -43,6 +51,9 @@ Item {
     readonly property color colSelectedFill: theme ? theme.selectedFill : Style.selectedFill
 
     signal activated(int index)
+    // Right-click: open the row's folder. A row knows only its own index; the
+    // panel is what can turn that into a path.
+    signal folderRequested(int index)
 
     // Scrolls the least amount that puts the caret row inside the viewport, in
     // whole rows. The viewport is cut to a whole number of row pitches (see
@@ -314,9 +325,29 @@ Item {
                     color: Util.alpha(root.colForeground, 0.06)
                 }
 
+                // The number (or other leading column) gets its own ink, so the
+                // tracks pane can hold it back like the duration while the title
+                // stays at full strength. The label starts after it rather than
+                // being merged into one string, which is what lets the two read
+                // as different weights.
+                Text {
+                    id: prefixText
+                    visible: root.prefix !== null && text !== ""
+                    anchors.left: parent.left
+                    anchors.leftMargin: Math.round(16 * root.uiScale)
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: implicitWidth
+                    text: root.prefix ? root.prefix(row.modelData) : ""
+                    color: root.prefixMuted ? root.colMuted : root.colForeground
+                    font.pixelSize: root.fontSizeRow
+                    opacity: root.rowOpacity
+                    elide: Text.ElideRight
+                }
+
                 Text {
                     anchors.fill: parent
                     anchors.leftMargin: Math.round(16 * root.uiScale)
+                        + (prefixText.visible ? prefixText.width + root.prefixGap : 0)
                     anchors.rightMargin: root.rowRightMargin
                     verticalAlignment: Text.AlignVCenter
                     text: root.label ? root.label(row.modelData) : ""
@@ -344,13 +375,21 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     // Selection is owned by the parent, which is the only
                     // thing that knows what the index means -- an artist
                     // index, an album index or a track index select against
                     // different lists. Assigning the local currentIndex here
                     // would drop the binding the parent set up and leave the
                     // parent still pointing at the old row.
-                    onClicked: root.activated(row.index)
+                    //
+                    // Right-click is the folder shortcut: it opens the
+                    // directory behind the row rather than changing the caret,
+                    // so it works on whatever row is under the pointer.
+                    onClicked: function (mouse) {
+                        if (mouse.button === Qt.RightButton) root.folderRequested(row.index)
+                        else root.activated(row.index)
+                    }
                 }
             }
         }

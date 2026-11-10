@@ -19,7 +19,8 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Cover pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Pane above` tunes the window size floor the pane is kept to.
 - **Adaptive colours** — optionally matches the panel's colors to the playing album.
 - **A strip that gives way** — on a narrow window the now-playing strip tightens its margins and shortens the volume track, then drops the track and keeps the speaker, so the title and the transport never squeeze each other.
-- **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing. In the tracks pane a number jumps to that track, and a multi-disc album accepts its row number (`2-5`).
+- **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing. In the tracks pane a number jumps to that track.
+- **Quiet track numbers** — the tracks pane writes `01.` or `01 -` before each title, and can hold the number back in the same muted ink as the durations.
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
 - **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. A small preview of the next album's cover sits above the bar. `Esc` returns to the browser.
@@ -116,6 +117,7 @@ then a one-liner around whichever of the three you prefer.
 | `Alt` + `O` | Karaoke background opacity |
 | `Alt` + `=` / `-` | Text size for the current view |
 | `Alt` + `Shift` + `=` / `-` | Cover size in the browser and lyrics view |
+| Right-click a row | Open the folder behind it, or its file selected in the file manager |
 | `?` | Key reference |
 
 `Alt` + `L`, `Alt` + `K` and `Alt` + `A` each switch straight to their view from
@@ -140,13 +142,13 @@ narrows the shuffle to album, because the queue is about to hold one album, and
 choosing a wider shuffle pool steps out of repeat album for the same reason. The
 readout names the change that came along with the key you pressed.
 
-In the settings card: arrows or `hjkl` move — up/down moves within a column,
-left/right crosses the columns — `Enter` (or `Space`) toggles a switch or
-opens a slider, `←` `→` (or `h` `l`) adjust the open slider, `g` / `G` jump to the
-first or last setting, `Backspace` resets the row under the caret, `R` resets
-everything, `?` switches to the key reference, `Esc` steps back out and `Q`
-closes. A row that has moved off its default carries a small accent dot, so a
-changed setting is visible without opening its value.
+In the settings card: arrows or `hjkl` move — up/down walks the visible tab and
+wraps at its ends, left/right crosses the tabs — `Enter` (or `Space`) toggles a
+switch or opens a slider, `←` `→` (or `h` `l`) adjust the open slider, `g` / `G`
+jump to the first or last setting, `Backspace` resets the row under the caret, `R`
+resets everything, `?` switches to the key reference, `Esc` steps back out and `Q`
+closes. The visible tab follows the caret, and each tab remembers the row you
+left it on.
 
 The card is cut into columns by topic — the list and what plays it, the panes and
 their rules, the text and its scale, the cover art, the lyric choices both
@@ -201,10 +203,13 @@ are open. Paths are shown relative to the music library when they live inside it
 and a cue album's virtual tracks name the cue sheet, the file that really exists.
 The line is elided in the middle, so the filename stays readable.
 
-Below them, reading as one more field, is a **Cover art** row: a small preview of
-the selection's cover, a **Browse…** button that opens a file chooser in the album
+Below them, reading as one more field, is a **Cover art** row: a preview of the
+selection's cover, a **Browse…** button that opens a file chooser in the album
 folder (so the covers already beside the tracks are the first thing on offer), and
-a **Remove** button. Saving a chosen image embeds it into every selected file;
+a **Remove** button. The preview is drawn at a size you can actually judge, and
+the picture's own resolution sits underneath it, so a full-size sleeve is
+distinguishable from an upscaled thumbnail before it is embedded. Saving a chosen
+image embeds it into every selected file;
 removing strips the embedded picture back out. The album folder itself is left
 alone either way — no `cover.jpg` is written and an existing one is not touched —
 so the embedded copy is what travels with the files, and the cached extraction is
@@ -266,6 +271,11 @@ Some things to know:
   track, at a path (`<album>.cue/track0001`) that does not exist on disk. Their
   per-track tags live inside the cue sheet, which these tools cannot open, so
   they are reported as skipped rather than guessed at.
+- **Track numbers count through the album.** A multi-disc release is numbered
+  straight on (disc 2 starts where disc 1 stopped) while the Disc tag still
+  records which disc a track is on, so the tracks pane needs no disc prefix. A
+  vinyl side's printed position (`A1`, `B2`) is written as the number it stands
+  for, since a tag cannot hold a side letter.
 - **Country is not a tag MPD reports.** MPD's song model has no country field at
   all, so the value is read from the file directly — once per album, then kept in
   `~/.local/state/skollgrim.grimplayer/countries.json`, including when the answer is
@@ -343,7 +353,9 @@ plays it at once, rather than selecting it and waiting for `Enter`. Nothing
 playing leaves the current selection in place, so the view still has an album to
 show. The record is named in a quiet caption above the titles — album, artist,
 year and running time, read from the album's tags — and the `Album caption`
-setting turns that line off for a surface of titles alone.
+setting turns that line off for a surface of titles alone. Hovering a title
+lights it, but the highlight follows a live pointer: a key press hides the cursor
+and takes the highlight with it, and moving the pointer again brings both back.
 
 Above the now-playing bar, tucked into the lower-left corner, sits a small cover
 for the album that follows this one in the library, captioned **Up next**. It is
@@ -354,7 +366,10 @@ tree order), and when **Up next cover** under **Artwork** is off.
 The mouse works too: click a row in the browser to select it and move the caret
 into the next pane (playback still needs `Enter`; in album view a click plays the
 track at once), click a setting to change it, drag the seek bar or the volume
-slider, click the volume icon to mute.
+slider, click the volume icon to mute. Right-click a row — in the browser or in
+album view — to open what is behind it: an artist's folder, an album's folder, or
+a track's file selected in the file manager. The file manager is Flea on Omarchy,
+with Nautilus, the desktop `FileManager1` service and `xdg-open` as fallbacks.
 
 ## Notes and limitations
 

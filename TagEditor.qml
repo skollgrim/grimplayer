@@ -125,6 +125,51 @@ Item {
 
     readonly property bool coverFocused: root.rowIndex === root.coverStop()
 
+    // The preview is drawn larger here than the thumbnails elsewhere, because
+    // this is the one screen where the picture itself is being chosen. The
+    // resolution underneath answers "is this a real cover or a 200px thumbnail?"
+    // -- Image.sourceSize only reports the size it decoded at, so the number is
+    // read from the file with ffprobe.
+    readonly property int coverPreviewSize: Math.round(64 * root.uiScale)
+    property string coverResolution: ""
+    property int coverProbeToken: 0
+
+    // What the preview is actually showing: the chosen file when there is one,
+    // otherwise whatever CoverArt resolved. Only once the Image is Ready, so a
+    // candidate the walk is still trying is never probed.
+    readonly property string previewSourcePath: {
+        if (root.coverAction === "remove" || !previewArt.hasArt) return ""
+        return Covers.pathFromUrl(previewArt.overrideSource !== ""
+            ? previewArt.overrideSource : previewArt.imageSource)
+    }
+    onPreviewSourcePathChanged: root.probeCoverResolution()
+
+    function probeCoverResolution() {
+        var path = root.previewSourcePath
+        root.coverProbeToken++
+        if (path === "") {
+            root.coverResolution = ""
+            resolutionProbe.pendingPath = ""
+            return
+        }
+        // One probe at a time: a candidate that resolves while the previous
+        // file is still being read replaces the pending path, and the latest
+        // one wins when the run finishes.
+        if (resolutionProbe.running) {
+            resolutionProbe.pendingPath = path
+            return
+        }
+        root.startResolutionProbe(path)
+    }
+
+    function startResolutionProbe(path) {
+        resolutionProbe.pendingPath = ""
+        resolutionProbe.probeToken = root.coverProbeToken
+        resolutionProbe.command = ["ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", path]
+        resolutionProbe.running = true
+    }
+
     // ---- lookup ----
     //
     // A MusicBrainz match held for review, not written: the candidates are what
@@ -770,6 +815,30 @@ Item {
         root.rowKey(event)
     }
 
+    // The resolution caption under the preview. ffprobe rather than Image
+    // because sourceSize caps the decode and QML exposes no natural size; a
+    // failure just leaves the caption empty, which is the right answer for a
+    // file the image loader accepted but the prober could not read.
+    Process {
+        id: resolutionProbe
+        running: false
+        command: []
+        property int probeToken: 0
+        property string pendingPath: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (resolutionProbe.probeToken !== root.coverProbeToken) return
+                var m = /^(\d+)x(\d+)$/.exec(this.text.trim())
+                root.coverResolution = m ? m[1] + " × " + m[2] : ""
+            }
+        }
+        onExited: {
+            if (resolutionProbe.pendingPath !== "") {
+                root.startResolutionProbe(resolutionProbe.pendingPath)
+            }
+        }
+    }
+
     Process {
         id: picker
         running: false
@@ -1004,12 +1073,13 @@ Item {
         width: Math.round(620 * root.uiScale)
         // Tall enough for the fields as they stand, and taller as "was" lines
         // appear; never taller than the room the panel gives it, so it stays on
-        // screen. 612 is the height the fields alone need; the extra 18 is the
-        // path line under the title, which the fields never had to share with.
+        // screen. 660 is the height the fields, match row and the larger cover
+        // preview need; the extra 18 is the path line under the title, which the
+        // fields never had to share with.
         readonly property real maxCardHeight: Math.max(
             Math.round(320 * root.uiScale),
             root.height - Math.round(32 * root.uiScale))
-        height: Math.min(Math.round((612 + root.changedFieldCount * 18) * root.uiScale),
+        height: Math.min(Math.round((660 + root.changedFieldCount * 18) * root.uiScale),
                          card.maxCardHeight)
         radius: Math.round(12 * root.uiScale)
         color: root.colBackground
@@ -1060,7 +1130,7 @@ Item {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Math.round(24 * root.uiScale)
+            anchors.margins: Math.round(20 * root.uiScale)
             spacing: 0
 
             RowLayout {
@@ -1109,8 +1179,8 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.topMargin: Math.round(10 * root.uiScale)
-                Layout.bottomMargin: Math.round(10 * root.uiScale)
+                Layout.topMargin: Math.round(8 * root.uiScale)
+                Layout.bottomMargin: Math.round(8 * root.uiScale)
                 Layout.preferredHeight: 1
                 color: Util.alpha(root.colForeground, 0.08)
             }
@@ -1150,13 +1220,13 @@ Item {
                         Layout.fillWidth: true
                         // A field carrying a "was" line needs the extra height, or
                         // the line would be drawn over the row below it.
-                        Layout.preferredHeight: Math.round(34 * root.uiScale)
+                        Layout.preferredHeight: Math.round(32 * root.uiScale)
                             + (row.changed ? Math.round(18 * root.uiScale) : 0)
                         spacing: Math.round(2 * root.uiScale)
 
                         RowLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: Math.round(34 * root.uiScale)
+                            Layout.preferredHeight: Math.round(32 * root.uiScale)
                             spacing: Math.round(12 * root.uiScale)
 
                             Text {
@@ -1452,7 +1522,13 @@ Item {
             RowLayout {
                 id: coverRow
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.round(44 * root.uiScale)
+                // The preview and its caption are the tallest thing in the card,
+                // and a ColumnLayout will happily squeeze a row with no preferred
+                // height to nothing when the card is tight. Naming the height here
+                // keeps the picture at the size it is meant to be read at.
+                Layout.preferredHeight: root.coverPreviewSize
+                    + (root.coverResolution !== "" ? Math.round(17 * root.uiScale) : 0)
+                Layout.minimumHeight: Layout.preferredHeight
                 spacing: Math.round(12 * root.uiScale)
 
                 Text {
@@ -1465,49 +1541,67 @@ Item {
                     font.family: root.themeFont.family
                 }
 
-                Item {
-                    Layout.preferredWidth: Math.round(40 * root.uiScale)
-                    Layout.preferredHeight: Math.round(40 * root.uiScale)
+                ColumnLayout {
                     Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredWidth: root.coverPreviewSize
+                    spacing: Math.round(3 * root.uiScale)
 
-                    // Shown until the cover is marked for removal. The instance
-                    // overrides CoverArt's own visibility because the editor always
-                    // wants the disc when there is no art, and never wants disk art
-                    // standing in for a cover the user has just cleared.
-                    CoverArt {
-                        id: previewArt
-                        anchors.fill: parent
-                        mpd: root.mpd
-                        theme: root.theme
-                        uiScale: root.uiScale
-                        pixelRatio: root.pixelRatio
-                        subject: root.previewSubject
-                        // The editor's own instance, and only while the editor is up.
-                        active: root.visible
-                        coverBorder: false
-                        placeholder: true
-                        transitionDuration: root.coverTransition
-                        fetchCovers: root.fetchCovers
-                        rounded: root.coverRounded
-                        visible: root.coverAction !== "remove"
-                        overrideSource: root.coverChosen ? Covers.fileUrl(root.coverPath) : ""
+                    Item {
+                        Layout.preferredWidth: root.coverPreviewSize
+                        Layout.preferredHeight: root.coverPreviewSize
+
+                        // Shown until the cover is marked for removal. The instance
+                        // overrides CoverArt's own visibility because the editor always
+                        // wants the disc when there is no art, and never wants disk art
+                        // standing in for a cover the user has just cleared.
+                        CoverArt {
+                            id: previewArt
+                            anchors.fill: parent
+                            mpd: root.mpd
+                            theme: root.theme
+                            uiScale: root.uiScale
+                            pixelRatio: root.pixelRatio
+                            subject: root.previewSubject
+                            // The editor's own instance, and only while the editor is up.
+                            active: root.visible
+                            coverBorder: false
+                            placeholder: true
+                            transitionDuration: root.coverTransition
+                            fetchCovers: root.fetchCovers
+                            rounded: root.coverRounded
+                            visible: root.coverAction !== "remove"
+                            overrideSource: root.coverChosen ? Covers.fileUrl(root.coverPath) : ""
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            visible: root.coverAction === "remove"
+                            radius: Math.round(6 * root.uiScale)
+                            color: Util.alpha(root.colForeground, 0.05)
+                            border.width: 1
+                            border.color: Util.alpha(root.colForeground, 0.12)
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "None"
+                                color: root.colMuted
+                                font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
+                                font.family: root.themeFont.family
+                            }
+                        }
                     }
 
-                    Rectangle {
-                        anchors.fill: parent
-                        visible: root.coverAction === "remove"
-                        radius: Math.round(6 * root.uiScale)
-                        color: Util.alpha(root.colForeground, 0.05)
-                        border.width: 1
-                        border.color: Util.alpha(root.colForeground, 0.12)
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "None"
-                            color: root.colMuted
-                            font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
-                            font.family: root.themeFont.family
-                        }
+                    // The picture's own size, not the size it is drawn at: the
+                    // point is to tell a full-size sleeve from an upscaled
+                    // thumbnail. Quiet enough to stay a footnote to the cover.
+                    Text {
+                        Layout.preferredWidth: root.coverPreviewSize
+                        visible: root.coverResolution !== ""
+                        text: root.coverResolution
+                        horizontalAlignment: Text.AlignHCenter
+                        color: Util.alpha(root.colMuted, 0.8)
+                        font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)
+                        font.family: root.themeFont.family
                     }
                 }
 
@@ -1584,8 +1678,8 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.topMargin: Math.round(10 * root.uiScale)
-                Layout.bottomMargin: Math.round(8 * root.uiScale)
+                Layout.topMargin: Math.round(8 * root.uiScale)
+                Layout.bottomMargin: Math.round(6 * root.uiScale)
                 Layout.preferredHeight: 1
                 color: Util.alpha(root.colForeground, 0.08)
             }

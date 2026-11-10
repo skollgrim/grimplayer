@@ -19,8 +19,8 @@ pragma ComponentBehavior: Bound
 // width is what makes it look deliberate rather than ragged: without it the
 // numeric rows push their values further right than the switches do.
 //
-// The columns scroll together, and the caret's own cell is brought into view as
-// it moves, so a keyboard walk never lands on a row off the bottom edge.
+// The visible tab scrolls, and the caret's own cell is brought into view as it
+// moves, so a keyboard walk never lands on a row off the bottom edge.
 //
 // The selected row is marked three ways at once -- a filled background, an accent
 // bar down its edge, and its label picked out in the accent -- so the caret is
@@ -41,7 +41,16 @@ Item {
     property int index: 0
     property bool editMode: false
     property real uiScale: 1.0
-    property int categoryIndex: 0
+
+    // The tab always follows the caret: a setting lives in exactly one section,
+    // so the section that contains the caret is the one to show. Tab clicks move
+    // the caret into the tab they choose, which is what changes this.
+    readonly property int categoryIndex: config ? config.columnOf(index) : 0
+
+    // The row the caret last held in each tab, so stepping away and back returns
+    // to the row you left rather than to the tab's first row. The caret itself
+    // lives in the panel; this is only the card's memory of where it was.
+    property var columnRow: ({})
 
     // The panel's colour tokens, injected. The card is modal over the panel, so
     // it follows the same palette as everything behind it.
@@ -89,6 +98,21 @@ Item {
         root.editModeRequested(false)
     }
 
+    // Remember where the caret sits inside its tab, so a later return to that
+    // tab can restore the row instead of landing on its first entry.
+    function rememberRow() {
+        if (!root.config) return
+        var c = root.config.columnOf(root.index)
+        var r = root.config.rowOf(root.index)
+        var next = {}
+        for (var k in root.columnRow) next[k] = root.columnRow[k]
+        next[c] = r
+        root.columnRow = next
+    }
+
+    onIndexChanged: root.rememberRow()
+    Component.onCompleted: root.rememberRow()
+
     // One setting cell. The same component draws every column; the model
     // states the entry and its index, and the cell reads the entry for the label
     // and value and for whether it is a slider.
@@ -110,13 +134,6 @@ Item {
             // A dependent whose parent is off. It is drawn, but greyed and kept
             // out of the caret's way, so it cannot change a value nothing reads.
             readonly property bool active: modelData.active !== false
-            // Whether the row has moved off its resting value. Computed here
-            // rather than carried in the model on purpose: `columns` is the
-            // Repeater's model, so stamping this into it would rebuild every
-            // delegate on every setting change -- including each step of a
-            // slider drag. Read through the entry's own get() so only this row
-            // re-evaluates.
-            readonly property bool changed: root.config ? !root.config.isDefault(entryData) : false
             // A row that names a parent in `after` is a child of that row, and
             // tucks in a step so the block reads as one setting's details. The
             // indent is what lets a child carry a bare name -- "Size", "Position"
@@ -135,7 +152,7 @@ Item {
             // actually needs. The child indent is part of that, or an indented row
             // would claim less width than it draws.
             implicitWidth: innerRow.implicitWidth
-                + Math.round(12 * root.uiScale) + Math.round(10 * root.uiScale)
+                + Math.round(16 * root.uiScale) + Math.round(10 * root.uiScale)
                 + (dependent ? indent : 0)
             radius: Math.round(6 * root.uiScale)
             color: selected ? root.colSelectedFill
@@ -196,28 +213,10 @@ Item {
             RowLayout {
                 id: innerRow
                 anchors.fill: parent
-                anchors.leftMargin: Math.round(12 * root.uiScale)
+                anchors.leftMargin: Math.round(16 * root.uiScale)
                     + (row.dependent ? row.indent : 0)
                 anchors.rightMargin: Math.round(10 * root.uiScale)
                 spacing: Math.round(8 * root.uiScale)
-
-                // A fixed slot so the dot's appearance never shifts the label.
-                // The dot marks a value that is no longer at its default; an
-                // unchanged row leaves the slot empty.
-                Item {
-                    Layout.preferredWidth: Math.round(5 * root.uiScale)
-                    Layout.preferredHeight: 1
-                    Layout.alignment: Qt.AlignVCenter
-                    Rectangle {
-                        visible: row.changed
-                        anchors.centerIn: parent
-                        width: Math.max(3, Math.round(4 * root.uiScale))
-                        height: width
-                        radius: width / 2
-                        color: root.colAccent
-                        opacity: 0.85
-                    }
-                }
 
                 // The label is deliberately not bolded when the row is selected.
                 // Bolding changes its advance, which changes this cell's implicit
@@ -402,11 +401,19 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                root.categoryIndex = tab.index
-                                var items = root.columns[tab.index].items
-                                if (items && items.length > 0) {
-                                    root.indexRequested(items[0].index)
+                                // Clicking the tab the caret is already in changes
+                                // nothing: moving to its first row would throw away
+                                // the row you were on for no reason.
+                                if (root.categoryIndex === tab.index) {
+                                    root.editModeRequested(false)
+                                    return
                                 }
+                                var items = root.columns[tab.index]
+                                    ? root.columns[tab.index].items : []
+                                if (items.length === 0) return
+                                var row = root.columnRow[tab.index] || 0
+                                var target = items[Math.max(0, Math.min(row, items.length - 1))]
+                                root.indexRequested(target.index)
                                 root.editModeRequested(false)
                             }
                         }

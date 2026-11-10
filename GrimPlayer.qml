@@ -436,6 +436,15 @@ Item {
         }
         onExited: function () { root.framePartArrived("monitor") }
     }
+
+    // The folder shortcut's helper. Fire-and-forget: the file manager is its own
+    // window, so there is nothing to read back.
+    Process {
+        id: folderOpener
+        running: false
+        command: []
+    }
+
     // The reader reports above only cover a process that started. A command that
     // could not be spawned at all -- hyprctl missing -- fires neither the
     // collector nor onExited, so nothing would ever finish the run and
@@ -940,11 +949,9 @@ Item {
     // its first word ("The Twilight Sad" could only be reached as "the").
     //
     // In the tracks pane a numeric buffer is tried as a track number first, so
-    // "12" reaches track 12 without having to type the title. A multi-disc album
-    // accepts the number its rows show, "2-5", and a bare "5" still finds the
-    // first disc carrying that track. A title that starts with digits remains
-    // reachable: when no track number matches, the same buffer falls through to
-    // the name search below.
+    // "12" reaches track 12 without having to type the title. A title that
+    // starts with digits remains reachable: when no track number matches, the
+    // same buffer falls through to the name search below.
     property string typeaheadBuffer: ""
     // One lowercased name list per pane, built the first time that pane is
     // searched and dropped when its list changes. Rebuilding all three on every
@@ -958,27 +965,29 @@ Item {
             .toLowerCase().replace(/\s+/g, "")
     }
 
-    // The number a track row displays, built the same way PaneRow builds its
-    // label: the track number, with the disc in front once the album has more
-    // than one.
+    // The number a track row displays and type-to-find matches.
     function trackNumberKey(item) {
         if (!item || item.track === null || item.track === undefined) return ""
-        var disc = item.disc === null || item.disc === undefined ? 0 : Number(item.disc)
-        return (disc > 1 ? disc + "-" : "") + String(item.track)
+        return String(item.track)
+    }
+
+    // The number as the tracks pane writes it, padded to two digits so a column
+    // of tracks lines up. The stored format chooses the separator only; a track
+    // number that is already wider than two digits is left as it is.
+    function trackNumberText(item) {
+        if (!item || item.track === null || item.track === undefined) return "--"
+        var n = String(item.track)
+        if (n.length < 2) n = "0" + n
+        return prefs.trackNumberFormat === "dash" ? n + " -" : n + "."
     }
 
     function trackIndexByNumber(buffer) {
-        if (!/^\d+(?:-\d+)?$/.test(buffer)) return -1
+        if (!/^\d+$/.test(buffer)) return -1
+        // Typeahead can arrive padded ("01") to match the row, so compare the
+        // number the buffer stands for rather than its exact text.
+        var want = String(parseInt(buffer, 10))
         for (var i = 0; i < trackList.length; i++) {
-            if (root.trackNumberKey(trackList[i]) === buffer) return i
-        }
-        // A bare number on a multi-disc album has no disc to qualify it. The
-        // first row carrying that track is the one the label order suggests.
-        if (buffer.indexOf("-") < 0) {
-            for (var j = 0; j < trackList.length; j++) {
-                var track = trackList[j].track
-                if (track !== null && track !== undefined && String(track) === buffer) return j
-            }
+            if (root.trackNumberKey(trackList[i]) === want) return i
         }
         return -1
     }
@@ -1083,6 +1092,76 @@ Item {
         var path = url.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "")
         try { path = decodeURIComponent(path) } catch (e) {}
         return path
+    }
+
+    // extras/open_folder.sh, resolved the same way. It owns the file-manager
+    // fallbacks (Flea, Nautilus, FileManager1, xdg-open) so this file only has
+    // to name a directory and a file to select.
+    readonly property string folderScript: {
+        var url = String(Qt.resolvedUrl("extras/open_folder.sh"))
+        var path = url.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "")
+        try { path = decodeURIComponent(path) } catch (e) {}
+        return path
+    }
+
+    // The deepest directory a set of directories shares. Used for an artist,
+    // which has no single album folder: in a normal library this is the artist
+    // folder, and it falls back to the music root when the artist's albums are
+    // scattered.
+    function sharedDir(dirs) {
+        if (dirs.length === 0) return ""
+        var parts = String(dirs[0]).split("/")
+        for (var i = 1; i < dirs.length; i++) {
+            var other = String(dirs[i]).split("/")
+            var n = 0
+            while (n < parts.length && n < other.length && parts[n] === other[n]) n++
+            parts = parts.slice(0, n)
+            if (parts.length === 0) return "/"
+        }
+        return parts.join("/") || "/"
+    }
+
+    // What the folder shortcut opens for a row: the directory, plus the file to
+    // select when the row is a track. The shell script folds a cue album's
+    // virtual track back onto the cue sheet, which is the file that exists.
+    function folderTarget(pane, index) {
+        if (!root.mpd) return null
+        var music = String(root.mpd.musicDir || "")
+        if (music === "") return null
+
+        if (pane === "tracks") {
+            var track = index >= 0 && index < root.trackList.length ? root.trackList[index] : null
+            if (!track) return null
+            return {
+                dir: music + "/" + root.mpd.albumDirOf(track.file),
+                select: music + "/" + track.file
+            }
+        }
+
+        if (pane === "albums") {
+            var album = index >= 0 && index < root.albumList.length ? root.albumList[index] : null
+            if (!album || !album.tracks || album.tracks.length === 0) return null
+            return { dir: music + "/" + root.mpd.albumDirOf(album.tracks[0].file), select: "" }
+        }
+
+        var artist = index >= 0 && index < root.artistList.length ? root.artistList[index] : null
+        if (!artist || !artist.albums || artist.albums.length === 0) return null
+        var dirs = []
+        for (var i = 0; i < artist.albums.length; i++) {
+            var tracks = artist.albums[i].tracks
+            if (tracks && tracks.length > 0)
+                dirs.push(music + "/" + root.mpd.albumDirOf(tracks[0].file))
+        }
+        return dirs.length === 0 ? null : { dir: root.sharedDir(dirs), select: "" }
+    }
+
+    function openFolder(pane, index) {
+        var target = root.folderTarget(pane, index)
+        if (!target || target.dir === "") return
+        folderOpener.command = target.select !== ""
+            ? [root.folderScript, target.dir, target.select]
+            : [root.folderScript, target.dir]
+        folderOpener.running = true
     }
 
     function clearLyrics() {
@@ -1503,7 +1582,10 @@ Item {
         }
     }
 
-    // Up/down walks the caret through all visible entries in display order
+    // Up/down walks the rows of the visible tab, wrapping at its ends. A greyed
+    // row is still a row: the caret can hold it, and Enter or a click simply
+    // refuses to change it, so stepping never skips over a block of settings and
+    // dead-ends on a row that looks like there is more below it.
     function moveSettingRows(delta) {
         if (!settingsOpen) return
         var step = delta < 0 ? -1 : 1
@@ -1516,47 +1598,30 @@ Item {
         for (var i = 0; i < items.length; i++) {
             if (items[i].index === settingIndex) { idx = i; break }
         }
-        if (idx < 0) {
-            for (var t = 0; t < items.length; t++) {
-                if (prefs.isActive(items[t].entry)) {
-                    settingIndex = items[t].index
-                    if (loader) loader.index = settingIndex
-                    settingsEditMode = false
-                    return
-                }
-            }
-            return
-        }
-        for (var k = idx + step; k >= 0 && k < items.length; k += step) {
-            if (prefs.isActive(items[k].entry)) {
-                settingIndex = items[k].index
-                if (loader) loader.index = settingIndex
-                settingsEditMode = false
-                return
-            }
-        }
+        idx = idx < 0 ? 0 : (idx + step + items.length) % items.length
+        settingIndex = items[idx].index
+        settingsEditMode = false
     }
 
-    // Left/right do nothing in stacked layout
+    // Left/right cross the tabs, landing on the row the caret last held there
+    // (or the tab's first row on a first visit). The card derives its visible
+    // tab from the caret, so moving the caret is all that is needed.
     function moveSettingColumns(delta) {
         if (!settingsOpen) return
         var cols = prefs.columns || []
         if (cols.length === 0) return
         var loader = settingsLoader.item
-        var c = (loader ? (loader.categoryIndex || 0) : 0) + (delta < 0 ? -1 : 1)
+        var cat = loader ? (loader.categoryIndex || 0) : prefs.columnOf(settingIndex)
+        var c = cat + (delta < 0 ? -1 : 1)
         if (c < 0) c = cols.length - 1
         if (c >= cols.length) c = 0
-        if (loader) {
-            loader.categoryIndex = c
-            var items = cols[c].items || []
-            if (items.length > 0) {
-                loader.indexRequested(items[0].index)
-                settingIndex = items[0].index
-                loader.index = settingIndex
-            }
-            loader.editModeRequested(false)
-            settingsEditMode = false
+        var items = cols[c].items || []
+        if (items.length > 0) {
+            var row = loader ? (loader.columnRow[c] || 0) : 0
+            var target = items[Math.max(0, Math.min(row, items.length - 1))]
+            settingIndex = target.index
         }
+        settingsEditMode = false
     }
 
     // Every entry now stays in the card, so the list the caret indexes into is
@@ -1955,11 +2020,9 @@ Item {
 
                     artistLabel: function (item) { return item.name }
                     albumLabel: function (item) { return root.albumText(item.year, item.name) }
-                    trackLabel: function (item) {
-                        var n = item.track === null ? "--" : item.track
-                        if (item.disc !== null && item.disc > 1) n = item.disc + "-" + n
-                        return n + ". " + (item.title || "Untitled")
-                    }
+                    trackNumber: function (item) { return root.trackNumberText(item) }
+                    trackNumberMuted: prefs.trackNumberMuted
+                    trackLabel: function (item) { return item.title || "Untitled" }
                     trackSublabel: function (item) { return root.formatTime(item.duration) }
                     playingMarkerSides: prefs.playingMarkerSides
                     trackArtGutter: root.trackArtGutter
@@ -1970,6 +2033,7 @@ Item {
                     onArtistActivated: function (index) { root.selectArtist(index, true) }
                     onAlbumActivated: function (index) { root.selectAlbum(index, true) }
                     onTrackActivated: function (index) { root.selectTrack(index) }
+                    onFolderRequested: function (pane, index) { root.openFolder(pane, index) }
                 }
 
                 // Album view's own surface: a single centred column of titles,
@@ -2003,6 +2067,7 @@ Item {
                         root.selectTrack(index)
                         root.activate()
                     }
+                    onFolderRequested: function (index) { root.openFolder("tracks", index) }
                 }
 
                 Item {
@@ -2654,8 +2719,22 @@ Item {
             // so an onVisibleChanged here would never fire.
             Component.onCompleted: Qt.callLater(function () { if (!root.tagOpen) keyCatcher.forceActiveFocus() })
 
+            // Restores the album view's hover the moment the pointer moves
+            // again, mirroring the compositor, which brings the hidden cursor
+            // back on movement. HoverHandler watches without taking clicks.
+            HoverHandler {
+                onPointChanged: {
+                    if (root.albumView && albumTrackView) albumTrackView.pointerActive = true
+                }
+            }
+
             Keys.onPressed: function (event) {
                 var handled = true
+
+                // Any key means the compositor has hidden the pointer, so the
+                // album view should not keep a row glowing under where it used
+                // to be. Pointer movement sets this back (see above).
+                if (root.albumView && albumTrackView) albumTrackView.pointerActive = false
 
                 // Shift, control and alt are read before the switch. shift+left
                 // and shift+right report the same Qt.Key_Left/Qt.Key_Right as the
@@ -3004,7 +3083,7 @@ Item {
         // column is a Repeater that builds every control whether or not anything
         // is looking at it. Destroying the card on close also drops its own
         // scratch state, which is what the panel wants anyway -- the caret lives
-        // in settingIndex, so a reopened card comes back where it was left.
+        // in settingIndex, and the card is rebuilt from it when it opens.
         Loader {
             id: settingsLoader
             anchors.fill: parent

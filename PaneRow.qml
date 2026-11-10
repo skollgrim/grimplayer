@@ -88,12 +88,17 @@ Item {
     property var artistLabel: null
     property var albumLabel: null
     property var trackLabel: null
+    property var trackNumber: null
+    property bool trackNumberMuted: false
     property var trackSublabel: null
     property var isCurrent: null
 
     signal artistActivated(int index)
     signal albumActivated(int index)
     signal trackActivated(int index)
+    // Right-click on any pane row. The pane name is forwarded so the panel can
+    // resolve the index against the list it belongs to.
+    signal folderRequested(string pane, int index)
 
     // ---- divider geometry ----
     //
@@ -224,6 +229,7 @@ Item {
             label: root.artistLabel
             emptyText: root.emptyArtistsText
             onActivated: function (index) { root.artistActivated(index) }
+            onFolderRequested: function (index) { root.folderRequested("artists", index) }
         }
 
         PaneSlot {
@@ -235,6 +241,7 @@ Item {
             label: root.albumLabel
             emptyText: root.emptyAlbumsText
             onActivated: function (index) { root.albumActivated(index) }
+            onFolderRequested: function (index) { root.folderRequested("albums", index) }
         }
 
         PaneSlot {
@@ -247,6 +254,8 @@ Item {
             model: root.trackList
             currentIndex: root.trackIndex
             label: root.trackLabel
+            prefix: root.trackNumber
+            prefixMuted: root.trackNumberMuted
             sublabel: root.trackSublabel
             isCurrent: root.isCurrent
             emptyText: root.emptyTracksText
@@ -254,6 +263,7 @@ Item {
             // durations do not crowd the cover.
             rightGutter: root.trackArtGutter
             onActivated: function (index) { root.trackActivated(index) }
+            onFolderRequested: function (index) { root.folderRequested("tracks", index) }
         }
     }
 
