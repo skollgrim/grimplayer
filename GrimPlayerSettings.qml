@@ -155,9 +155,22 @@ Item {
                 + Math.round(16 * root.uiScale) + Math.round(10 * root.uiScale)
                 + (dependent ? indent : 0)
             radius: Math.round(6 * root.uiScale)
-            color: selected ? root.colSelectedFill
-                : (rowMouse.containsMouse ? Util.alpha(root.colForeground, 0.04) : "transparent")
-            Behavior on color { ColorAnimation { duration: Style.duration(90) } }
+            // The caret's fill snaps from row to row. It used to be animated
+            // along with the hover fill, which made an up/down step look like
+            // the selection was still catching up while the accent bar and the
+            // label had already moved.
+            color: selected ? root.colSelectedFill : "transparent"
+
+            // The pointer's own answer, drawn under the row's content and faded
+            // in and out separately. Keeping it off the row's background is what
+            // lets selection stay instant without losing the soft hover.
+            Rectangle {
+                anchors.fill: parent
+                radius: row.radius
+                color: Util.alpha(root.colForeground, 0.04)
+                opacity: (!row.selected && rowMouse.containsMouse) ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: Style.duration(90) } }
+            }
 
             // A greyed dependent stays visible but reads as switched off: the
             // whole row fades, and the value ink stops being the accent it is on a
