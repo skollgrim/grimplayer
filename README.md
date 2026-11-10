@@ -354,8 +354,9 @@ playing leaves the current selection in place, so the view still has an album to
 show. The record is named in a quiet caption above the titles — album, artist,
 year and running time, read from the album's tags — and the `Album caption`
 setting turns that line off for a surface of titles alone. Hovering a title
-lights it, but the highlight follows a live pointer: a key press hides the cursor
-and takes the highlight with it, and moving the pointer again brings both back.
+lights it exactly as the caret does, but the highlight follows a live pointer: a
+key press hides the cursor and takes the highlight with it, and moving the
+pointer again brings both back.
 
 Above the now-playing bar, tucked into the lower-left corner, sits a small cover
 for the album that follows this one in the library, captioned **Up next**. It is

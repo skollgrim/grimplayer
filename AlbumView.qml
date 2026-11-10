@@ -87,7 +87,6 @@ Item {
     // the two when it is somewhere else.
     readonly property real dimOpacity: 0.38
     readonly property real selectedOpacity: 0.80
-    readonly property real hoverOpacity: 0.58
 
     // Centre the whole column when it fits, and the caret row when it does not.
     // The row pitch is the same gap the Column uses, so the arithmetic and the
@@ -203,21 +202,12 @@ Item {
                     readonly property bool playing: root.isCurrent !== null
                         && root.isCurrent(modelData)
                     readonly property bool selected: index === root.currentIndex
+                    // The pointer lights a row exactly as the caret does, and
+                    // only while the pointer is live. The compositor hides the
+                    // cursor on a key press, so a key also takes this highlight
+                    // away; moving the pointer brings it back.
                     readonly property bool hovered: root.pointerActive && rowArea.containsMouse
-
-                    // A faint rounded fill behind the row under the pointer, so
-                    // the list answers the mouse without adding a permanent
-                    // stripe. It follows the text block's width rather than the
-                    // whole column, keeping the hovered row aligned with what
-                    // it highlights.
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: Math.min(parent.width, root.textWidth + Math.round(24 * root.uiScale))
-                        height: parent.height
-                        radius: Math.round(6 * root.uiScale)
-                        color: row.hovered ? Util.alpha(root.colForeground, 0.04) : "transparent"
-                        Behavior on color { ColorAnimation { duration: Style.duration(90) } }
-                    }
+                    readonly property bool lit: selected || hovered
 
                     Text {
                         id: title
@@ -229,8 +219,7 @@ Item {
                         text: root.titleFor ? root.titleFor(row.modelData) : ""
                         color: row.playing ? root.playingColor : root.colForeground
                         opacity: row.playing ? 1.0
-                            : (row.selected ? root.selectedOpacity
-                                : (row.hovered ? root.hoverOpacity : root.dimOpacity))
+                            : (row.lit ? root.selectedOpacity : root.dimOpacity)
                         font.pixelSize: root.fontSize
                         font.weight: row.playing ? Font.DemiBold : Font.Normal
                         elide: Text.ElideRight
