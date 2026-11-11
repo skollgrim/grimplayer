@@ -110,15 +110,18 @@ Item {
     // even though both were handed the same thickness.
     //
     // The quantum is the smallest whole number of logical pixels that lands on a
-    // whole output pixel: for a device pixel ratio r, the smallest n with n*r
+    // whole output pixel: for a rendering scale r, the smallest n with n*r
     // integral. At 1.25 that is 4 (4 * 1.25 = 5), and 4 is also the answer for
     // every other quarter-step scale -- 1, 1.5, 1.75, 2 -- which is why a hardcoded
     // 4 looked correct and was only ever correct by luck. A 1.3 display wants 10
     // and a 4/3 one wants 3; handing either of them 4 puts the rules back off the
     // grid and the mismatch comes straight back.
     //
-    // Read from the screen the window is on, falling back to 4 when nothing
-    // reports a ratio, which is the quarter-step case the old constant assumed.
+    // Read from the compositor the window is on (the panel passes it in), falling
+    // back to 4 when nothing reports a ratio, which is the quarter-step case the
+    // old constant assumed. The panel reads it from Hyprland rather than from the
+    // screen's devicePixelRatio, which reports 1 under fractional scaling and is
+    // therefore not the scale the rules are rasterised at.
     // Pinning the first pane to the quantum puts the first rule's left edge on the
     // grid, and the second rule is placed from that same quantum, so both rules
     // start phase-aligned with the same width and measure identically at every
@@ -130,10 +133,10 @@ Item {
     // hands NaN to Layout.preferredWidth and collapses two of the three panes to
     // nothing. So the panel passes the ratio in, the same way it passes uiScale,
     // and a zero default means "not told yet" rather than "quantum of zero".
-    property real pixelRatio: 0
+    property real renderScale: 0
 
     readonly property int deviceQuantum: {
-        var ratio = root.pixelRatio
+        var ratio = root.renderScale
         if (!ratio || ratio <= 0) return 4
         // The tolerance is what lets a ratio that has no finite binary form --
         // 1.1, 4/3 -- land on its answer, since n * ratio lands a rounding error

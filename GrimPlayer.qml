@@ -261,15 +261,42 @@ Item {
     // unless the mode is auto, so a move under a pinned pane costs nothing.
     Connections {
         target: window
-        function onScreenChanged() { root.readFrame() }
+        function onScreenChanged() {
+            root.readFrame()
+            scaleReader.running = true
+        }
     }
 
-    Component.onCompleted: { syncTheme(); readFrame() }
+    Component.onCompleted: { syncTheme(); readFrame(); scaleReader.running = true }
 
-    // Read here rather than in PaneRow because only this file imports Quickshell,
-    // and a binding that names an unimported module fails silently to 0 -- which
-    // is what a zero divider quantum does to the layout. Zero until the shell
-    // reports a screen, at which point PaneRow's quantum resolves.
+    // The rendering scale the divider geometry needs. Not the same number as the
+    // screen's devicePixelRatio: under Hyprland's fractional scaling Quickshell
+    // reports 1 for a 1.25 screen, because the surface is laid out at logical size
+    // and the compositor scales it up. A rule placed at a logical x then lands at
+    // a fractional device x, and a one-pixel-wide rectangle is rasterised to one
+    // or two device pixels depending on that phase -- which is exactly how two
+    // dividers with identical widths in logical pixels came out different widths
+    // on screen. Hyprland reports the real ratio directly (physical pixels per
+    // logical pixel), so read it there and fall back to the screen only until the
+    // read answers.
+    //
+    // Kept separate from pixelRatio below, which the cover decoder uses: that one
+    // stays on the screen's own ratio, so this fix does not change how large a
+    // cover is decoded. Read here rather than in PaneRow because only this file
+    // imports Quickshell, and a binding that names an unimported module fails
+    // silently to 0 -- which is what a zero divider quantum does to the layout.
+    // The read runs at mount and on a screen change, independent of the
+    // cover-band mode: the dividers need the scale even when the frame readers
+    // are pinned off.
+    property real compositorScale: 0
+    readonly property real renderScale: root.compositorScale > 0
+        ? root.compositorScale
+        : (root.activeScreen ? (root.activeScreen.devicePixelRatio || 0) : 0)
+
+    // Device pixel ratio of the window's screen, used by the cover decoder to
+    // decode a cover at display size in physical pixels rather than at full
+    // source resolution. Read here because only this file imports Quickshell;
+    // a binding that names an unimported module fails silently to 0.
     readonly property real pixelRatio: root.activeScreen
         ? (root.activeScreen.devicePixelRatio || 0) : 0
 
@@ -437,6 +464,22 @@ Item {
         onExited: function () { root.framePartArrived("monitor") }
     }
 
+    // The divider scale, kept apart from the frame run above for two reasons: it
+    // is needed in every cover-band mode, and the frame run is skipped entirely
+    // when the pane is pinned. Fire-and-forget -- there is no count to arm, so a
+    // failed hyprctl just leaves the screen's own ratio as the fallback.
+    Process {
+        id: scaleReader
+        command: ["hyprctl", "-j", "monitors"]
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                root.compositorScale =
+                    root.monitorScaleFor(text, root.activeScreen ? root.activeScreen.name : "")
+            }
+        }
+    }
+
     // The folder shortcut's helper. Fire-and-forget: the file manager is its own
     // window, so there is nothing to read back.
     Process {
@@ -523,6 +566,26 @@ Item {
             if (isFinite(Number(list[0].width))) return Math.round(Number(list[0].width))
         } catch (e) {
             // hyprctl missing / Hyprland not running: leave the inset at zero.
+        }
+        return 0
+    }
+    // The scale of the monitor the panel is on, matched by name for the same
+    // reason as monitorWidthFor: on a mixed-scale desk the first entry is not
+    // necessarily the screen this window opened on. Hyprland reports `scale` as
+    // physical pixels per logical pixel, which is the number the divider quantum
+    // is derived from. Zero means "not answered"; the panel then falls back to
+    // the screen's own ratio.
+    function monitorScaleFor(raw, name) {
+        try {
+            var list = JSON.parse(raw || "[]")
+            if (!list || list.length === 0) return 0
+            for (var i = 0; i < list.length; i++) {
+                if (name !== "" && list[i].name === name && Number(list[i].scale) > 0)
+                    return Number(list[i].scale)
+            }
+            if (Number(list[0].scale) > 0) return Number(list[0].scale)
+        } catch (e) {
+            // hyprctl missing / Hyprland not running: the fallback handles it.
         }
         return 0
     }
@@ -2006,7 +2069,7 @@ Item {
                     prefs: prefs
                     theme: theme
                     paneWidth: width
-                    pixelRatio: root.pixelRatio
+                    renderScale: root.renderScale
                     activePane: root.pane
                     artistList: root.artistList
                     albumList: root.albumList
