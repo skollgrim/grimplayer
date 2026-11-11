@@ -18,6 +18,7 @@ import QtQuick.Layouts
 import Quickshell.Io
 import qs.Commons
 import "Covers.js" as Covers
+import "Names.js" as Names
 import "Paths.js" as Paths
 
 Item {
@@ -174,12 +175,13 @@ Item {
     //
     // A MusicBrainz match held for review, not written: the candidates are what
     // the search returned and the index is which is on show. Per-track fields
-    // (title, number, disc) live in lookupPerFile keyed by file, because the
+    // (title, number, disc) live in perFileDraft keyed by file, because the
     // editor's shared one-value-per-field model cannot hold a different title
     // for every track -- an album's shared fields hold only what is common.
+    // Reading a name stages its track and title the same way (see readNames).
     property var lookupCandidates: []
     property int lookupIndex: 0
-    property var lookupPerFile: ({})
+    property var perFileDraft: ({})
     property bool lookupBusy: false
     // Whether the pending cover came from a lookup rather than the user, so a
     // cycle to a candidate with no art can take it back instead of leaving the
@@ -204,7 +206,7 @@ Item {
     property bool wroteThisSession: false
     readonly property bool hasPendingEdits: Object.keys(root.touched).length > 0
         || root.coverAction !== ""
-        || Object.keys(root.lookupPerFile).length > 0
+        || Object.keys(root.perFileDraft).length > 0
     readonly property bool saveIsClose: root.wroteThisSession && !root.hasPendingEdits
 
     // How many fields are currently carrying a "was" line. A field grows by one
@@ -218,6 +220,8 @@ Item {
         }
         return n
     }
+
+    readonly property bool fileFocused: root.rowIndex === root.fileStop()
 
     readonly property bool matchFocused: root.rowIndex === root.matchStop()
 
@@ -274,12 +278,14 @@ Item {
         root.coverPath = ""
         root.lookupCandidates = []
         root.lookupIndex = 0
-        root.lookupPerFile = {}
+        root.perFileDraft = {}
         root.lookupBusy = false
         root.coverFromLookup = false
         root.hasPreLookup = false
         root.preLookupDraft = {}
         root.preLookupTouched = {}
+        root.renamePending = false
+        root.renameItems = []
         root.wroteThisSession = false
         root.previewSubject = root.songs.length > 0
             ? { file: String(root.songs[0].file), song: root.songs[0] } : null
@@ -366,6 +372,211 @@ Item {
 
     property var draft: ({})
 
+    // ---- file name ----
+    //
+    // The name on disk is the other place a track's number and title live, so
+    // the editor reads one into the other and back: **From name** stages what
+    // the file is called (through the same per-file path a lookup uses), and
+    // **Rename** writes the tags and then moves each file to the name those tags
+    // spell. The arithmetic in both directions is in Names.js.
+
+    // A rename is a save with a move on the end. Held here so the save's finish
+    // step can perform it once the writes have landed.
+    property bool renamePending: false
+    property var renameItems: []
+
+    // What a field resolves to for one file: a shared edit beats a per-file one,
+    // which beats the file's own tag. That is the mergeTags order on the writing
+    // side, so a name preview built this way is what the file will say.
+    function resolvedValue(song, key) {
+        if (root.touched[key]) {
+            var d = root.draft[key]
+            return d === undefined || d === null ? "" : String(d)
+        }
+        var per = root.perFileDraft[String(song.file)]
+        if (per && per[key] !== undefined && per[key] !== null) return String(per[key])
+        return root.valueOf(song, key)
+    }
+
+    // The album's own tracks, so a single track picked out of the tracks pane
+    // still knows how wide its album's numbers are written. Falls back to the
+    // selection when the library map has nothing to say about the file.
+    function albumTracks(file) {
+        var dir = root.mpd ? root.mpd.albumDirOf(String(file)) : ""
+        var loc = root.mpd ? root.mpd.trackLocations[String(file)] : null
+        if (loc) {
+            var artist = root.mpd.artists[loc.artist]
+            if (artist && artist.albums[loc.album]) return artist.albums[loc.album].tracks
+        }
+        var out = []
+        for (var i = 0; i < root.songs.length; i++) {
+            if (root.mpd && root.mpd.albumDirOf(String(root.songs[i].file)) === dir)
+                out.push(root.songs[i])
+        }
+        return out
+    }
+
+    // The tags as a name for one file. A missing tag falls back to what the
+    // current name says, so "01 - Title.flac" can be normalized as it stands;
+    // with neither there is nothing to build and the row says so.
+    function nameFor(song, trackWidth) {
+        var from = Names.baseName(String(song.file))
+        var parsed = Names.parse(from)
+        var title = root.resolvedValue(song, "title")
+        if (title === "") title = parsed.title
+        if (title === "") return ""
+        var track = root.resolvedValue(song, "track")
+        if (track === "") track = parsed.track
+        return Names.build(track, title, parsed.ext, { trackWidth: trackWidth })
+    }
+
+    // Every selected file whose name the tags would change, with the names it
+    // would take. The second pass over `current` is what keeps two files from
+    // being promised the same name -- `mv -n` would refuse the second anyway,
+    // and a preview that promised it would be a lie.
+    readonly property var namePlan: {
+        var items = []
+        var skipped = 0
+        var current = {}
+        var widths = {}
+        for (var c = 0; c < root.songs.length; c++)
+            current[Names.baseName(String(root.songs[c].file))] = true
+        for (var i = 0; i < root.songs.length; i++) {
+            var song = root.songs[i]
+            var file = String(song.file)
+            if (!root.mpd || root.mpd.writablePath(file) === "") { skipped++; continue }
+            var dir = root.mpd.albumDirOf(file)
+            if (widths[dir] === undefined) {
+                var tracks = root.albumTracks(file)
+                var max = 0
+                for (var t = 0; t < tracks.length; t++) {
+                    var n = parseInt(root.resolvedValue(tracks[t], "track"), 10)
+                    if (n > max) max = n
+                }
+                widths[dir] = max >= 100 ? 3 : 2
+            }
+            var name = root.nameFor(song, widths[dir])
+            if (name === "") { skipped++; continue }
+            var from = Names.baseName(file)
+            if (name === from) continue
+            if (current[name]) { skipped++; continue }
+            items.push({ song: song, from: from, to: name })
+            current[name] = true
+        }
+        return { items: items, skipped: skipped }
+    }
+
+    // What the File name row reads: the name the tags produce, and for an album
+    // the count rather than a wall of paths.
+    readonly property string nameText: {
+        if (root.songs.length === 0) return ""
+        var plan = root.namePlan
+        if (plan.items.length === 0) {
+            if (plan.skipped === root.songs.length) return "no title to name from"
+            if (root.songs.length === 1) return Names.baseName(String(root.songs[0].file))
+            return root.songs.length + " files · names match"
+        }
+        var first = plan.items[0].to
+        if (plan.items.length === 1 && root.songs.length === 1) return first
+        return first + "  ·  " + (plan.items.length === 1
+            ? "1 file" : plan.items.length + " files")
+    }
+
+    // Reads each selected file's own name into Track, Disc and Title. Values
+    // that already match are left alone, so pressing this on a correctly named
+    // album stages nothing and writes nothing.
+    function readNames() {
+        if (root.busy || !root.mpd) return
+        var changes = []
+        var titles = 0
+        var tracks = 0
+        var ignored = 0
+        for (var i = 0; i < root.songs.length; i++) {
+            var song = root.songs[i]
+            var file = String(song.file)
+            if (root.mpd.writablePath(file) === "") { ignored++; continue }
+            var parsed = Names.parse(file)
+            var entry = {}
+            if (parsed.title !== "" && root.valueOf(song, "title") !== parsed.title) {
+                entry.title = parsed.title
+                titles++
+            }
+            if (parsed.track !== "" && root.valueOf(song, "track") !== parsed.track) {
+                entry.track = parsed.track
+                tracks++
+            }
+            if (parsed.disc !== "" && root.valueOf(song, "disc") !== parsed.disc)
+                entry.disc = parsed.disc
+            if (entry.title === undefined && entry.track === undefined
+                    && entry.disc === undefined) {
+                if (parsed.title === "" && parsed.track === "") ignored++
+                continue
+            }
+            changes.push({ song: song, entry: entry })
+        }
+        if (changes.length === 0) {
+            root.status = ignored === root.songs.length
+                ? "No names to read here" : "Names already match"
+            return
+        }
+        // Snapshot first: reading a name is a staged edit, so Revert has to be
+        // able to hand the fields back exactly as it does after a lookup.
+        root.snapshotLookupBase()
+        var d = {}
+        for (var k in root.draft) d[k] = root.draft[k]
+        var t = {}
+        for (var k2 in root.touched) t[k2] = root.touched[k2]
+        var per = {}
+        for (var k3 in root.perFileDraft) per[k3] = root.perFileDraft[k3]
+        for (var c = 0; c < changes.length; c++) {
+            var change = changes[c]
+            if (root.songs.length === 1) {
+                // A lone track's own facts are the shared fields too, so they
+                // show in the form; an album keeps them per file.
+                for (var f in change.entry) {
+                    d[f] = change.entry[f]
+                    t[f] = true
+                }
+            } else {
+                var key = String(change.song.file)
+                var prev = per[key] === undefined ? {} : per[key]
+                var next = {}
+                for (var p in prev) next[p] = prev[p]
+                for (var f2 in change.entry) next[f2] = change.entry[f2]
+                per[key] = next
+            }
+        }
+        root.draft = d
+        root.touched = t
+        root.perFileDraft = per
+        root.syncFields()
+        var parts = []
+        if (titles > 0) parts.push(titles + (titles === 1 ? " title" : " titles"))
+        if (tracks > 0) parts.push(tracks + (tracks === 1 ? " track" : " tracks"))
+        var summary = "Read " + (changes.length === 1 ? "1 name" : changes.length + " names")
+        root.status = summary + (parts.length > 0 ? " · " + parts.join(", ") : "")
+            + (ignored > 0 ? " · " + ignored + " ignored" : "")
+    }
+
+    // Rename is a save whose last step is the move: the tags are written first
+    // so the new name describes what the file now says. It closes on success,
+    // because the paths this editor was opened on no longer exist.
+    function renameToTags() {
+        if (root.busy) return
+        var plan = root.namePlan
+        if (plan.items.length === 0) {
+            root.status = plan.skipped > 0 ? "No file here can take a new name"
+                                           : "Names already match"
+            return
+        }
+        var items = []
+        for (var i = 0; i < plan.items.length; i++)
+            items.push({ file: String(plan.items[i].song.file), name: plan.items[i].to })
+        root.renameItems = items
+        root.renamePending = true
+        root.save()
+    }
+
     // Opening is what loads it, rather than the panel reaching in afterwards. The
     // two are set in the same tick, so `songs` is already in place by the time
     // this fires, and there is no window where the card is up showing fields that
@@ -412,19 +623,23 @@ Item {
 
     // The Save button is the last stop in the focus cycle, past the final field,
     // so rowIndex counts one past the fields rather than being a second cursor.
-    // That keeps the wrap arithmetic in one place: there are fields + 3 stops (the
-    // match row, then the cover row, then Save), and every key that moves a row
-    // just adds to the index and lets moveRow fold it.
-    function matchStop() {
+    // That keeps the wrap arithmetic in one place: there are fields + 4 stops (the
+    // file name row, then the match row, then the cover row, then Save), and every
+    // key that moves a row just adds to the index and lets moveRow fold it.
+    function fileStop() {
         return root.fields.length
     }
 
-    function coverStop() {
+    function matchStop() {
         return root.fields.length + 1
     }
 
-    function saveStop() {
+    function coverStop() {
         return root.fields.length + 2
+    }
+
+    function saveStop() {
+        return root.fields.length + 3
     }
 
     // Focus goes to the text field inside the row rather than the row itself. The
@@ -442,6 +657,10 @@ Item {
         }
         if (root.rowIndex === root.matchStop()) {
             lookupButton.forceActiveFocus()
+            return
+        }
+        if (root.rowIndex === root.fileStop()) {
+            fromNameButton.forceActiveFocus()
             return
         }
         var rows = fieldColumn.children
@@ -582,7 +801,7 @@ Item {
             t["country"] = true
         }
 
-        // Per-track fields go in lookupPerFile keyed by file, so only files in
+        // Per-track fields go in perFileDraft keyed by file, so only files in
         // the selection are ever covered. For a lone track they are also that
         // track's own facts, so they are copied into the shared fields and show
         // in the UI; for an album they differ per track and stay only in the map.
@@ -598,7 +817,7 @@ Item {
                 per[String(tr.file)] = entry
             }
         }
-        root.lookupPerFile = per
+        root.perFileDraft = per
         if (root.songs.length === 1) {
             // The lone track's own match, never the release's first track: a file
             // the helper could not match to a number has to keep its own title
@@ -713,7 +932,7 @@ Item {
         root.coverAction = root.preLookupCoverAction
         root.coverPath = root.preLookupCoverPath
         root.coverFromLookup = root.preLookupCoverFromLookup
-        root.lookupPerFile = {}
+        root.perFileDraft = {}
         root.hasPreLookup = false
         root.syncFields()
         root.status = "Match reverted"
@@ -809,6 +1028,42 @@ Item {
         }
         if (event.key === Qt.Key_Left) {
             browseButton.forceActiveFocus()
+            event.accepted = true
+            return
+        }
+        root.rowKey(event)
+    }
+
+    // The file name row's two buttons form one stop, like the match buttons:
+    // Left/Right walks between them, everything else moves a row. Rename is
+    // final -- it writes and moves -- so it gets no card-level shortcut; a
+    // stray letter should not be able to rename an album.
+    function onFromNameKey(event) {
+        if (root.busy && event.key !== Qt.Key_Escape) { event.accepted = true; return }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space) {
+            root.readNames()
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Right && renameButton.visible) {
+            renameButton.forceActiveFocus()
+            event.accepted = true
+            return
+        }
+        root.rowKey(event)
+    }
+
+    function onRenameKey(event) {
+        if (root.busy && event.key !== Qt.Key_Escape) { event.accepted = true; return }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Space) {
+            root.renameToTags()
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Left) {
+            fromNameButton.forceActiveFocus()
             event.accepted = true
             return
         }
@@ -936,7 +1191,7 @@ Item {
         }
         // A matched album's per-track titles and numbers are not in the shared
         // fields; they ride alongside them and are written per file.
-        var perFile = root.lookupPerFile ? root.lookupPerFile : {}
+        var perFile = root.perFileDraft ? root.perFileDraft : {}
         var hasPerFile = Object.keys(perFile).length > 0
         // A "set" with nothing chosen is not an edit; treat it as untouched.
         var cover = (root.coverAction === "set" && root.coverPath === "") ? "" : root.coverAction
@@ -944,14 +1199,17 @@ Item {
         // write, and an editor closed and reopened in between would have cleared
         // root.coverPath, silently dropping the cover that was chosen here.
         var coverPath = root.coverPath
-        if (!any && !hasPerFile && cover === "") {
+        // A rename is the save's last step: the tags go to the files first, then
+        // each file takes the name those tags spell (see renameToTags).
+        var renaming = root.renamePending && root.renameItems.length > 0
+        if (!any && !hasPerFile && cover === "" && !renaming) {
             root.status = "Nothing changed"
             return
         }
         var files = []
         for (var s = 0; s < root.songs.length; s++) files.push(root.songs[s])
         root.busy = true
-        root.status = "Writing…"
+        root.status = (!any && !hasPerFile && cover === "") ? "Renaming…" : "Writing…"
         var sess = root.session
 
         var finish = function (tagResult, coverResult) {
@@ -960,7 +1218,6 @@ Item {
             // state below belongs to the session that asked for it, not to
             // whatever is on screen now.
             if (sess !== root.session) return
-            root.busy = false
             var parts = []
             if (tagResult) {
                 if (tagResult.written > 0) parts.push(tagResult.written + " updated")
@@ -979,7 +1236,6 @@ Item {
                 if (coverResult.skipped > 0)
                     parts.push(coverResult.skipped + " skipped")
             }
-            root.status = parts.length > 0 ? parts.join(" · ") : "Nothing changed"
             // Part of the edit did not land. The files that did are written, but
             // clearing the draft here would silently drop what did not and report
             // it with a bare "3 failed". Keep the edit staged and say a retry is
@@ -989,7 +1245,16 @@ Item {
             // so the fields that succeeded read correctly behind the pending ones.
             if ((tagResult && tagResult.failed > 0)
                     || (coverResult && coverResult.failed > 0)) {
-                root.status += " — press Save to retry"
+                root.busy = false
+                root.status = (parts.length > 0 ? parts.join(" · ") : "Nothing changed")
+                    + " — press Save to retry"
+                // Naming a file after a tag that was not written would put a lie
+                // on disk, so the move is dropped with the failed write.
+                if (renaming) {
+                    root.renamePending = false
+                    root.renameItems = []
+                    root.status += " — name unchanged"
+                }
                 root.settleAgreed(tags, hasPerFile)
                 root.syncFields()
                 return
@@ -997,13 +1262,16 @@ Item {
             // Everything the user just asked for has been dealt with, so the draft
             // is no longer pending. Clearing `touched` is what stops the next open
             // from offering the previous edit's values as if they were agreed on.
+            // Cleared before the move so a rename that fails to start cannot
+            // leave the old drafts behind to be written a second time.
+            var baseStatus = parts.length > 0 ? parts.join(" · ") : "Nothing changed"
             root.touched = {}
             root.draft = {}
             root.coverAction = ""
             root.coverPath = ""
             root.lookupCandidates = []
             root.lookupIndex = 0
-            root.lookupPerFile = {}
+            root.perFileDraft = {}
             root.coverFromLookup = false
             root.hasPreLookup = false
             root.wroteThisSession = true
@@ -1019,10 +1287,50 @@ Item {
             // is also what shows a lookup-filled title/track as "multiple" again,
             // since those fields settle to null rather than to one shared value.
             root.syncFields()
+            // The selection's own objects still hold what the files said when the
+            // editor opened, and a rename is planned from them. Bring them up to
+            // what was just written, or pressing Rename after Save would name the
+            // file after the tag it used to have. Cue tracks cannot take a write
+            // and never enter a rename plan, so they are left as they were.
+            for (var w = 0; w < root.songs.length; w++) {
+                var written = root.songs[w]
+                if (root.mpd.writablePath(String(written.file)) === "") continue
+                for (var tk in tags) written[tk] = tags[tk]
+                var own = perFile[String(written.file)]
+                if (own) for (var pk in own) written[pk] = own[pk]
+            }
+
+            if (!renaming) {
+                root.busy = false
+                root.status = baseStatus
+                return
+            }
+            var items = root.renameItems
+            root.renamePending = false
+            root.renameItems = []
+            root.status = baseStatus
+            // The moves are in the service's own queue; busy stays true until
+            // they land so a second Save cannot race the files being moved.
+            root.mpd.renameFiles(items, function (result) {
+                if (sess !== root.session) return
+                root.busy = false
+                var bits = []
+                if (result.moved > 0) bits.push(result.moved + " renamed")
+                if (result.skipped > 0) bits.push(result.skipped + " skipped")
+                if (result.failed > 0) bits.push(result.failed + " failed")
+                root.status = baseStatus + (bits.length > 0 ? " · " + bits.join(" · ") : "")
+                // The paths this session was opened on no longer exist. The
+                // update MPD was just sent brings the tree back with the new
+                // names, so close rather than keep editing files that are not
+                // there; a move that happened is the whole point of pressing
+                // Rename.
+                if (result.moved > 0) root.dismissed()
+            })
         }
 
         // Tags first, then the cover: both rewrite the same files, and the two
-        // taggers must not be open on one file at once.
+        // taggers must not be open on one file at once. A rename-only save skips
+        // straight to the move.
         if (any || hasPerFile) {
             root.mpd.applyTagsSet(files, tags, perFile, function (tagResult) {
                 if (cover === "") { finish(tagResult, null); return }
@@ -1030,10 +1338,12 @@ Item {
                     finish(tagResult, coverResult)
                 })
             })
-        } else {
+        } else if (cover !== "") {
             root.mpd.applyCover(files, cover, coverPath, function (coverResult) {
                 finish(null, coverResult)
             })
+        } else {
+            finish(null, null)
         }
     }
 
@@ -1075,11 +1385,11 @@ Item {
         // appear; never taller than the room the panel gives it, so it stays on
         // screen. 660 is the height the fields, match row and the larger cover
         // preview need; the extra 18 is the path line under the title, which the
-        // fields never had to share with.
+        // fields never had to share with, and the file name row adds its own 34.
         readonly property real maxCardHeight: Math.max(
             Math.round(320 * root.uiScale),
             root.height - Math.round(32 * root.uiScale))
-        height: Math.min(Math.round((660 + root.changedFieldCount * 18) * root.uiScale),
+        height: Math.min(Math.round((694 + root.changedFieldCount * 18) * root.uiScale),
                          card.maxCardHeight)
         radius: Math.round(12 * root.uiScale)
         color: root.colBackground
@@ -1124,6 +1434,10 @@ Item {
                 // Only reaches the card when no field has focus, so an "l" typed
                 // into a tag never triggers a lookup.
                 root.lookUp()
+                event.accepted = true
+            } else if (event.key === Qt.Key_F) {
+                // Same rule as L: a focused field just types the letter.
+                root.readNames()
                 event.accepted = true
             }
         }
@@ -1346,6 +1660,110 @@ Item {
                             font.family: root.themeFont.family
                             elide: Text.ElideRight
                         }
+                    }
+                }
+            }
+
+            // The file's own name, and the two directions between it and the
+            // tags. From name stages what the name says into the fields through
+            // the same per-file path a lookup uses; Rename writes the staged
+            // tags and then moves each file to the name those tags spell. It
+            // sits above Match because it is about this file, not a search.
+            RowLayout {
+                id: fileRow
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.round(34 * root.uiScale)
+                spacing: Math.round(12 * root.uiScale)
+
+                Text {
+                    Layout.preferredWidth: Math.round(130 * root.uiScale)
+                    Layout.alignment: Qt.AlignVCenter
+                    text: "File name"
+                    color: root.fileFocused ? root.colForeground
+                                            : root.colMuted
+                    font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                    font.family: root.themeFont.family
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
+                    text: root.nameText
+                    // The colour says whether pressing Rename would do anything:
+                    // the foreground is a name waiting for the file, the muted
+                    // ink is the name it already has.
+                    color: root.namePlan.items.length > 0 ? root.colForeground
+                                                         : root.colMuted
+                    elide: Text.ElideMiddle
+                    font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                    font.family: root.themeFont.family
+                }
+
+                Rectangle {
+                    id: fromNameButton
+                    Layout.alignment: Qt.AlignVCenter
+                    width: fromNameLabel.implicitWidth + Math.round(24 * root.uiScale)
+                    height: Math.round(28 * root.uiScale)
+                    radius: Math.round(6 * root.uiScale)
+                    color: fromNameMouse.containsMouse || activeFocus
+                        ? Util.alpha(root.colAccent, 0.26)
+                        : Util.alpha(root.colAccent, 0.16)
+                    border.width: activeFocus ? 1 : 0
+                    border.color: Util.alpha(root.colAccent, 0.7)
+                    activeFocusOnTab: false
+                    Keys.onPressed: (event) => root.onFromNameKey(event)
+
+                    Text {
+                        id: fromNameLabel
+                        anchors.centerIn: parent
+                        text: "From name"
+                        color: root.colForeground
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.family: root.themeFont.family
+                    }
+
+                    MouseArea {
+                        id: fromNameMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.readNames()
+                    }
+                }
+
+                Rectangle {
+                    id: renameButton
+                    Layout.alignment: Qt.AlignVCenter
+                    // Nothing to rename when the tags already spell the name, or
+                    // when there is no title to spell it from.
+                    visible: root.namePlan.items.length > 0
+                    width: renameLabel.implicitWidth + Math.round(24 * root.uiScale)
+                    height: Math.round(28 * root.uiScale)
+                    radius: Math.round(6 * root.uiScale)
+                    color: renameMouse.containsMouse || activeFocus
+                        ? Util.alpha(root.colForeground, 0.16)
+                        : Util.alpha(root.colForeground, 0.07)
+                    border.width: 1
+                    border.color: Util.alpha(root.colForeground, 0.30)
+                    activeFocusOnTab: false
+                    Keys.onPressed: (event) => root.onRenameKey(event)
+
+                    Text {
+                        id: renameLabel
+                        anchors.centerIn: parent
+                        text: root.namePlan.items.length > 1
+                            ? "Rename " + root.namePlan.items.length : "Rename"
+                        color: root.colForeground
+                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.family: root.themeFont.family
+                    }
+
+                    MouseArea {
+                        id: renameMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.renameToTags()
                     }
                 }
             }
@@ -1691,7 +2109,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     text: root.status !== "" ? root.status
-                        : "Enter saves · Cancel discards · L looks up · ← → cycle matches · Tab moves"
+                        : "Enter saves · Cancel discards · L looks up · F reads names · Tab moves"
                     color: root.status === "" ? root.colMuted
                                                : Util.alpha(root.colAccent, 1.0)
                     elide: Text.ElideRight

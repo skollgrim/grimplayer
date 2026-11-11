@@ -175,11 +175,12 @@ and `Esc`, `Q` or `?` closes it.
 In the tag editor: `Enter`, the **Save** button and **Close** all do the same
 thing (see below); `Esc` or **Cancel** discards and closes at once, with no
 confirmation, because nothing is written until Save; `Tab` / `↑` `↓` move
-through the fields, the match row, the cover row and the two decision buttons,
-wrapping at both ends. On the match row, `←` `→` move between Look up, Prev,
-Next and Revert; on the cover row, `←` `→` move between Browse and Remove. `L`
-runs a lookup from the card itself — a field that has focus just types the
-letter.
+through the fields, the file name row, the match row, the cover row and the two
+decision buttons, wrapping at both ends. On the file name row, `←` `→` move
+between From name and Rename; on the match row, `←` `→` move between Look up,
+Prev, Next and Revert; on the cover row, `←` `→` move between Browse and Remove.
+`L` runs a lookup from the card itself and `F` reads the file's own name into
+the fields — a field that has focus just types the letter.
 
 ### Tag editor
 
@@ -203,27 +204,29 @@ are open. Paths are shown relative to the music library when they live inside it
 and a cue album's virtual tracks name the cue sheet, the file that really exists.
 The line is elided in the middle, so the filename stays readable.
 
-Below them, reading as one more field, is a **Cover art** row: a preview of the
-selection's cover, a **Browse…** button that opens a file chooser in the album
-folder (so the covers already beside the tracks are the first thing on offer), and
-a **Remove** button. The preview is drawn at a size you can actually judge, and
-the picture's own resolution sits underneath it, so a full-size sleeve is
-distinguishable from an upscaled thumbnail before it is embedded. Saving a chosen
-image embeds it into every selected file;
-removing strips the embedded picture back out. The album folder itself is left
-alone either way — no `cover.jpg` is written and an existing one is not touched —
-so the embedded copy is what travels with the files, and the cached extraction is
-dropped so the player re-reads what the files now hold.
+Below the fields, reading as one more field, is a **File name** row. **From name**
+reads the file's own name into Track, Disc and Title, so a library that arrived
+as `01 - Title.flac` can be tagged without retyping it. `01 - Title`,
+`01. Title`, `01_Title`, `01 Title`, `1-02 Title` and
+`Artist - Album - 01 Title` are all understood, and the artist/album prefix is
+left in the name rather than guessed into a tag. A name with dashes but no
+number is left alone, because `Artist - Title` and `Album - Title` cannot be
+told apart, and a value that already matches its tag is not staged. Reading a
+name is a staged edit like a lookup: untouched until Save, undoable with
+**Revert**, and a lone track's values also appear in the fields.
 
-Because the folder is left alone, an album that already has a sidecar image would
-otherwise keep showing it. The editor therefore remembers the decision per album
-(in `~/.local/state/skollgrim.grimplayer/coveroverrides.json`): a set cover tells
-the player to show the embedded picture and ignore the sidecar beside the tracks,
-and a removal tells it to show no art at all rather than falling back to the
-sidecar or the stores. The choice survives a restart and is undone by deleting
-that album's entry from the file (or the file itself).
+**Rename** is the other direction: it writes the staged tags and then moves each
+selected file to `NN - Title.ext`, the track padded to two digits (or three when
+the album numbers past 99), keeping its own extension. A missing Title or Track
+falls back to what the current name says, so a well-named but untagged album can
+be normalized in one pass; with no title anywhere the file is left alone rather
+than named `01 - .flac`. An existing file is never overwritten — a name already
+taken is skipped and reported — and a cue album's virtual tracks are skipped as
+everywhere else. Once a file has moved the editor closes, because the paths it
+was opened on no longer exist, and MPD is told to update so the browser follows
+the new names.
 
-Above it, reading as one more field, is a **Match** row with a **Look up** button:
+Below the file name row is a **Match** row with a **Look up** button:
 it searches [MusicBrainz](https://musicbrainz.org/) for the selected album and
 pre-fills everything from the best match — Artist, Album artist, Album, Year and
 Country, each track's own Title, Track and Disc, and a front cover. The cover is
@@ -248,6 +251,26 @@ album only: a selection spanning several albums (an artist's whole shelf) is
 refused rather than guessed at. Look up needs `python3` with `mutagen` and
 `musicbrainzngs` (see Requirements); without them the row reports the failure and
 the editor is otherwise unchanged.
+
+Below the match row is a **Cover art** row: a preview of the
+selection's cover, a **Browse…** button that opens a file chooser in the album
+folder (so the covers already beside the tracks are the first thing on offer), and
+a **Remove** button. The preview is drawn at a size you can actually judge, and
+the picture's own resolution sits underneath it, so a full-size sleeve is
+distinguishable from an upscaled thumbnail before it is embedded. Saving a chosen
+image embeds it into every selected file;
+removing strips the embedded picture back out. The album folder itself is left
+alone either way — no `cover.jpg` is written and an existing one is not touched —
+so the embedded copy is what travels with the files, and the cached extraction is
+dropped so the player re-reads what the files now hold.
+
+Because the folder is left alone, an album that already has a sidecar image would
+otherwise keep showing it. The editor therefore remembers the decision per album
+(in `~/.local/state/skollgrim.grimplayer/coveroverrides.json`): a set cover tells
+the player to show the embedded picture and ignore the sidecar beside the tracks,
+and a removal tells it to show no art at all rather than falling back to the
+sidecar or the stores. The choice survives a restart and is undone by deleting
+that album's entry from the file (or the file itself).
 
 Country takes a two-letter ISO code (`SE`, `FI`, `US`) rather than a name, and
 the flag shown beside the field is the one the now-playing strip will show.
@@ -431,11 +454,13 @@ reads.
 `Covers.js` and `Palette.js` are deliberately plain scripts rather than
 `.pragma library`: a library is compiled once per engine and cached across
 reloads, so a library edit would never be picked up, while a plain script is
-recompiled with the component that imports it. `Paths.js` follows the same rule,
-and keeps the tag editor's path arithmetic testable outside the shell:
+recompiled with the component that imports it. `Paths.js` and `Names.js` follow
+the same rule, and keep the tag editor's path and filename arithmetic testable
+outside the shell:
 
 ```bash
 node extras/test-paths.js
+node extras/test-names.js
 ```
 
 Lint the QML against the shell's own module root:

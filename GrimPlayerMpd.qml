@@ -1570,6 +1570,76 @@ Item {
         }
     }
 
+    // ---- renaming ----
+    //
+    // The tag editor's other direction: the tags say what the file should be
+    // called, and the file is moved to match. MPD keys its whole database by
+    // path, so a rename behind its back would leave the old entry behind until
+    // a rescan -- the `update` at the end is what lets the tree follow.
+    //
+    // One `mv` at a time, like the taggers, so a file that cannot be moved does
+    // not abandon the rest of the album. `-n` refuses to overwrite an existing
+    // file, and `-v` says whether the move happened: a target that is already
+    // taken exits 0 without printing, which is counted as skipped rather than
+    // silently claimed.
+    property var renameQueue: []
+    property var renameResult: null
+    property var renameOnDone: null
+
+    // entries: [{ file: <MPD path>, name: <new basename> }]. A name that tries
+    // to leave its folder is refused here, not passed to mv.
+    function renameFiles(entries, onDone) {
+        var queue = []
+        var skipped = 0
+        for (var i = 0; i < entries.length; i++) {
+            var rel = String(entries[i].file)
+            var name = String(entries[i].name)
+            var from = root.writablePath(rel)
+            if (from === "" || name === "" || name === "." || name === ".."
+                    || name.indexOf("/") >= 0) {
+                skipped++
+                continue
+            }
+            var cut = from.lastIndexOf("/")
+            if (cut <= 0) { skipped++; continue }
+            queue.push({ from: from, to: from.substring(0, cut + 1) + name })
+        }
+        root.renameResult = { moved: 0, skipped: skipped, failed: 0 }
+        root.renameOnDone = typeof onDone === "function" ? onDone : null
+        root.renameQueue = queue
+        root.runNextRename()
+    }
+
+    function runNextRename() {
+        if (root.renameQueue.length === 0) { root.finishRename(); return }
+        var item = root.renameQueue.shift()
+        renamer.command = ["mv", "-n", "-v", "--", item.from, item.to]
+        renamer.running = true
+    }
+
+    function finishRename() {
+        var result = root.renameResult
+        // A move is a delete and an add as far as MPD is concerned; without this
+        // the old path would linger in the tree beside the new one.
+        if (result.moved > 0) root.send("update")
+        var cb = root.renameOnDone
+        root.renameOnDone = null
+        if (cb) cb(result)
+    }
+
+    Process {
+        id: renamer
+        running: false
+        command: []
+        stdout: StdioCollector { id: renameOut }
+        onExited: function (exitCode) {
+            if (exitCode !== 0) root.renameResult.failed++
+            else if ((renameOut.text || "").indexOf(" -> ") >= 0) root.renameResult.moved++
+            else root.renameResult.skipped++
+            Qt.callLater(root.runNextRename)
+        }
+    }
+
     // ---- country cache ----
     //
     // MPD cannot be asked for a country, so the values are read from the files
