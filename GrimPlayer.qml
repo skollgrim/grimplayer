@@ -19,6 +19,8 @@ import Quickshell.Io
 import qs.Commons
 import "PaletteSync.js" as PaletteSync
 import "Lyrics.js" as Lyrics
+import "Layout.js" as LayoutMath
+import "Paths.js" as Paths
 
 // The sibling components live beside this file, so the directory needs to be on
 // the import path: an implicit-directory import is not applied to files loaded
@@ -410,9 +412,8 @@ Item {
     // process's exited -- and only the first of them counts (see
     // framePartArrived).
     property var frameAnswered: ({})
-    readonly property int windowInset: root.screenWidth > 0 && root.physicalScreenWidth > 0
-        ? Math.round((root.frameGap + root.frameBorder) * root.screenWidth / root.physicalScreenWidth)
-        : 0
+    readonly property int windowInset: LayoutMath.windowInset(root.frameGap, root.frameBorder,
+        root.screenWidth, root.physicalScreenWidth)
     readonly property int usableWidth: Math.max(0, root.screenWidth - 2 * root.windowInset)
     readonly property int coverBandMinWidth: Math.round(root.usableWidth * prefs.coverBandMinPct / 100)
     // The compositor's own frame arithmetic does not match the sum derived above
@@ -429,16 +430,16 @@ Item {
     // the setting offers (5% of a 1536 screen is 77), so it cannot pull a smaller
     // window up into the pane.
     readonly property int coverBandSlack: 6
-    readonly property bool coverBand: {
-        if (prefs.coverBandMode === "on") return true
-        if (prefs.coverBandMode === "off") return false
-        // Auto-hide at very narrow widths to keep the three-pane layout usable
-        if (root.width > 0 && root.width < Math.round(680 * prefs.uiScale)) return false
-        // No screen reported yet, or no frame read back: keep the pane rather than
-        // flicker it away for the frame before the compositor answers.
-        if (root.screenWidth <= 0 || !root.frameRead) return true
-        return window.width + root.coverBandSlack >= root.coverBandMinWidth
-    }
+    readonly property bool coverBand: LayoutMath.coverBandVisible({
+        mode: prefs.coverBandMode,
+        width: root.width,
+        windowWidth: window.width,
+        uiScale: prefs.uiScale,
+        screenWidth: root.screenWidth,
+        frameRead: root.frameRead,
+        minWidth: root.coverBandMinWidth,
+        slack: root.coverBandSlack
+    })
     readonly property string coverBandAlign: prefs.coverBandAlign
     // Read the compositor's frame so the threshold tracks a gaps change rather
     // than holding the value it started with. Reading on the Hyprland config-reload
@@ -618,9 +619,8 @@ Item {
     // placement the window chose picks the size rather than the stored value.
     // Pinning the pane on or off leaves the artwork-size setting in charge, which
     // is why the card still offers that slider there and hides it under auto.
-    readonly property int coverScalePct: prefs.coverBandMode === "auto"
-        ? (root.coverBand ? 100 : 30)
-        : prefs.coverScale
+    readonly property int coverScalePct: LayoutMath.coverScalePct(
+        prefs.coverBandMode, root.coverBand, prefs.coverScale)
     // Vertical breathing room kept above and below the cover inside its pane, and
     // the gutter the floating cover keeps from the window edges. Whether the
     // artwork pane keeps a margin on the sides too is the coverPadding setting
@@ -642,8 +642,8 @@ Item {
     // fraction of it. A share is what lets one setting mean "fill the pane" on
     // any monitor, instead of landing at a different effective size on each. The
     // share itself comes from coverScalePct, so this never reads the raw setting.
-    readonly property int heroCover: Math.max(Math.round(48 * prefs.uiScale),
-        Math.round(root.paneHeight * root.coverScalePct / 100))
+    readonly property int heroCover: LayoutMath.heroCover(
+        root.paneHeight, root.coverScalePct, prefs.uiScale)
 
     // The square the cover is drawn at in its pane: the chosen share of the pane
     // height, capped at 60% of the window width so the three lists keep a readable
@@ -656,29 +656,32 @@ Item {
     // width: the titles are the content, and the cover should leave them room.
     // The last cap keeps a readable track list on a narrow window.
     readonly property int albumMinListWidth: Math.round(240 * prefs.uiScale)
-    readonly property int albumCoverSize: {
-        var room = window.width - root.albumMinListWidth
-            - root.coverPad * 2
-        return Math.max(Math.round(48 * prefs.uiScale),
-            Math.min(root.paneHeight, Math.round(window.width * 0.50), room))
-    }
+    readonly property int albumCoverSize: LayoutMath.albumCoverSize(
+        window.width, root.paneHeight, root.albumMinListWidth,
+        root.coverPad, prefs.uiScale)
     readonly property bool coverPaneShown: root.coverBand || root.albumView
-    readonly property int paneCoverSize: root.coverPaneShown
-        ? (root.albumView ? root.albumCoverSize
-            : Math.max(Math.round(48 * prefs.uiScale),
-                       Math.min(root.heroCover,
-                                Math.round(window.width * 0.60))))
-        : 0
+    readonly property int paneCoverSize: LayoutMath.paneCoverSize({
+        shown: root.coverPaneShown,
+        albumView: root.albumView,
+        albumCover: root.albumCoverSize,
+        heroCover: root.heroCover,
+        windowWidth: window.width,
+        uiScale: prefs.uiScale
+    })
     // Width of the artwork pane. With a margin (the padding setting on) the cover
     // is held in from the edges, so the pane spans that margin on each side plus
     // the rule strip on its inner edge. With no margin the cover runs flush to
     // both edges and rides over the rule, so the pane is sized to the cover alone
     // -- no strip reserved -- and the rule shows only above and below the art, as
     // if the cover had eaten the stretch it covers (see the CoverArt item below).
-    readonly property int coverPaneWidth: root.coverPaneShown
-        ? root.paneCoverSize + root.coverPad * 2
-          + (prefs.coverPadding && !root.albumView ? root.coverPaneRule : 0)
-        : 0
+    readonly property int coverPaneWidth: LayoutMath.coverPaneWidth({
+        shown: root.coverPaneShown,
+        albumView: root.albumView,
+        paneCoverSize: root.paneCoverSize,
+        coverPad: root.coverPad,
+        padded: prefs.coverPadding,
+        rule: root.coverPaneRule
+    })
     // Thickness of the rule on the artwork pane's inner edge, shared with the pane
     // row so the two never drift. Zero when the column separators are off.
     // Otherwise it is always drawn: with no margin the cover sits over it and
@@ -699,22 +702,17 @@ Item {
     // space left over shrinks to less than that, at which point the inset gives
     // way so a full pane-height cover sits exactly against the top and the strip
     // -- flush, not short by a margin it can no longer afford.
-    readonly property int coverBandInset: Math.min(root.coverPad,
-        Math.max(0, Math.round((root.paneHeight - root.paneCoverSize) / 2)))
+    readonly property int coverBandInset: LayoutMath.coverBandInset(
+        root.coverPad, root.paneHeight, root.paneCoverSize)
     // The cover's y inside the pane, from the pane-position setting: against the
     // top or bottom edge (bar the inset above), or centred.
-    readonly property int coverBandY: {
-        if (root.coverBandAlign === "top") return root.coverBandInset
-        if (root.coverBandAlign === "middle")
-            return Math.round((root.paneHeight - root.paneCoverSize) / 2)
-        return root.paneHeight - root.coverBandInset - root.paneCoverSize
-    }
+    readonly property int coverBandY: LayoutMath.coverBandY(
+        root.coverBandAlign, root.paneHeight, root.paneCoverSize, root.coverBandInset)
     // The floating cover: the same share of the pane height, capped so it never
     // spills past the gutter it keeps from the window edges.
-    readonly property int floatingCoverSize: Math.max(Math.round(48 * prefs.uiScale),
-        Math.min(root.heroCover,
-                 window.width - root.floatGutter * 2,
-                 root.paneHeight - root.floatGutter * 2))
+    readonly property int floatingCoverSize: LayoutMath.floatingCoverSize(
+        root.heroCover, window.width, root.paneHeight,
+        root.floatGutter, prefs.uiScale)
 
     // Karaoke's cover, when it sits beside the lyrics: as tall as the reading
     // area, the way the artwork pane looks at full size. The width cap is the
@@ -723,11 +721,9 @@ Item {
     // matters on a small panel: it keeps a readable text column instead of
     // letting the 60% share push the right margin past the left one.
     readonly property int karaokeMinTextWidth: Math.round(200 * prefs.uiScale)
-    readonly property int karaokeCoverSize: Math.max(Math.round(48 * prefs.uiScale),
-        Math.min(window.height - root.karaokeMargin * 2,
-                 Math.round(window.width * 0.60),
-                 window.width - root.karaokeMargin * 2 - root.karaokeCoverGap
-                     - root.karaokeMinTextWidth))
+    readonly property int karaokeCoverSize: LayoutMath.karaokeCoverSize(
+        window.width, window.height, root.karaokeMargin,
+        root.karaokeCoverGap, root.karaokeMinTextWidth, prefs.uiScale)
     // The largest size the main cover can take in any view, so both of its Image
     // layers decode once and are scaled between placements instead of reloaded.
     // A reload blanks the picture for a frame or two, so a view switch that
@@ -1167,72 +1163,26 @@ Item {
     // fetch_lyrics.py, resolved beside this file so the plugin stays portable.
     // Quickshell serves its files under qs://, so the scheme is stripped to
     // leave the plain path python3 can open.
-    readonly property string lyricsScript: {
-        var url = String(Qt.resolvedUrl("fetch_lyrics.py"))
-        var path = url.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "")
-        try { path = decodeURIComponent(path) } catch (e) {}
-        return path
-    }
+    readonly property string lyricsScript:
+        Paths.localPath(Qt.resolvedUrl("fetch_lyrics.py"))
 
     // extras/open_folder.sh, resolved the same way. It owns the file-manager
     // fallbacks (Flea, Nautilus, FileManager1, xdg-open) so this file only has
     // to name a directory and a file to select.
-    readonly property string folderScript: {
-        var url = String(Qt.resolvedUrl("extras/open_folder.sh"))
-        var path = url.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "")
-        try { path = decodeURIComponent(path) } catch (e) {}
-        return path
-    }
-
-    // The deepest directory a set of directories shares. Used for an artist,
-    // which has no single album folder: in a normal library this is the artist
-    // folder, and it falls back to the music root when the artist's albums are
-    // scattered.
-    function sharedDir(dirs) {
-        if (dirs.length === 0) return ""
-        var parts = String(dirs[0]).split("/")
-        for (var i = 1; i < dirs.length; i++) {
-            var other = String(dirs[i]).split("/")
-            var n = 0
-            while (n < parts.length && n < other.length && parts[n] === other[n]) n++
-            parts = parts.slice(0, n)
-            if (parts.length === 0) return "/"
-        }
-        return parts.join("/") || "/"
-    }
+    readonly property string folderScript:
+        Paths.localPath(Qt.resolvedUrl("extras/open_folder.sh"))
 
     // What the folder shortcut opens for a row: the directory, plus the file to
     // select when the row is a track. The shell script folds a cue album's
     // virtual track back onto the cue sheet, which is the file that exists.
     function folderTarget(pane, index) {
         if (!root.mpd) return null
-        var music = String(root.mpd.musicDir || "")
-        if (music === "") return null
-
-        if (pane === "tracks") {
-            var track = index >= 0 && index < root.trackList.length ? root.trackList[index] : null
-            if (!track) return null
-            return {
-                dir: music + "/" + root.mpd.albumDirOf(track.file),
-                select: music + "/" + track.file
-            }
-        }
-
-        if (pane === "albums") {
-            var album = index >= 0 && index < root.albumList.length ? root.albumList[index] : null
-            if (!album || !album.tracks || album.tracks.length === 0) return null
-            return { dir: music + "/" + root.mpd.albumDirOf(album.tracks[0].file), select: "" }
-        }
-
-        var artist = index >= 0 && index < root.artistList.length ? root.artistList[index] : null
-        if (!artist || !artist.albums || artist.albums.length === 0) return null
-        var dirs = []
-        for (var i = 0; i < artist.albums.length; i++) {
-            var tracks = artist.albums[i].tracks
-            if (tracks && tracks.length > 0)
-                dirs.push(music + "/" + root.mpd.albumDirOf(tracks[0].file))
-        }
-        return dirs.length === 0 ? null : { dir: root.sharedDir(dirs), select: "" }
+        var mpd = root.mpd
+        return Paths.folderTarget(pane, index, {
+            artists: root.artistList,
+            albums: root.albumList,
+            tracks: root.trackList
+        }, String(mpd.musicDir || ""), function (file) { return mpd.albumDirOf(file) })
     }
 
     function openFolder(pane, index) {
@@ -1350,11 +1300,8 @@ Item {
     // width is what this property feeds (through the column and the header
     // rows), so asking the flickable would close a loop that leaves the text at
     // its old full width when the side cover appears.
-    readonly property real lyricsColumnWidth: root.karaokeView
-        ? lyricsLayout.width
-        : (prefs.lyricsWidth === "wide"
-            ? lyricsLayout.width * 0.8
-            : (prefs.lyricsWidth === "narrow" ? lyricsLayout.width * 0.65 : lyricsLayout.width))
+    readonly property real lyricsColumnWidth: LayoutMath.lyricsColumnWidth(
+        lyricsLayout.width, root.karaokeView, prefs.lyricsWidth)
     // Whether the cover shares the reading view with the lyrics, and whether it
     // does so beside them (the browser's artwork pane) or in karaoke's own
     // placement. Only the lyrics view is affected; the browser keeps whatever

@@ -468,18 +468,20 @@ stays dark.
 `Covers.js` and `Palette.js` are deliberately plain scripts rather than
 `.pragma library`: a library is compiled once per engine and cached across
 reloads, so a library edit would never be picked up, while a plain script is
-recompiled with the component that imports it. `Paths.js`, `Names.js` and
-`PaletteSync.js` follow the same rule, and keep the tag editor's path and
-filename arithmetic and the panel's cover-to-palette choice testable outside the
+recompiled with the component that imports it. `Paths.js`, `Names.js`,
+`PaletteSync.js`, `Lyrics.js`, `Layout.js` and `TagFrames.js` follow the same
+rule, keeping the lyrics parser and its timing, the cover geometry, the tag
+writers' argv, and the panel and editor's path arithmetic testable outside the
 shell:
 
 ```bash
-node extras/test-paths.js
-node extras/test-names.js
-node extras/test-palette.js
-node extras/test-palette-sync.js
-./extras/test-qml.sh
+./extras/test-all.sh
 ```
+
+That runs `lint.sh`, every Node suite and the QML suite below. The Node suites
+can also be run one at a time (`node extras/test-paths.js`, `test-names.js`,
+`test-palette.js`, `test-palette-sync.js`, `test-lyrics.js`, `test-layout.js`,
+`test-tag-frames.js`).
 
 The last line is the QML-level half: it runs `qmltestrunner` against the real
 `GrimPaletteStore.qml`, `GrimTheme.qml` and `PaletteSync.js`, with Quickshell's

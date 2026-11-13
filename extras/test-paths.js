@@ -82,8 +82,85 @@ for (const [name, actual, expected] of cases) {
     }
 }
 
+let more = 0
+function check(name, actual, expected) {
+    more++
+    try {
+        assert.deepEqual(actual, expected)
+        console.log("ok   " + name)
+    } catch (err) {
+        failed++
+        console.log("FAIL " + name + "\n     expected: " + JSON.stringify(expected)
+            + "\n     actual:   " + JSON.stringify(actual))
+    }
+}
+
+// ---- localPath ----
+
+check("localPath: strips file:// and decodes",
+    Paths.localPath("file:///home/grim/Music/01%20Song.flac"),
+    "/home/grim/Music/01 Song.flac")
+check("localPath: strips Quickshell's qs:// scheme",
+    Paths.localPath("qs:///home/grim/.config/omarchy/plugins/skollgrim.grimplayer/fetch_lyrics.py"),
+    "/home/grim/.config/omarchy/plugins/skollgrim.grimplayer/fetch_lyrics.py")
+check("localPath: a plain path is untouched",
+    Paths.localPath("/home/grim/Music/a b.flac"), "/home/grim/Music/a b.flac")
+check("localPath: a relative path is untouched",
+    Paths.localPath("extras/open_folder.sh"), "extras/open_folder.sh")
+check("localPath: encoded plus sign",
+    Paths.localPath("file:///tmp/a%2Bb.flac"), "/tmp/a+b.flac")
+check("localPath: a broken escape is left as it was",
+    Paths.localPath("file:///tmp/%E0%A4%A"), "/tmp/%E0%A4%A")
+check("localPath: empty and undefined", [Paths.localPath(""), Paths.localPath(undefined)],
+    ["", ""])
+
+// ---- sharedDir ----
+
+const dirs = (...list) => Paths.sharedDir(list)
+check("sharedDir: empty list", dirs(), "")
+check("sharedDir: one directory is itself", dirs("/music/A"), "/music/A")
+check("sharedDir: siblings share their parent",
+    dirs("/music/A", "/music/B"), "/music")
+check("sharedDir: no sibling prefix bleed",
+    dirs("/music/A", "/music/AB"), "/music")
+check("sharedDir: root when nothing is shared",
+    dirs("/a/x", "/b/y"), "/")
+check("sharedDir: same directory twice", dirs("/music/A", "/music/A"), "/music/A")
+
+// ---- folderTarget ----
+
+const MUSIC_DIR = "/music"
+const LISTS = {
+    tracks: [{ file: "Band/Album/01.flac" }],
+    albums: [{ tracks: [{ file: "Band/Album/01.flac" }] }, { tracks: [] }],
+    artists: [
+        { albums: [{ tracks: [{ file: "Band/One/01.flac" }] },
+                   { tracks: [{ file: "Band/Two/01.flac" }] }] },
+        { albums: [] }
+    ]
+}
+const dirOf = (file) => file.split("/").slice(0, -1).join("/")
+const target = (pane, index) => Paths.folderTarget(pane, index, LISTS, MUSIC_DIR, dirOf)
+
+check("folderTarget: a track opens its album and selects the file", target("tracks", 0),
+    { dir: "/music/Band/Album", select: "/music/Band/Album/01.flac" })
+check("folderTarget: an album opens its directory, nothing selected",
+    target("albums", 0), { dir: "/music/Band/Album", select: "" })
+check("folderTarget: an album with no tracks has nothing to open",
+    target("albums", 1), null)
+check("folderTarget: an artist opens the shared directory of its albums",
+    target("artists", 0), { dir: "/music/Band", select: "" })
+check("folderTarget: an artist with no albums has nothing to open",
+    target("artists", 1), null)
+check("folderTarget: out-of-range rows", [target("tracks", 9), target("tracks", -1)],
+    [null, null])
+check("folderTarget: no music directory", Paths.folderTarget("tracks", 0, LISTS, "", dirOf),
+    null)
+check("folderTarget: no album-dir resolver",
+    Paths.folderTarget("tracks", 0, LISTS, MUSIC_DIR, null), null)
+
 if (failed > 0) {
-    console.log("\n" + failed + " of " + cases.length + " failed")
+    console.log("\n" + failed + " of " + (cases.length + more) + " failed")
     process.exit(1)
 }
-console.log("\n" + cases.length + " passed")
+console.log("\n" + (cases.length + more) + " passed")

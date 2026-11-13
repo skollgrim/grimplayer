@@ -11,7 +11,8 @@ cd "$(dirname "$0")/.."
 echo "lint ok"
 
 for test in extras/test-paths.js extras/test-names.js extras/test-palette.js \
-        extras/test-palette-sync.js extras/test-lyrics.js; do
+        extras/test-palette-sync.js extras/test-lyrics.js \
+        extras/test-layout.js extras/test-tag-frames.js; do
     node "$test"
 done
 
