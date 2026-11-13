@@ -782,6 +782,14 @@ Item {
     // never flashes between two covers during a change.
     readonly property bool showingArt: root.heldSource !== "" || art.status === Image.Ready
 
+    // Whether the frame draws anything at all: the cover, or the disc standing in
+    // for it while the placeholder is wanted. The panel's instance sets `visible`
+    // from the view it belongs to, which overrides the binding at the bottom of
+    // this file, so the frame's children gate on this instead. With the
+    // placeholder off and no artwork the corner stays empty rather than showing a
+    // disc the setting was turned off to remove.
+    readonly property bool paintsCover: root.showingArt || root.placeholder
+
     // Parent directory of the current track, relative to the music root:
     // "Some Artist/2019 - Some Album [Live]/12 - Track.flac" -> "Some Artist/2019
     // - Some Album [Live]".
@@ -1155,7 +1163,13 @@ Item {
     // and no artwork, the whole frame goes -- empty corner rather than a graphic
     // standing in for a cover that does not exist, which is how this behaved
     // before the disc was drawn.
-    visible: root.placeholder || root.showingArt
+    //
+    // Callers that place this frame in a view of their own set `visible` as well
+    // (the panel's main cover shows only while the lyrics pane wants it), and
+    // that assignment replaces this binding rather than narrowing it. The frame's
+    // children gate on paintsCover for that reason; this stays as the right
+    // default when nothing overrides it.
+    visible: root.paintsCover
 
     // Outward border: a larger rounded rectangle behind the artwork, so the
     // visible ring sits on the dark pane background rather than on the image.
@@ -1168,7 +1182,7 @@ Item {
         height: parent.height + Math.max(2, Math.round(2 * root.coverBorderWidth * root.uiScale))
         radius: root.cornerRadius
         color: Util.alpha(root.colForeground, 0.24)
-        visible: root.coverBorder
+        visible: root.coverBorder && root.paintsCover
     }
 
     Rectangle {
@@ -1190,6 +1204,9 @@ Item {
             maskThresholdMin: 0.5
             maskSpreadAtMin: 0.02
         }
+        // Nothing to show and no placeholder wanted: the frame must not paint its
+        // background-coloured slab over the pane either, so the corner stays bare.
+        visible: root.paintsCover
         // Opaque, and in the panel's own background colour, so the frame behind this
         // shows as nothing but its rim. The frame is a filled rectangle rather than
         // an outline -- the artwork is meant to cover its centre and leave only the
@@ -1216,7 +1233,11 @@ Item {
         // gradient until recently, which masked that default.
         Item {
             anchors.fill: parent
-            visible: !root.showingArt
+            // The disc is the placeholder, so it is only painted while the
+            // placeholder is wanted; with the setting off, an album without
+            // artwork gets a bare corner. And not while a cover is on screen,
+            // which is what keeps it from flashing between two covers.
+            visible: root.placeholder && !root.showingArt
 
             Rectangle {
                 anchors.centerIn: parent
