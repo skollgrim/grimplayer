@@ -87,10 +87,24 @@ Item {
     // an album the probe has finished on with no artwork at all falls back to
     // the theme -- keyed on cover.noArt, not on the Image's own status, which
     // reports Error between candidates and would flash the theme mid-probe.
+    //
+    // A palette cached against the resolved cover is used before the quantized
+    // colours are consulted: on a revisit the cover skips the colour pass, so
+    // `cover.palette` is empty and the cache is the only answer.
     function syncTheme() {
         if (!prefs.adaptiveColors) { theme.reset(); return }
-        if (cover.hasArt && cover.palette && cover.palette.length > 0)
-            theme.apply(cover.palette)
+        var source = String(cover.resolvedSource || "")
+        var cached = theme.cachedPalette(source)
+        if (cached) { theme.applyDerived(cached); return }
+        // Only a palette quantized from this very cover may be applied or
+        // cached. While a new cover is loading the quantizer still holds the
+        // previous album's colours, and applying those against the new source
+        // would both show the wrong album's ground and poison the cache with
+        // it; the guard leaves the previous palette up until the new pass
+        // lands, which is also what keeps the theme from flashing mid-probe.
+        if (cover.hasArt && cover.paletteSource === source
+                && cover.palette && cover.palette.length > 0)
+            theme.apply(cover.palette, source)
         else if (cover.noArt)
             theme.reset()
     }
@@ -213,7 +227,11 @@ Item {
 
     Connections {
         target: cover
-        function onPaletteChanged() { 
+        function onPaletteChanged() {
+            // Before anything reads it: the colours that just arrived belong to
+            // the cover whose pass has finished, which is not necessarily the
+            // one `resolvedSource` names yet (see notePalette).
+            cover.notePalette()
             if (cover && cover.loadedDir) {
                 if (cover.loadedDir !== root.lastPaletteDir) {
                     root.lastPaletteDir = cover.loadedDir
@@ -1332,8 +1350,8 @@ Item {
     readonly property real lyricsHeaderScale: root.karaokeView ? 1.25 : 1
 
     // Relative luminance and the WCAG contrast ratio between two colours.
-    // Palette.derive only guarantees the accent about 3:1 against the ground,
-    // which on a near-white sleeve reads as a faint tint; the highlight is
+    // Palette.derive guarantees the accent at least 3:1 against the ground,
+    // which on a near-white sleeve still reads as a faint tint; the highlight is
     // text, so it wants the 4.5:1 a reader's eye expects.
     function relativeLuminance(c) {
         function linear(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
@@ -2509,6 +2527,10 @@ Item {
             rounded: prefs.coverRounded && !root.karaokeCoverBackground
             placeholder: prefs.coverPlaceholder && !root.karaokeCoverBackground
             fetchCovers: prefs.fetchCovers
+            // The colours are only used when adaptive colouring is on; otherwise
+            // the quantizer would run on every cover for a palette syncTheme
+            // deliberately ignores.
+            quantize: prefs.adaptiveColors
             transitionDuration: prefs.coverTransition
             opacity: root.karaokeCoverBackground ? prefs.karaokeCoverOpacity : 1.0
             // A background cover fills the reading area; a side cover is the

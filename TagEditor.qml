@@ -1984,6 +1984,9 @@ Item {
                             active: root.visible
                             coverBorder: false
                             placeholder: true
+                            // The editor previews a cover, it does not recolour the
+                            // panel, so there is no palette here worth reading.
+                            quantize: false
                             transitionDuration: root.coverTransition
                             fetchCovers: root.fetchCovers
                             rounded: root.coverRounded

@@ -354,11 +354,12 @@ cover, and alignment and following are fixed by karaoke itself. `Esc` or `Q`
 also returns to the browser. The view is remembered: closing and reopening the
 player comes back to karaoke, as it does to the lyrics and album views.
 
-The highlight stays readable on light sleeves. Adaptive colours only promise the
-accent about 3:1 against the panel, which on a near-white cover reads as a faint
-tint, so the current line is also set in a heavier weight, and the accent is used
-for it only when it clears 4.5:1 against the background; otherwise the line takes
-the panel's ordinary foreground ink.
+The highlight stays readable on light sleeves. Adaptive colours guarantee the
+accent at least 3:1 against the panel, measured against the ground actually
+derived from the cover rather than an assumed one; on a near-white cover that
+still reads as a faint tint, so the current line is also set in a heavier weight,
+and the accent is used for it only when it clears 4.5:1 against the background;
+otherwise the line takes the panel's ordinary foreground ink.
 
 ### Album view
 
@@ -449,7 +450,18 @@ panel's own colour tokens and folds a cover's palette into them, and
 [`Palette.js`](Palette.js) is the pure colour maths behind it. The shell's
 `Color` singleton is global, so the panel never writes to it — it keeps this
 copy instead. `CoverArt.qml`'s `ColorQuantizer` exposes the palette the panel
-reads.
+reads, and the derived result is cached against the resolved cover URL so a
+revisited album skips both the colour pass and the derivation.
+
+Lightness is moved in OKLCH rather than HSL: OKLCH keeps a colour's perceived
+brightness and hue while the lightness changes, where HSL's channel average
+makes a darkened blue turn navy and a lightened red turn pink. Colours that fall
+outside the display gamut are brought back by reducing chroma at constant
+lightness and hue, not by clipping channels; the accent is then walked away from
+the derived ground until it clears 3:1. The light/dark split reads the mean
+cluster's OKLCH lightness, not a green-weighted luma, so a vivid pink sleeve gets
+the light panel its brightness calls for while a genuinely mid-dark olive one
+stays dark.
 
 `Covers.js` and `Palette.js` are deliberately plain scripts rather than
 `.pragma library`: a library is compiled once per engine and cached across
@@ -461,6 +473,7 @@ outside the shell:
 ```bash
 node extras/test-paths.js
 node extras/test-names.js
+node extras/test-palette.js
 ```
 
 Lint the QML against the shell's own module root:

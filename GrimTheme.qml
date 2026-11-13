@@ -23,7 +23,58 @@ QtObject {
     // null means "the theme's own colours", which is what shows whenever
     // adaptive colouring is off or there is no artwork to read.
     property var override: null
+
+    // Derived palettes keyed by the cover's resolved source. An album visited
+    // again should not pay for another quantization and derivation; the key is
+    // the URL the Image actually loaded, so a sidecar cover, an extracted one
+    // and a downloaded one are distinct entries. Each entry carries its time
+    // only so the cache can be bounded; it is not an expiry.
     property var paletteCache: ({})
+    readonly property int paletteCacheLimit: 48
+
+    function cacheKey(source) {
+        return source ? String(source) : ""
+    }
+
+    function cachedPalette(source) {
+        var key = root.cacheKey(source)
+        if (!key) return null
+        var entry = root.paletteCache[key]
+        return entry && entry.palette ? entry.palette : null
+    }
+
+    function hasPalette(source) {
+        return root.cachedPalette(source) !== null
+    }
+
+    function storePalette(source, derived) {
+        var key = root.cacheKey(source)
+        if (!key || !derived) return
+        root.paletteCache[key] = { palette: derived, at: Date.now() }
+        var keys = []
+        for (var k in root.paletteCache) {
+            if (root.paletteCache.hasOwnProperty(k)) keys.push(k)
+        }
+        if (keys.length <= root.paletteCacheLimit) return
+        keys.sort(function (a, b) {
+            var ta = root.paletteCache[a] ? root.paletteCache[a].at : 0
+            var tb = root.paletteCache[b] ? root.paletteCache[b].at : 0
+            return ta - tb
+        })
+        var drop = keys.length - root.paletteCacheLimit
+        for (var i = 0; i < drop; i++) delete root.paletteCache[keys[i]]
+    }
+
+    // A cover edit rewrites the picture behind an unchanged path, so the
+    // palette cached against that path is stale. Clearing the whole map is
+    // coarse but cheap: edits are rare and the cache refills on the next visit.
+    function clearPaletteCache() {
+        root.paletteCache = ({})
+    }
+
+    function applyDerived(derived) {
+        root.override = derived
+    }
 
     property color background: override ? override.background : Color.background
     property color foreground: override ? override.foreground : Color.foreground
@@ -62,19 +113,26 @@ QtObject {
         ? Qt.rgba(background.r * 0.86, background.g * 0.86, background.b * 0.86, 1.0)
         : Qt.rgba(background.r * 0.60, background.g * 0.60, background.b * 0.60, 1.0)
 
-    // The live theme tokens, handed to the derivation as its fallback so a
-    // colourless sleeve lands on the theme's accent rather than a grey. Read
-    // fresh each time rather than captured, so a theme switch is picked up.
+    // The live theme tokens, handed to the derivation as its fallback. Only the
+    // urgent token is carried through: a colourless sleeve makes its own neutral
+    // accent, and the other tokens are read from the artwork. Read fresh each
+    // time rather than captured, so a theme switch is picked up.
     function themeTokens() {
         return { background: Color.background, foreground: Color.foreground,
                  muted: Color.muted, accent: Color.accent, urgent: Color.urgent }
     }
 
     // Fold a cover's quantized colours into the panel. An empty list -- no
-    // cover yet, or an album with none -- leaves the theme in place.
-    function apply(colors) {
+    // cover yet, or an album with none -- leaves the theme in place. `source` is
+    // the resolved cover URL; when it is present the derived palette is cached
+    // against it so a later visit skips both the quantization and the derivation.
+    function apply(colors, source) {
         if (!colors || colors.length === 0) { reset(); return }
-        root.override = Palette.derive(colors, themeTokens())
+        var cached = root.cachedPalette(source)
+        if (cached) { root.override = cached; return }
+        var derived = Palette.derive(colors, themeTokens())
+        root.storePalette(source, derived)
+        root.override = derived
     }
 
     // Linear blend, t = 0 gives a and t = 1 gives b. Used to tint a control's

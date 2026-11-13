@@ -112,13 +112,64 @@ Item {
     // -- most of which do not exist -- before the real cover is even reached.
     // `resolvedSource` is set when a picture reaches Ready, so the pass runs once
     // per resolved cover, including the ffmpeg extraction that lands in the cache
-    // directory. depth 3 is eight colours, which is enough to find a vivid one
-    // without giving the recursive split more work than it needs; rescaleSize is
-    // the recommended shrink that keeps the pass cheap. The panel watches
-    // `palette` and folds it into its theme.
+    // directory.
+    //
+    // `quantizeSource` is its own property rather than a binding straight to
+    // `resolvedSource`, so a cover already in the panel's palette cache can skip
+    // the pass without the pass's own answer clearing it again. depth 3 is eight
+    // colours, which is enough to find a vivid one without giving the recursive
+    // split more work than it needs; rescaleSize is the recommended shrink that
+    // keeps the pass cheap. The panel watches `palette` and folds it into its
+    // theme.
+    property string quantizeSource: ""
+
+    // Which resolved source `palette` was quantized from, or "" while the pass
+    // for the cover now on screen is still running. `palette` is the quantizer's
+    // colour list and keeps the previous cover's answer until the new pass
+    // lands, so the panel must not treat it as belonging to `resolvedSource`
+    // just because both are non-empty: doing so stores the old album's colours
+    // against the new cover and the cache then hands them back forever.
+    property string paletteSource: ""
+
+    // Claim the current colours for their source, or drop the claim when they
+    // are empty. Called from the panel's own palette-change handler, before it
+    // asks for the theme to be updated, so the two cannot disagree about which
+    // cover the colours belong to.
+    function notePalette() {
+        root.paletteSource = (root.palette && root.palette.length > 0)
+            ? root.quantizeSource : ""
+    }
+
+    // Whether the panel already holds a derived palette for this cover. The
+    // theme is injected, and a component placed on its own may not have one, so
+    // every step is guarded.
+    function hasCachedPalette() {
+        if (!root.quantize || !root.resolvedSource || !root.theme) return false
+        return typeof root.theme.hasPalette === "function"
+            && root.theme.hasPalette(String(root.resolvedSource))
+    }
+
+    // Start the colour pass only when there is a cover and it is not cached.
+    // Called when a picture reaches Ready and when adaptive colouring is turned
+    // back on, never from a binding: the cache filling up during the pass must
+    // not cancel the pass that filled it.
+    function armQuantizer() {
+        // Whatever colours are held now are not the ones this cover will have:
+        // drop the claim so nothing derived from the previous pass can be read
+        // or cached as this cover's while the new pass runs.
+        root.paletteSource = ""
+        if (!root.quantize || !root.resolvedSource || root.hasCachedPalette()) {
+            root.quantizeSource = ""
+            return
+        }
+        root.quantizeSource = String(root.resolvedSource)
+    }
+
+    onQuantizeChanged: root.armQuantizer()
+
     ColorQuantizer {
         id: quantizer
-        source: root.quantize ? root.resolvedSource : ""
+        source: root.quantize ? root.quantizeSource : ""
         depth: 3
         // Downscale aggressively for palette extraction - full resolution not needed
         rescaleSize: 48
@@ -346,6 +397,7 @@ Item {
         // the quantizer notices, so the palette is read from the new picture rather
         // than kept from the one that was just replaced.
         root.resolvedSource = ""
+        root.quantizeSource = ""
         // The Image is sitting in Error on this exact URL, and assigning a property
         // the value it already holds does not re-evaluate it. Clearing it first is
         // what makes the next assignment a change the Image reacts to.
@@ -1064,6 +1116,14 @@ Item {
             }
             root.noEmbedded = embedded
             root.noOnline = missing
+            // The picture behind this path has just been rewritten, so the
+            // palette derived from the old one is stale even though the URL is
+            // unchanged. Drop the cache and clear the resolved source so the
+            // re-quantize below is a change the quantizer reacts to.
+            if (root.theme && typeof root.theme.clearPaletteCache === "function")
+                root.theme.clearPaletteCache()
+            root.resolvedSource = ""
+            root.quantizeSource = ""
             // The edit rewrote what is on disk without the album's directory
             // changing, so the probe is forced rather than skipped, and the source
             // is emptied so a much-held Ready image of the file that was just
@@ -1226,6 +1286,7 @@ Item {
                     // the one on screen. Set here rather than left on imageSource so
                     // the colour pass is not run once per candidate the walk tries.
                     root.resolvedSource = String(art.source)
+                    root.armQuantizer()
                     root.resetOnline()
                     root.reveal()
                     return
