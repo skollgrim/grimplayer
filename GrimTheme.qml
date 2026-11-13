@@ -15,6 +15,12 @@ pragma ComponentBehavior: Bound
 // and selecting between it and the override means both follow their own source.
 import QtQuick
 import qs.Commons
+// Qt 6.12's QtQuick also exposes a `Color` value type. Naming the shell's tokens
+// through the module keeps them unambiguous in any engine that registers QtQuick
+// first -- the QML test runner does, and would otherwise shadow the singleton
+// with its own colour helpers. The shell's engine already resolves this the same
+// way, so the qualification changes nothing there.
+import qs.Commons as Commons
 import "Palette.js" as Palette
 
 QtObject {
@@ -27,63 +33,52 @@ QtObject {
     // Derived palettes keyed by the cover's resolved source. An album visited
     // again should not pay for another quantization and derivation; the key is
     // the URL the Image actually loaded, so a sidecar cover, an extracted one
-    // and a downloaded one are distinct entries. Each entry carries its time
-    // only so the cache can be bounded; it is not an expiry.
-    property var paletteCache: ({})
-    readonly property int paletteCacheLimit: 48
+    // and a downloaded one are distinct entries.
+    //
+    // The map itself lives in GrimPaletteStore, which also writes it to the
+    // state directory: a QtObject cannot own a FileView. It is null until the
+    // panel wires the store up, and without one the panel still derives a
+    // palette -- it just forgets it when the shell stops.
+    property var store: null
 
-    function cacheKey(source) {
-        return source ? String(source) : ""
-    }
+    readonly property var paletteCache: root.store ? root.store.cache : ({})
 
     function cachedPalette(source) {
-        var key = root.cacheKey(source)
-        if (!key) return null
-        var entry = root.paletteCache[key]
-        return entry && entry.palette ? entry.palette : null
+        return root.store ? root.store.get(source) : null
     }
 
     function hasPalette(source) {
-        return root.cachedPalette(source) !== null
+        return root.store ? root.store.has(source) : false
     }
 
     function storePalette(source, derived) {
-        var key = root.cacheKey(source)
-        if (!key || !derived) return
-        root.paletteCache[key] = { palette: derived, at: Date.now() }
-        var keys = []
-        for (var k in root.paletteCache) {
-            if (root.paletteCache.hasOwnProperty(k)) keys.push(k)
-        }
-        if (keys.length <= root.paletteCacheLimit) return
-        keys.sort(function (a, b) {
-            var ta = root.paletteCache[a] ? root.paletteCache[a].at : 0
-            var tb = root.paletteCache[b] ? root.paletteCache[b].at : 0
-            return ta - tb
-        })
-        var drop = keys.length - root.paletteCacheLimit
-        for (var i = 0; i < drop; i++) delete root.paletteCache[keys[i]]
+        if (root.store) root.store.put(source, derived)
     }
 
     // A cover edit rewrites the picture behind an unchanged path, so the
     // palette cached against that path is stale. Clearing the whole map is
     // coarse but cheap: edits are rare and the cache refills on the next visit.
     function clearPaletteCache() {
-        root.paletteCache = ({})
+        if (root.store) root.store.clear()
     }
 
     function applyDerived(derived) {
         root.override = derived
     }
 
-    property color background: override ? override.background : Color.background
-    property color foreground: override ? override.foreground : Color.foreground
-    property color muted: override ? override.muted : Color.muted
-    property color accent: override ? override.accent : Color.accent
+    property color background: override ? override.background : Commons.Color.background
+    property color foreground: override ? override.foreground : Commons.Color.foreground
+    property color muted: override ? override.muted : Commons.Color.muted
+    property color accent: override ? override.accent : Commons.Color.accent
     readonly property color accentHover: Util.alpha(accent, 0.8)
     readonly property color accentPressed: Util.alpha(accent, 0.65)
     readonly property color accentSubtle: Util.alpha(accent, 0.16)
-    property color urgent: override ? override.urgent : Color.urgent
+    // The alert colour is semantic, not part of the album, so it always follows
+    // the live theme rather than the palette copy. Cached palettes are derived
+    // once and can outlive a theme switch; reading the token straight from the
+    // theme keeps an alert from staying on the previous theme's red until the
+    // cover changes again.
+    property color urgent: Commons.Color.urgent
 
     // The wash under the caret row and the selected setting. Built from the
     // cover's accent rather than from Style.selectedFillFor: that yields a wash
@@ -113,13 +108,15 @@ QtObject {
         ? Qt.rgba(background.r * 0.86, background.g * 0.86, background.b * 0.86, 1.0)
         : Qt.rgba(background.r * 0.60, background.g * 0.60, background.b * 0.60, 1.0)
 
-    // The live theme tokens, handed to the derivation as its fallback. Only the
-    // urgent token is carried through: a colourless sleeve makes its own neutral
-    // accent, and the other tokens are read from the artwork. Read fresh each
-    // time rather than captured, so a theme switch is picked up.
+    // The live theme tokens, handed to the derivation as its fallback. Derive
+    // reads only the urgent token from it -- a colourless sleeve makes its own
+    // neutral accent and the other tokens come from the artwork -- and the panel
+    // takes that token live rather than from the returned palette (see urgent).
+    // Read fresh each time rather than captured, so a theme switch is picked up.
     function themeTokens() {
-        return { background: Color.background, foreground: Color.foreground,
-                 muted: Color.muted, accent: Color.accent, urgent: Color.urgent }
+        return { background: Commons.Color.background, foreground: Commons.Color.foreground,
+                 muted: Commons.Color.muted, accent: Commons.Color.accent,
+                 urgent: Commons.Color.urgent }
     }
 
     // Fold a cover's quantized colours into the panel. An empty list -- no

@@ -17,6 +17,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import "PaletteSync.js" as PaletteSync
 
 // The sibling components live beside this file, so the directory needs to be on
 // the import path: an implicit-directory import is not applied to files loaded
@@ -76,37 +77,39 @@ Item {
     // written.
     GrimTheme {
         id: theme
+        store: paletteStore
+    }
+
+    // The derived palettes outlive the shell, so they are kept in a small file
+    // under the state directory. This object owns the FileView and the writes;
+    // the theme only reads and fills the map.
+    GrimPaletteStore {
+        id: paletteStore
     }
 
     // Fold the current cover's colours into the panel, or settle back on the
     // theme. Called on every palette change, when the image stops loading, and
     // when the setting is flipped.
     //
-    // While a new cover is loading the previous palette is deliberately left in
-    // place: resetting here would flash the theme through between tracks. Only
-    // an album the probe has finished on with no artwork at all falls back to
-    // the theme -- keyed on cover.noArt, not on the Image's own status, which
-    // reports Error between candidates and would flash the theme mid-probe.
-    //
-    // A palette cached against the resolved cover is used before the quantized
-    // colours are consulted: on a revisit the cover skips the colour pass, so
-    // `cover.palette` is empty and the cache is the only answer.
+    // The rules between the cache, the quantizer's colours and the previous
+    // album's palette live in PaletteSync.pick, where they are tested directly;
+    // this only reads the live state, asks for the decision and performs it.
     function syncTheme() {
-        if (!prefs.adaptiveColors) { theme.reset(); return }
         var source = String(cover.resolvedSource || "")
-        var cached = theme.cachedPalette(source)
-        if (cached) { theme.applyDerived(cached); return }
-        // Only a palette quantized from this very cover may be applied or
-        // cached. While a new cover is loading the quantizer still holds the
-        // previous album's colours, and applying those against the new source
-        // would both show the wrong album's ground and poison the cache with
-        // it; the guard leaves the previous palette up until the new pass
-        // lands, which is also what keeps the theme from flashing mid-probe.
-        if (cover.hasArt && cover.paletteSource === source
-                && cover.palette && cover.palette.length > 0)
+        var decision = PaletteSync.pick({
+            adaptive: prefs.adaptiveColors,
+            hasArt: cover.hasArt,
+            paletteSource: String(cover.paletteSource || ""),
+            paletteSize: cover.palette ? cover.palette.length : 0,
+            noArt: cover.noArt
+        }, source, theme.cachedPalette(source))
+        if (decision.action === PaletteSync.DERIVED)
+            theme.applyDerived(decision.palette)
+        else if (decision.action === PaletteSync.APPLY)
             theme.apply(cover.palette, source)
-        else if (cover.noArt)
+        else if (decision.action === PaletteSync.RESET)
             theme.reset()
+        // HOLD leaves the previous palette up until the new cover's pass lands.
     }
 
     // Cached frame measurements per monitor, to skip three hyprctl spawns when the

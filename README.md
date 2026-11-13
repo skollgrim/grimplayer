@@ -451,7 +451,9 @@ panel's own colour tokens and folds a cover's palette into them, and
 `Color` singleton is global, so the panel never writes to it — it keeps this
 copy instead. `CoverArt.qml`'s `ColorQuantizer` exposes the palette the panel
 reads, and the derived result is cached against the resolved cover URL so a
-revisited album skips both the colour pass and the derivation.
+revisited album skips both the colour pass and the derivation. That cache is
+kept in `palettes.json` under the state directory, bounded to 48 entries, so a
+shell restart does not make every album pay the colour pass again.
 
 Lightness is moved in OKLCH rather than HSL: OKLCH keeps a colour's perceived
 brightness and hue while the lightness changes, where HSL's channel average
@@ -466,15 +468,26 @@ stays dark.
 `Covers.js` and `Palette.js` are deliberately plain scripts rather than
 `.pragma library`: a library is compiled once per engine and cached across
 reloads, so a library edit would never be picked up, while a plain script is
-recompiled with the component that imports it. `Paths.js` and `Names.js` follow
-the same rule, and keep the tag editor's path and filename arithmetic testable
-outside the shell:
+recompiled with the component that imports it. `Paths.js`, `Names.js` and
+`PaletteSync.js` follow the same rule, and keep the tag editor's path and
+filename arithmetic and the panel's cover-to-palette choice testable outside the
+shell:
 
 ```bash
 node extras/test-paths.js
 node extras/test-names.js
 node extras/test-palette.js
+node extras/test-palette-sync.js
+./extras/test-qml.sh
 ```
+
+The last line is the QML-level half: it runs `qmltestrunner` against the real
+`GrimPaletteStore.qml`, `GrimTheme.qml` and `PaletteSync.js`, with Quickshell's
+`FileView`/`Process` and the shell's `qs.Commons` tokens swapped for the small
+stand-ins under `extras/qmltest/stubs`. That covers the cache's hit/miss path,
+the JSON round trip and its validation, the theme's delegation, and the race
+guard that keeps a stale quantization from being applied to or cached under the
+next cover. Nothing in the suite writes to the real state directory.
 
 Lint the QML against the shell's own module root:
 
@@ -506,9 +519,8 @@ Check a manifest before pushing it out:
 omarchy plugin validate ~/.config/omarchy/plugins/skollgrim.grimplayer
 ```
 
-The rest is a UI plugin with no test harness, so it is verified against a live
-MPD: kill MPD underneath it, restart it, add an album and confirm the tree
-follows.
+Beyond the palette suite, the plugin is verified against a live MPD: kill MPD
+underneath it, restart it, add an album and confirm the tree follows.
 
 ## Licence
 
