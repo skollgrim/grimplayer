@@ -207,7 +207,7 @@ Item {
 
         // Interface sizing. uiScale is a single multiplier over every derived size --
         // rows, gap, fonts, icons and cover art -- so one slider rescales the
-        // whole player instead of only the lists, which is what it used to do.
+        // whole player rather than only the lists.
         // The range runs 50% to 150%: far enough down to matter on a 4K screen,
         // far enough up to matter on a laptop.
         property real uiScale: 1.0
@@ -230,7 +230,7 @@ Item {
         // rather than one of the font settings above, because it is an overlay
         // read at a glance rather than a piece of the panel's body text, and
         // wanting it larger should not also grow the lists. Zero is the theme's
-        // subtitle size, which is what it used before this setting existed.
+        // subtitle size.
         property int noticeScale: 0
 
         // ---- lyrics ----
@@ -937,7 +937,7 @@ Item {
             hint: "Shuffle, repeat, mute and volume notices above the strip, as an offset from the theme",
             // Runs below the theme as well as above: the readout is a transient
             // aside, and on a small panel a quieter line is a legitimate choice.
-            // Zero is the size it had before this row existed.
+            // Zero is the untouched theme size.
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
             defaultValue: 0,
             get: function () { return store.noticeScale },
@@ -1308,9 +1308,8 @@ Item {
         //
         // Karaoke is its own surface: larger text read from a distance, its own
         // track header, and a cover that can share the view, sit behind it or
-        // stay away. These rows used to live under Lyrics, where the reading
-        // view's size and cover switch made them read as more of the same; they
-        // are separate choices and now have a tab of their own.
+        // stay away. These are separate choices from the reading view's size and
+        // cover switch, so they have a tab of their own.
         {
             key: "karaokeFont",
             section: "karaoke",
@@ -1371,8 +1370,8 @@ Item {
     }
 
     // A slider is anything numeric; everything else is a switch or a named
-    // choice. This no longer decides which column an entry lands in -- topic
-    // does -- but the card still needs it to know whether a row draws a track.
+    // choice. Topic decides which column an entry lands in; the card still needs
+    // this to know whether a row draws a track.
     function isSlider(entry) {
         var o = entry ? entry.options : null
         return !!(o && o.length > 0 && typeof o[0] === "number")
@@ -1564,12 +1563,11 @@ Item {
         saveSoon()
     }
 
-    // Restores each entry's own default rather than options[0]. Those two used to
-    // be the same thing, but they part company the moment a setting's natural
-    // resting point is not the low end of its range: the font offsets run -4..+4
-    // so the slider knob sits centred on "theme", which would have made reset
-    // slam every font down by four pixels. An entry without `defaultValue` still
-    // falls back to options[0].
+    // Restores each entry's own default rather than options[0]. They are not the
+    // same: a setting's natural resting point can be away from the low end of its
+    // range. The font offsets run -4..+4 so the slider knob sits centred on
+    // "theme", and reset would otherwise slam every font down by four pixels. An
+    // entry without `defaultValue` still falls back to options[0].
     function reset() {
         for (var i = 0; i < entries.length; i++) {
             var entry = entries[i]

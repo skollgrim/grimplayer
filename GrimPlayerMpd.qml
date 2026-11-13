@@ -226,11 +226,9 @@ Item {
             return
         }
         // MPD's idle reply is one `changed: <subsystem>` line per subsystem and
-        // nothing else. This used to look for a bare subsystem name and treat
-        // every line containing a colon as uninteresting detail, so the
-        // `changed:` lines were all discarded, `changed` stayed empty, and
-        // handleEvents always found nothing to refresh. Status and elapsed then
-        // froze at whatever bootstrap had read, for the life of the connection.
+        // nothing else. Matching a bare subsystem name instead discards every
+        // `changed:` line, leaves `changed` empty, and freezes status and elapsed
+        // at whatever bootstrap read.
         if (t.indexOf("changed: ") === 0) {
             var sub = t.substring(9).trim()
             if (sub !== "" && root.changed.indexOf(sub) < 0) root.changed.push(sub)

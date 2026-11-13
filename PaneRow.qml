@@ -178,7 +178,8 @@ Item {
 
     // Resolved once here rather than in the shared pane below. Font sizes are
     // offsets from the active Omarchy theme, so each is a theme token plus a
-    // stored offset, scaled -- the expression the panel used to repeat nine times.
+    // stored offset, scaled -- an expression the panel would otherwise repeat
+    // nine times.
     readonly property real fontScale: prefs ? prefs.uiScale : 1
     readonly property int fontSizeHeading: prefs
         ? Math.round((root.themeFont.bodySmall + prefs.fontBodySmall) * root.fontScale) : 0
@@ -189,10 +190,11 @@ Item {
 
     // ---- panes ----
 
-    // The shared pane, with the styling that used to be copied into each of the
-    // three. An inline component rather than three hand-written PaneColumns
-    // because that is exactly what it is for: a type used here that has no
-    // existence outside this file. Per-pane differences are set on each instance.
+    // The shared pane, with the styling that would otherwise be copied into each
+    // of the three. An inline component rather than three hand-written
+    // PaneColumns because that is exactly what it is for: a type used here that
+    // has no existence outside this file. Per-pane differences are set on each
+    // instance.
     component PaneSlot: PaneColumn {
     theme: root.theme
     Layout.fillHeight: true

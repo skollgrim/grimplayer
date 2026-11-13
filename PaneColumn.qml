@@ -80,7 +80,7 @@ Item {
     }
 
     // Wheel scrolling steps whole rows instead of sliding through free pixels,
-    // which is what left an artist's name cut in half at the bottom of the pane.
+    // which would leave an artist's name cut in half at the bottom of the pane.
     // One notch is one row; a touchpad's pixel deltas are banked until they add
     // up to a row, so a two-finger flick still moves at a readable pace.
     function scrollRows(rows) {
@@ -146,10 +146,9 @@ Item {
 
     // The list viewport is cut down to a whole number of row pitches so its
     // bottom edge always falls between two rows. The few leftover pixels read as
-    // padding above the now-playing strip; a partial row there read as a name
-    // cut in half, which is what this is here to stop. The pitch is at least one
-    // row, so a pane too short for even one row keeps its full height rather
-    // than collapsing to zero.
+    // padding above the now-playing strip; a partial row there reads as a name
+    // cut in half. The pitch is at least one row, so a pane too short for even
+    // one row keeps its full height rather than collapsing to zero.
     readonly property int viewportHeight: {
         var h = viewport.height
         if (h <= 0) return 0

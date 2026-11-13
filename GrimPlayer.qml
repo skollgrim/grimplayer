@@ -18,6 +18,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import "PaletteSync.js" as PaletteSync
+import "Lyrics.js" as Lyrics
 
 // The sibling components live beside this file, so the directory needs to be on
 // the import path: an implicit-directory import is not applied to files loaded
@@ -274,12 +275,13 @@ Item {
     // converting with the first screen's numbers until the next summon.
     //
     // Watching the window's own `screen` property, which is notifyable. The
-    // screen's `name` was the obvious thing to watch and is the wrong thing: it
-    // is a constant in Quickshell's ShellScreen, so it has no change signal and a
-    // handler named for one matches nothing -- the engine warns about it and the
-    // re-read simply never happens. `screenChanged` fires on exactly the event
-    // this wants, a different monitor under the surface. readFrame is a no-op
-    // unless the mode is auto, so a move under a pinned pane costs nothing.
+    // screen's `name` looks like the obvious thing to watch, and is the wrong
+    // one: it is a constant in Quickshell's ShellScreen, so it has no change
+    // signal and a handler named for one matches nothing -- the engine warns
+    // about it and the re-read simply never happens. `screenChanged` fires on
+    // exactly the event this wants, a different monitor under the surface.
+    // readFrame is a no-op unless the mode is auto, so a move under a pinned
+    // pane costs nothing.
     Connections {
         target: window
         function onScreenChanged() {
@@ -728,12 +730,11 @@ Item {
                      - root.karaokeMinTextWidth))
     // The largest size the main cover can take in any view, so both of its Image
     // layers decode once and are scaled between placements instead of reloaded.
-    // A reload blanks the picture for a frame or two, which is what flashed when
-    // a view switch changed the cover's size -- the browser pane and karaoke's
-    // side cover differ by a few pixels, and that was enough. A configured
-    // placement that is not showing still counts, because a key can switch to it
-    // at any moment. The background placement is the one non-square case: it
-    // fills the window, so it sets the bounds itself.
+    // A reload blanks the picture for a frame or two, so a view switch that
+    // changes the cover's size would flash. A configured placement that is not
+    // showing still counts, because a key can switch to it at any moment. The
+    // background placement is the one non-square case: it fills the window, so
+    // it sets the bounds itself.
     readonly property int coverDecodeBoundWidth: Math.max(
         root.heroCover, root.albumCoverSize, root.karaokeCoverSize,
         root.floatingCoverSize,
@@ -754,8 +755,8 @@ Item {
 
     // Height of the now-playing strip. Named because two overlays sit clear of it
     // and have to agree with it: the typeahead readout and the MPD error banner.
-    // They used to each repeat the number, which is how a change to the strip's
-    // height would have left the error banner sitting on top of it.
+    // Both read it from here, so a change to the strip's height cannot leave the
+    // banner sitting on top of it.
     readonly property int stripHeight: Math.round(84 * prefs.uiScale)
 
     // The strip tightens in two steps before the title runs out of room. The
@@ -906,15 +907,11 @@ Item {
     // The shell owns whether this panel is open: it tracks that in openPanelIds
     // and calls open()/close() accordingly.
     //
-    // This used to be driven the other way round, by having the launch
-    // binding toggle a compositor special workspace. That only ever moved the
-    // surface in and out of the workspace and never told the panel anything, which
-    // worked only for as long as the window was permanently visible. It failed
-    // permanently on the first real close: the compositor destroys the surface,
-    // but keeps the workspace marked active because the hidden surface still
-    // belongs to it, and every press after that toggled a workspace with nothing
-    // in it. Owning visibility here fixes both halves -- the panel comes back in
-    // one press, and closing it leaves no workspace behind to toggle.
+    // Visibility is owned here rather than by toggling a compositor special
+    // workspace. A workspace toggle moves the surface but tells the panel
+    // nothing, and once a close destroys the surface the workspace stays marked
+    // active, so every later press toggles an empty workspace. Owning it here
+    // makes one press open the panel, and a close leaves nothing behind.
     property bool closingFromHost: false
 
     // keepSelection is for the editTags IPC: the tag editor works from whatever
@@ -1011,11 +1008,10 @@ Item {
         else trackIndex = stepIndex(trackIndex, delta, trackList.length)
     }
 
-    // g and G jump to the first and last row. They used to reach move() as a
-    // million-step delta and lean on the clamp to stop them there, which a
-    // wrapping step cannot replace: a step that happens to be a multiple of the
-    // list length lands back on the row it started from, and these three lists
-    // are all short enough for that to be the normal case.
+    // g and G jump to the first and last row. They cannot go through move(): a
+    // wrapping step that happens to be a multiple of the list length lands back
+    // on the row it started from, and these lists are short enough for that to
+    // be the normal case.
     function moveToEnd(last) {
         if (pane === "artists") selectArtist(last ? Math.max(0, artistList.length - 1) : 0, false)
         else if (pane === "albums") selectAlbum(last ? Math.max(0, albumList.length - 1) : 0, false)
@@ -1257,33 +1253,6 @@ Item {
     // The shared cache the helper writes downloads into.
     readonly property string lyricsHome: (Quickshell.env("HOME") || "") + "/.lyrics"
 
-    // Mirrors safe_name() in fetch_lyrics.py: a tag value as the filename the
-    // helper would have used.
-    function lyricsSafeName(name) {
-        var s = String(name === undefined || name === null ? "" : name)
-        s = s.replace(/[/\\\x00-\x1f]+/g, "-")
-        s = s.replace(/\s+/g, " ")
-        s = s.replace(/^[ .]+/, "").replace(/[ .]+$/, "")
-        return s || "Unknown"
-    }
-
-    // Mirrors cache_paths() in the helper: the cache stem (no extension) for
-    // the title as MPD gives it, then for the title without a trailing
-    // parenthetical, which covers earlier runs that filed a track under its
-    // shorter name. Synced lyrics are saved as .lrc, plain ones as .txt.
-    function lyricsCacheStems(artist, title) {
-        var names = [String(title)]
-        var short = String(title).replace(/\s*[\(\[][^\)\]]*[\)\]]\s*$/, "").trim()
-        if (short && short !== String(title)) names.push(short)
-        var stems = []
-        for (var i = 0; i < names.length; i++) {
-            var p = root.lyricsHome + "/" + root.lyricsSafeName(artist)
-                    + " - " + root.lyricsSafeName(names[i])
-            if (stems.indexOf(p) < 0) stems.push(p)
-        }
-        return stems
-    }
-
     // Synchronous read through FileView. Clearing the path first matters:
     // text() keeps returning the last file that loaded when the next path does
     // not exist, which would turn a miss into a false hit.
@@ -1296,11 +1265,11 @@ Item {
     // A .lrc/.txt beside the track, then the shared cache. Empty when the track
     // has nothing on disk and the helper has to run.
     function localLyricsFor(rel, artist, title) {
-        var base = (root.lyricsMusicDir + "/" + rel).replace(/\.[^./]+$/, "")
+        var base = Lyrics.localStem(root.lyricsMusicDir, rel)
         var text = root.readLyricsFile(base + ".lrc")
         if (!text) text = root.readLyricsFile(base + ".txt")
         if (!text && artist && title) {
-            var stems = root.lyricsCacheStems(artist, title)
+            var stems = Lyrics.cacheStems(root.lyricsHome, artist, title)
             for (var i = 0; i < stems.length && !text; i++) {
                 text = root.readLyricsFile(stems[i] + ".lrc")
                 if (!text) text = root.readLyricsFile(stems[i] + ".txt")
@@ -1429,9 +1398,8 @@ Item {
         if (root.currentLyricLine < 0) return
         var item = lyricsRepeater.itemAt(root.currentLyricLine)
         if (!item) return
-        var max = Math.max(0, lyricsFlick.contentHeight - lyricsFlick.height)
-        var target = item.y - (lyricsFlick.height - item.height) / 2
-        target = Math.max(0, Math.min(target, max))
+        var target = Lyrics.scrollTarget(item.y, item.height,
+            lyricsFlick.height, lyricsFlick.contentHeight)
         if (Math.abs(target - lyricsFlick.contentY) < 2) return
         lyricsScrollAnim.stop()
         lyricsScrollAnim.from = lyricsFlick.contentY
@@ -1442,66 +1410,17 @@ Item {
     // Keyboard scrolling. Any manual movement pauses following for a few
     // seconds, so the next line change does not yank the text away.
     function scrollLyricsBy(delta) {
-        var max = Math.max(0, lyricsFlick.contentHeight - lyricsFlick.height)
         lyricsScrollAnim.stop()
-        lyricsFlick.contentY = Math.max(0, Math.min(lyricsFlick.contentY + delta, max))
+        lyricsFlick.contentY = Lyrics.scrollBy(lyricsFlick.contentY, delta,
+            lyricsFlick.contentHeight, lyricsFlick.height)
         root.pauseLyricsFollow()
     }
 
     function scrollLyricsToEdge(edge) {
-        var max = Math.max(0, lyricsFlick.contentHeight - lyricsFlick.height)
         lyricsScrollAnim.stop()
-        lyricsFlick.contentY = edge === 0 ? 0 : max
+        lyricsFlick.contentY = Lyrics.scrollEdge(edge,
+            lyricsFlick.contentHeight, lyricsFlick.height)
         root.pauseLyricsFollow()
-    }
-
-    function parseLyrics(text) {
-        var lines = String(text === undefined || text === null ? "" : text).replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
-        var out = []
-        // [mm:ss.xx], and the [mm:ss:xx] spelling some writers emit. A third
-        // fraction digit means milliseconds rather than hundredths.
-        var re = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g
-        // A line that is nothing but LRC metadata tags -- [ar:], [ti:],
-        // [offset:] -- is not lyrics. Without this it would fall through to the
-        // plain-text branch and be printed verbatim. Bracket words in plain
-        // files, like a "[Chorus]" heading, are left alone.
-        var metaOnly = /^(?:\[(?:ar|al|ti|au|by|re|ve|length|offset|tool):[^\]]*\]\s*)+$/i
-        for (var i = 0; i < lines.length; i++) {
-            var l = lines[i]
-            re.lastIndex = 0
-            var m
-            var times = []
-            while ((m = re.exec(l)) !== null) {
-                var mm = parseInt(m[1]) || 0
-                var ss = parseInt(m[2]) || 0
-                var frac = m[3] !== undefined ? m[3] : "0"
-                var part = frac.length === 1 ? parseInt(frac) / 10
-                        : frac.length === 2 ? parseInt(frac) / 100
-                        : parseInt(frac.substring(0, 3)) / 1000
-                times.push(mm * 60 + ss + (part || 0))
-            }
-            if (times.length === 0) {
-                var t = l.trim()
-                if (t !== "" && !metaOnly.test(t)) out.push({ time: -1, text: t, order: out.length })
-                continue
-            }
-            var content = l.replace(/\[[^\]]*\]/g, "").trim()
-            if (content === "") continue
-            for (var ti = 0; ti < times.length; ti++) {
-                out.push({ time: times[ti], text: content, order: out.length })
-            }
-        }
-        // Timed lines first, then plain text. The original position breaks ties:
-        // a plain file has no times at all, and an unstable sort would otherwise
-        // be free to shuffle every line.
-        out.sort(function (a, b) {
-            if (a.time < 0 && b.time < 0) return a.order - b.order
-            if (a.time < 0) return 1
-            if (b.time < 0) return -1
-            if (a.time === b.time) return a.order - b.order
-            return a.time < b.time ? -1 : 1
-        })
-        return out
     }
 
     // MPD's current song, as the helper's fallback tags. The file's own tags
@@ -1557,22 +1476,22 @@ Item {
         var local = root.localLyricsFor(rel, artist, title)
         if (local) {
             root.lyricsText = local
-            root.lyricsLines = root.parseLyrics(local)
+            root.lyricsLines = Lyrics.parse(local)
             root.currentLyricLine = -1
             return
         }
 
         root.lyricsLoading = true
-        var command = ["python3", root.lyricsScript,
-            "--music-dir", root.lyricsMusicDir,
-            "--file", rel,
-            "--artist", artist,
-            "--title", title,
-            "--album", album,
-            "--duration", duration]
-        // "Fetch lyrics" off keeps the helper to local files only: embedded
-        // tags, sidecars and the cache, with no request to lrclib.
-        if (!prefs.lyricsDownloads) command.push("--offline")
+        var command = Lyrics.helperArgs({
+            script: root.lyricsScript,
+            musicDir: root.lyricsMusicDir,
+            file: rel,
+            artist: artist,
+            title: title,
+            album: album,
+            duration: duration,
+            offline: !prefs.lyricsDownloads
+        })
         if (defer) {
             root.lyricsPending = { file: rel, command: command }
             // Covers a killed helper whose stream never finishes: without it
@@ -2030,8 +1949,8 @@ Item {
         title: "GrimPlayer"
         color: theme.background
         // Starts closed; the shell summons the panel on demand. Starting visible
-        // meant the surface outliving whatever it was pinned to, which is what
-        // left its workspace stuck as active after a close.
+        // lets the surface outlive whatever it is pinned to, which leaves its
+        // workspace stuck as active after a close.
         visible: false
 
         onVisibleChanged: {
@@ -2083,10 +2002,11 @@ Item {
                     anchors.bottom: parent.bottom
                     width: Math.max(0, parent.width - root.coverPaneWidth)
 
-                    // Bare `prefs`, not `root.prefs`: the config object is reached by its id, and an
-                    // id is only in scope as a plain name. `root.prefs` is undefined,
-                    // which left PaneRow silently on its fallback values -- dividers
-                    // pinned to 1px whatever the setting said.
+                    // Bare `prefs`, not `root.prefs`: the config object is reached by
+                    // its id, and an id is only in scope as a plain name.
+                    // `root.prefs` is undefined, which leaves PaneRow silently on
+                    // its fallback values -- dividers pinned to 1px whatever the
+                    // setting said.
                     prefs: prefs
                     theme: theme
                     paneWidth: width
@@ -2712,10 +2632,10 @@ Item {
             radius: Math.round(6 * prefs.uiScale)
             // Built like the typeahead rather than as a filled slab: a low wash of
             // the theme's own alert token, a firmer edge on the same token, and
-            // readable text. The previous urgent fill at 0.92 under hardcoded white
-            // was the one part of this panel that ignored the theme, which is why
-            // it read as a system dialog dropped onto a themed surface -- and why a
-            // theme with a paler alert colour turned it into a flat pink block.
+            // readable text. A solid urgent fill under hardcoded white would be
+            // the one part of this panel ignoring the theme, reading as a system
+            // dialog dropped onto a themed surface -- and a theme with a paler
+            // alert colour turns it into a flat pink block.
             //
             // The text stays in foreground rather than urgent: `urgent` is allowed
             // to be a dark muted red (it defaults to one), so tinting the label
@@ -3530,7 +3450,7 @@ Item {
                                 && String(data.file) !== root.lyricsFileKey)
                         if (forThis && data && data.status === "ok" && data.lyrics) {
                             root.lyricsText = String(data.lyrics)
-                            root.lyricsLines = root.parseLyrics(root.lyricsText)
+                            root.lyricsLines = Lyrics.parse(root.lyricsText)
                             root.currentLyricLine = -1
                         } else if (forThis) {
                             root.clearLyrics()
@@ -3612,30 +3532,15 @@ Item {
         running: root.lyricsView && root.lyricsMarking
                  && root.lyricsLines && root.lyricsLines.length > 0
         onTriggered: {
-            // The offset shifts the highlight against the audio: positive
-            // delays it for lyrics that run early.
-            var elapsed = (root.elapsed || 0) - prefs.lyricsOffset / 1000
-            var best = -1
-            var lines = root.lyricsLines
-            for (var i = 0; i < lines.length; i++) {
-                var t = lines[i].time
-                if (t >= 0 && t <= elapsed + 0.25) {
-                    best = i
-                } else if (t > elapsed + 0.25) {
-                    break
-                }
-            }
-            if (best !== root.currentLyricLine) {
-                root.currentLyricLine = best
-            }
+            var best = Lyrics.activeIndex(root.lyricsLines, root.elapsed, prefs.lyricsOffset)
+            if (best !== root.currentLyricLine) root.currentLyricLine = best
         }
     }
 
     // Reached from outside the window as well as from inside it, so the editor can
     // be opened on whatever is selected without the panel having to be focused
     // first. The panel is summoned first: openTagEditor only sets the editor's
-    // state, and an editor on a hidden window is invisible, which is what the
-    // desktop entry used to hit.
+    // state, and an editor on a hidden window is invisible.
     IpcHandler {
         target: "skollgrim.grimplayer"
         function editTags(): void {

@@ -5,8 +5,7 @@ pragma ComponentBehavior: Bound
 // would recolour the bar, the notifications and every other panel, which is not
 // what "the player matches its cover" means. So the player keeps its own copy
 // of the handful of tokens it draws with, seeded from the theme and overwritten
-// per track. Everything in the plugin that used to read Color.* reads this
-// instead.
+// per track. Everything in the plugin that read Color.* reads this instead.
 //
 // The override is held as data and folded into a binding rather than assigned
 // over the token directly. Assigning would break the Color.background binding

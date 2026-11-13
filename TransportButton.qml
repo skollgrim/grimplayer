@@ -80,7 +80,7 @@ Item {
     // undefined.
     //
     // A resting glyph is the theme foreground pulled part of the way toward the
-    // cover accent, not the bare foreground it used to be. On a plain theme that
+    // cover accent, rather than the bare foreground. On a plain theme that
     // is imperceptible (foreground and accent are both cool and light); once a
     // cover's palette is folded in it is what makes the transport carry the
     // album's colour at rest instead of only when a toggle is engaged. The blend
@@ -104,9 +104,8 @@ Item {
         // matches their optical weight without breaking the shared geometry.
         "pause": "M9 7 L9 17 M15 7 L15 17",
         // Two rails that cross in the middle, each ending in a chevron. This is
-        // the shape that reads as "shuffle" at a glance; the earlier version
-        // leaned on four separate arrowheads and diagonals that did not meet,
-        // which at 25px came out as loose scribble rather than an icon.
+        // the shape that reads as "shuffle" at a glance; four separate arrowheads
+        // and diagonals that do not meet come out as loose scribble at 25px.
         "shuffle": "M2 6 L8 6 L16 18 L22 18 M19 15 L22 18 L19 21 M2 18 L8 18 L16 6 L22 6 M19 3 L22 6 L19 9",
         "repeat": "M6.5 10.5 L6.5 9 A3.5 3.5 0 0 1 10 5.5 L17 5.5 M14 2.5 L17 5.5 L14 8.5 M17.5 13.5 L17.5 15 A3.5 3.5 0 0 1 14 18.5 L7 18.5 M10 15.5 L7 18.5 L10 21.5"
     })
@@ -134,9 +133,9 @@ Item {
         Behavior on opacity { NumberAnimation { duration: Style.duration(90) } }
 
         // No ring for the secondary toggles. shuffle and repeat read as on/off through
-        // the glyph itself -- accent when engaged, foreground when not -- so the
-        // circle that used to wrap them was a third thing to look at, and it was
-        // the only cue distinguishing those two buttons from prev/next.
+        // the glyph itself -- accent when engaged, foreground when not -- so a
+        // circle around them would be a third thing to look at, and the only cue
+        // distinguishing those two buttons from prev/next.
         //
         // The paths are authored on a 24x24 grid in the Shape's own coordinates,
         // and PathSvg does not scale them to the Shape's box, so the box stays

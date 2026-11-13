@@ -189,7 +189,7 @@ function luminance(rgb) {
 // Plain RGB chroma: the spread between the largest and smallest channel. This,
 // not HSL saturation, is what says "this pixel is actually coloured". HSL
 // reports a near-black with a one-point blue cast as fully saturated, so a
-// mostly-black sleeve used to hand the whole panel a strong blue it did not
+// mostly-black sleeve would hand the whole panel a strong blue it does not
 // contain; in chroma those pixels are almost grey and contribute almost nothing.
 function chroma(rgb) {
     return Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b)
@@ -288,7 +288,7 @@ function pickAccent(cs, light, bg) {
 // Everything here is read from the artwork. The live theme is consulted for one
 // thing only -- the alert colour, which stays semantic rather than following a
 // sleeve -- and never for a hue, so a colourless cover cannot inherit the
-// theme's blue the way it used to.
+// theme's blue.
 //
 // Hue, the small amount of colour in the ground and text, and the lightness all
 // come from one colour: the mean of the quantized clusters. That mean is not a

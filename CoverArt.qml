@@ -3,12 +3,11 @@ pragma ComponentBehavior: Bound
 //
 // Artwork is found on disk beside the tracks first: MPD's `file` is a
 // library-relative path, so the album's own directory is just its parent, and the
-// cover is the conventional cover.jpg in there. That is the layout of the
-// collection this was written against.
+// cover is the conventional cover.jpg in there.
 //
 // Failing that, the art is pulled out of the track itself. A tagged library keeps
-// the image inside the file and writes nothing beside it, so those albums used to
-// land on the placeholder. MPD can serve embedded art (`albumart` returns the
+// the image inside the file and writes nothing beside it, so those albums would
+// otherwise land on the placeholder. MPD can serve embedded art (`albumart` returns the
 // picture as binary), but it cannot be used here: this plugin talks to MPD through
 // Quickshell.Io.Socket, whose reads arrive as UTF-8 text, and a JPEG or PNG does
 // not survive that decoding. So the file is handed to ffmpeg instead, which writes
@@ -738,11 +737,10 @@ Item {
     // when the artwork is drawn square.
     readonly property int cornerRadius: root.rounded ? Math.round(10 * root.uiScale) : 0
 
-    // Whether an album with no artwork anywhere shows the disc at all. Off leaves
-    // the corner empty rather than standing in a graphic for a cover that does
-    // not exist -- which is what this used to do unconditionally, before the
-    // disc was drawn at all. Real artwork always shows regardless: this is only
-    // about the absence of a cover.
+    // Whether an album with no artwork anywhere shows the disc. Off leaves the
+    // corner empty rather than standing in a graphic for a cover that does not
+    // exist. Real artwork always shows regardless: this is only about the
+    // absence of a cover.
     property bool placeholder: true
 
     // When set, this image is shown directly instead of probing for one. The tag
@@ -1053,8 +1051,7 @@ Item {
     // Coming back on screen re-probes, but going off it is not a teardown. The
     // held cover, the album directory it belongs to, the palette and any fade or
     // fetch in flight all stay as they were, so showing the panel again is not a
-    // fresh probe -- which is what it used to be, and what made the artwork
-    // visibly reload and briefly vanish on every summon.
+    // fresh probe; one would reload the artwork and blank it for a moment.
     onActiveChanged: {
         if (!root.active) {
             // The panel's own copy keeps everything (see keepCoverWhileHidden).
@@ -1160,9 +1157,8 @@ Item {
 
     // On screen whenever there is something to show: real artwork, or the disc when
     // an album has none and the placeholder is left on. With the placeholder off
-    // and no artwork, the whole frame goes -- empty corner rather than a graphic
-    // standing in for a cover that does not exist, which is how this behaved
-    // before the disc was drawn.
+    // and no artwork, the whole frame goes -- an empty corner rather than a graphic
+    // standing in for a cover that does not exist.
     //
     // Callers that place this frame in a view of their own set `visible` as well
     // (the panel's main cover shows only while the lyrics pane wants it), and
@@ -1209,28 +1205,23 @@ Item {
         visible: root.paintsCover
         // Opaque, and in the panel's own background colour, so the frame behind this
         // shows as nothing but its rim. The frame is a filled rectangle rather than
-        // an outline -- the artwork is meant to cover its centre and leave only the
-        // ring -- which meant that with no artwork its fill showed straight through
-        // and the placeholder sat on a pale slab, which is what made it read as a
-        // lit square rather than as a CD on the pane. It also gives the centre hole
-        // something true to be a hole in.
+        // an outline -- the artwork covers its centre and leaves only the ring --
+        // and a fill that let it through would put the placeholder on a pale slab
+        // and read as a lit square rather than a CD on the pane. It also gives the
+        // centre hole something true to be a hole in.
         color: root.colBackground
 
         // Shown until real art is Ready, and permanently when the album has none.
-        // A CD sitting on the pane, drawn as a circle and nothing else: the earlier
-        // version washed the whole square with a gradient, and that square was the
-        // problem -- it made the placeholder read as a lit tile with a faint circle
-        // on it rather than as a disc. Only the disc is painted now, and nothing
-        // behind it.
+        // A CD sitting on the pane: a circle and nothing else. A washed square
+        // would read as a lit tile with a faint circle on it rather than as a disc.
         //
-        // Every tone is `muted`, which is the hue the panel already uses for
-        // de-emphasised text. `foreground` is the theme's text colour, bright by
-        // design, so anything drawn in it at a strength you can see pulls the eye
-        // towards an empty shape -- and the placeholder is the one element here
-        // never meant to be read.
+        // Every tone is `muted`, the hue the panel already uses for de-emphasised
+        // text. `foreground` is the theme's text colour, bright by design, so
+        // anything drawn in it at a strength you can see pulls the eye towards an
+        // empty shape -- and the placeholder is the one element here never meant
+        // to be read.
         // An Item, not a Rectangle: this only exists to centre the disc, and a
-        // Rectangle with no colour of its own falls back to opaque white. It was a
-        // gradient until recently, which masked that default.
+        // Rectangle with no colour of its own falls back to opaque white.
         Item {
             anchors.fill: parent
             // The disc is the placeholder, so it is only painted while the
@@ -1250,8 +1241,7 @@ Item {
 
                 // The spindle hole, which is what makes a circle read as a CD rather
                 // than as a dot. Punched back out to the panel background rather
-                // than tinted: a centre lighter than the disc looks like a spot
-                // printed on it, which is what the old accent dot came across as.
+                // than tinted: a lighter centre reads as a spot printed on the disc.
                 Rectangle {
                     anchors.centerIn: parent
                     width: Math.round(parent.width * 0.15)

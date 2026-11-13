@@ -155,10 +155,10 @@ Item {
                 + Math.round(16 * root.uiScale) + Math.round(10 * root.uiScale)
                 + (dependent ? indent : 0)
             radius: Math.round(6 * root.uiScale)
-            // The caret's fill snaps from row to row. It used to be animated
-            // along with the hover fill, which made an up/down step look like
-            // the selection was still catching up while the accent bar and the
-            // label had already moved.
+            // The caret's fill snaps from row to row. Animating it along with
+            // the hover fill makes an up/down step look like the selection is
+            // still catching up while the accent bar and the label have already
+            // moved.
             color: selected ? root.colSelectedFill : "transparent"
 
             // The pointer's own answer, drawn under the row's content and faded

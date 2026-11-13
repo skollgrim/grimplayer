@@ -136,9 +136,9 @@ Item {
             visible: root.muted
 
             ShapePath {
-                // Same colour rule as the body. This used to hard-code foreground
-                // for the muted case, which is the only case it ever draws in, so
-                // the cross stayed bright while the speaker dimmed.
+                // Same colour rule as the body. Hard-coding foreground for the
+                // muted case would leave the cross bright while the speaker
+                // dims; muted is the only case this draws in.
                 strokeColor: root.strokeColor
                 strokeWidth: 2
                 fillColor: "transparent"

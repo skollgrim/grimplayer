@@ -2,9 +2,9 @@
 //
 // Three sources can disagree for a moment while a cover loads: the cache keyed
 // on the resolved cover URL, the colours the quantizer last produced, and the
-// previous album's palette still on screen. The rules between them used to sit
-// in an if-chain in GrimPlayer.syncTheme(), where only a running shell could
-// exercise the one that matters most -- the race guard that keeps a stale
+// previous album's palette still on screen. The rules between them sit here,
+// not in an if-chain in GrimPlayer.syncTheme(), where only a running shell
+// could exercise the one that matters most -- the race guard that keeps a stale
 // quantization from being shown against the new cover and cached under it.
 //
 // Keeping the decision here makes that table explicit and testable without a
