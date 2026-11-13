@@ -13,7 +13,7 @@ echo "lint ok"
 for test in extras/test-paths.js extras/test-names.js extras/test-palette.js \
         extras/test-palette-sync.js extras/test-lyrics.js \
         extras/test-layout.js extras/test-tag-frames.js \
-        extras/test-tag-save.js; do
+        extras/test-tag-save.js extras/test-scroll.js; do
     node "$test"
 done
 

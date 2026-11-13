@@ -12,6 +12,7 @@ pragma ComponentBehavior: Bound
 // column when it fits. The parent still owns the selection: currentIndex and
 // isCurrent are read, never written.
 import QtQuick
+import "Scroll.js" as Scroll
 import qs.Commons
 
 Item {
@@ -107,12 +108,11 @@ Item {
         }
     }
 
+    // Whole-row steps, the same rule the browser panes use (see Scroll.js).
     function scrollRows(rows) {
         if (rows === 0) return
-        var pitch = root.rowPitch
-        var maxY = Math.max(0, flick.contentHeight - flick.height)
-        var base = Math.round(flick.contentY / pitch) * pitch
-        flick.contentY = Math.max(0, Math.min(base + rows * pitch, maxY))
+        flick.contentY = Scroll.rowScrollTarget(flick.contentY, flick.contentHeight,
+            flick.height, root.rowPitch, rows)
     }
 
     onCurrentIndexChanged: root.followCurrent(true)
@@ -276,36 +276,13 @@ Item {
         }
     }
 
-    // Whole-row wheel steps, matching the browser panes. A handler on the
-    // Flickable itself never sees events aimed at the row under the pointer, so
-    // this empty item sits above the list; it has no mouse handling of its own,
-    // so clicks and hover still reach the rows below.
-    Item {
+    // Whole-row wheel steps, matching the browser panes: the area sits above the
+    // list because a handler on the Flickable itself never sees events aimed at
+    // the row under the pointer, and it takes no clicks of its own.
+    RowWheelArea {
         anchors.fill: flick
-
-        WheelHandler {
-            id: wheelHandler
-            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-            property real banked: 0
-            onWheel: function (event) {
-                var pitch = root.rowPitch
-                var dy = event.pixelDelta.y
-                if (dy !== 0) {
-                    wheelHandler.banked += dy
-                    if (Math.abs(wheelHandler.banked) < pitch) {
-                        event.accepted = true
-                        return
-                    }
-                    const rows = Math.trunc(wheelHandler.banked / pitch)
-                    wheelHandler.banked -= rows * pitch
-                    root.scrollRows(-rows)
-                } else {
-                    const angle = event.angleDelta.y
-                    if (angle !== 0) root.scrollRows(angle < 0 ? 1 : -1)
-                }
-                event.accepted = true
-            }
-        }
+        rowPitch: root.rowPitch
+        onScrolled: function (rows) { root.scrollRows(rows) }
     }
 
     NumberAnimation {

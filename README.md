@@ -469,11 +469,11 @@ stays dark.
 `.pragma library`: a library is compiled once per engine and cached across
 reloads, so a library edit would never be picked up, while a plain script is
 recompiled with the component that imports it. `Paths.js`, `Names.js`,
-`PaletteSync.js`, `Lyrics.js`, `Layout.js`, `TagFrames.js` and `TagSave.js`
-follow the same rule, keeping the lyrics parser and its timing, the cover
-geometry, the tag writers' argv, the save's decisions about what is pending and
-what its result means, and the panel and editor's path arithmetic testable
-outside the shell:
+`PaletteSync.js`, `Lyrics.js`, `Layout.js`, `TagFrames.js`, `TagSave.js` and
+`Scroll.js` follow the same rule, keeping the lyrics parser and its timing, the
+cover geometry, the tag writers' argv, the save's decisions about what is
+pending and what its result means, the whole-row scroll arithmetic, and the
+panel and editor's path arithmetic testable outside the shell:
 
 ```bash
 ./extras/test-all.sh
@@ -482,7 +482,7 @@ outside the shell:
 That runs `lint.sh`, every Node suite and the QML suite below. The Node suites
 can also be run one at a time (`node extras/test-paths.js`, `test-names.js`,
 `test-palette.js`, `test-palette-sync.js`, `test-lyrics.js`, `test-layout.js`,
-`test-tag-frames.js`, `test-tag-save.js`).
+`test-tag-frames.js`, `test-tag-save.js`, `test-scroll.js`).
 
 The last line is the QML-level half: it runs `qmltestrunner` against the real
 `GrimPaletteStore.qml`, `GrimTheme.qml`, `PaletteSync.js` and

@@ -9,6 +9,7 @@ pragma ComponentBehavior: Bound
 // the playing-track marker stay driven by currentIndex and isCurrent rather than
 // by the view's own current item, so the parent still owns the selection.
 import QtQuick
+import "Scroll.js" as Scroll
 import qs.Commons
 
 Item {
@@ -81,14 +82,11 @@ Item {
 
     // Wheel scrolling steps whole rows instead of sliding through free pixels,
     // which would leave an artist's name cut in half at the bottom of the pane.
-    // One notch is one row; a touchpad's pixel deltas are banked until they add
-    // up to a row, so a two-finger flick still moves at a readable pace.
+    // The rule is in Scroll.js, shared with album view.
     function scrollRows(rows) {
         if (rows === 0) return
-        var pitch = root.rowPitch
-        var maxY = Math.max(0, flick.contentHeight - flick.height)
-        var base = Math.round(flick.contentY / pitch) * pitch
-        flick.contentY = Math.max(0, Math.min(base + rows * pitch, maxY))
+        flick.contentY = Scroll.rowScrollTarget(flick.contentY, flick.contentHeight,
+            flick.height, root.rowPitch, rows)
     }
 
     // rowSpacing is the row height setting; the gap is derived from it (an eighth
@@ -423,44 +421,15 @@ Item {
 
         // Wheel input steps whole rows (see scrollRows): the default Flickable
         // handling slides through free pixels and leaves a row sliced under the
-        // bottom edge. This catches the wheel above the rows because a handler
-        // on the ListView itself never sees events aimed at the row under the
-        // pointer. It is an empty item with only a wheel handler, so it is not a
-        // target for clicks or hover and the rows beneath still get both.
-        // Touchpad pixel deltas are banked until they add up to a row, so a
-        // two-finger flick moves at a readable pace instead of racing.
-        Item {
+        // bottom edge. The area sits above the rows because a handler on the
+        // ListView itself never sees events aimed at the row under the pointer.
+        RowWheelArea {
             anchors.top: viewport.top
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: flick.bottom
-
-            WheelHandler {
-                id: wheelHandler
-                // TouchPad is listed explicitly: without it Qt drops wheel
-                // events whose source is synthesized rather than a physical
-                // mouse, which also drops some real touchpad gestures.
-                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                property real banked: 0
-                onWheel: function (event) {
-                    var pitch = root.rowPitch
-                    var dy = event.pixelDelta.y
-                    if (dy !== 0) {
-                        wheelHandler.banked += dy
-                        if (Math.abs(wheelHandler.banked) < pitch) {
-                            event.accepted = true
-                            return
-                        }
-                        const rows = Math.trunc(wheelHandler.banked / pitch)
-                        wheelHandler.banked -= rows * pitch
-                        root.scrollRows(-rows)
-                    } else {
-                        const angle = event.angleDelta.y
-                        if (angle !== 0) root.scrollRows(angle < 0 ? 1 : -1)
-                    }
-                    event.accepted = true
-                }
-            }
+            rowPitch: root.rowPitch
+            onScrolled: function (rows) { root.scrollRows(rows) }
         }
     }
 
