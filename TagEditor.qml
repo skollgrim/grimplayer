@@ -20,6 +20,7 @@ import qs.Commons
 import "Covers.js" as Covers
 import "Names.js" as Names
 import "Paths.js" as Paths
+import "TagSave.js" as TagSave
 
 Item {
     id: root
@@ -1181,35 +1182,31 @@ Item {
 
     function save() {
         if (root.busy) return
-        var tags = {}
-        var any = false
-        for (var f = 0; f < root.fields.length; f++) {
-            var key = root.fields[f].key
-            if (!root.touched[key]) continue
-            tags[key] = root.draft[key] === undefined ? "" : String(root.draft[key]).trim()
-            any = true
-        }
-        // A matched album's per-track titles and numbers are not in the shared
-        // fields; they ride alongside them and are written per file.
-        var perFile = root.perFileDraft ? root.perFileDraft : {}
-        var hasPerFile = Object.keys(perFile).length > 0
-        // A "set" with nothing chosen is not an edit; treat it as untouched.
-        var cover = (root.coverAction === "set" && root.coverPath === "") ? "" : root.coverAction
-        // Captured, not read at callback time: the cover write runs after the tag
-        // write, and an editor closed and reopened in between would have cleared
-        // root.coverPath, silently dropping the cover that was chosen here.
-        var coverPath = root.coverPath
-        // A rename is the save's last step: the tags go to the files first, then
-        // each file takes the name those tags spell (see renameToTags).
-        var renaming = root.renamePending && root.renameItems.length > 0
-        if (!any && !hasPerFile && cover === "" && !renaming) {
+        // What the drafts add up to, decided in TagSave.js so the cover/path
+        // corner cases and the "nothing changed" test can be exercised without a
+        // file. Null means there is nothing to do.
+        var edit = TagSave.pending({
+            fields: root.fields,
+            touched: root.touched,
+            draft: root.draft,
+            perFileDraft: root.perFileDraft,
+            coverAction: root.coverAction,
+            coverPath: root.coverPath,
+            renamePending: root.renamePending,
+            renameItems: root.renameItems,
+            songs: root.songs
+        })
+        if (!edit) {
             root.status = "Nothing changed"
             return
         }
-        var files = []
-        for (var s = 0; s < root.songs.length; s++) files.push(root.songs[s])
+        var tags = edit.tags
+        var perFile = edit.perFile
+        var hasPerFile = edit.hasPerFile
+        var cover = edit.cover
+        var renaming = edit.renaming
         root.busy = true
-        root.status = (!any && !hasPerFile && cover === "") ? "Renaming…" : "Writing…"
+        root.status = edit.status
         var sess = root.session
 
         var finish = function (tagResult, coverResult) {
@@ -1218,53 +1215,27 @@ Item {
             // state below belongs to the session that asked for it, not to
             // whatever is on screen now.
             if (sess !== root.session) return
-            var parts = []
-            if (tagResult) {
-                if (tagResult.written > 0) parts.push(tagResult.written + " updated")
-                if (tagResult.failed > 0) parts.push(tagResult.failed + " failed")
-                if (tagResult.skipped > 0) parts.push(tagResult.skipped + " skipped")
-            }
-            if (coverResult) {
-                if (coverResult.failed > 0) parts.push("cover failed")
-                else if (coverResult.changed)
-                    parts.push(cover === "remove" ? "cover removed" : "cover set")
-                // A cue album's tracks have no writable file, and a format no
-                // tagger can open cannot take a picture either. Reporting "cover
-                // set" for those claimed work that never happened; the skip is
-                // the honest answer, and it is the same wording the tag half
-                // uses. Both counts can be real at once in a mixed selection.
-                if (coverResult.skipped > 0)
-                    parts.push(coverResult.skipped + " skipped")
-            }
             // Part of the edit did not land. The files that did are written, but
-            // clearing the draft here would silently drop what did not and report
-            // it with a bare "3 failed". Keep the edit staged and say a retry is
-            // what it wants: `touched` still marks what was asked for, so the next
-            // Save sends the same tags again -- a no-op for the files that already
-            // took them. The agreed values are still settled from what was written,
-            // so the fields that succeeded read correctly behind the pending ones.
-            if ((tagResult && tagResult.failed > 0)
-                    || (coverResult && coverResult.failed > 0)) {
+            // clearing the draft here would silently drop what did not; keep the
+            // edit staged so the next Save sends it again, a no-op for the files
+            // that already took it. The name is dropped with the failed write.
+            if (TagSave.failed(tagResult, coverResult)) {
                 root.busy = false
-                root.status = (parts.length > 0 ? parts.join(" · ") : "Nothing changed")
-                    + " — press Save to retry"
-                // Naming a file after a tag that was not written would put a lie
-                // on disk, so the move is dropped with the failed write.
+                root.status = TagSave.failureStatus(tagResult, coverResult, cover, renaming)
                 if (renaming) {
                     root.renamePending = false
                     root.renameItems = []
-                    root.status += " — name unchanged"
                 }
                 root.settleAgreed(tags, hasPerFile)
                 root.syncFields()
                 return
             }
-            // Everything the user just asked for has been dealt with, so the draft
-            // is no longer pending. Clearing `touched` is what stops the next open
+            // Everything the user asked for has been dealt with, so the draft is
+            // no longer pending. Clearing `touched` is what stops the next open
             // from offering the previous edit's values as if they were agreed on.
             // Cleared before the move so a rename that fails to start cannot
             // leave the old drafts behind to be written a second time.
-            var baseStatus = parts.length > 0 ? parts.join(" · ") : "Nothing changed"
+            var baseStatus = TagSave.summary(tagResult, coverResult, cover) || "Nothing changed"
             root.touched = {}
             root.draft = {}
             root.coverAction = ""
@@ -1278,8 +1249,8 @@ Item {
             // The values to show come from what was just written, not from a
             // re-read of the selection: `songs` is the snapshot the editor was
             // opened with and the panel replaces its own objects when the library
-            // reloads, so commonValue() here would hand back the pre-edit values
-            // and every field would visibly revert until the editor was reopened.
+            // reloads, so re-reading it would hand back the pre-edit values and
+            // every field would visibly revert until the editor was reopened.
             root.settleAgreed(tags, hasPerFile)
             // Push the settled values into the fields now that the draft is gone:
             // the TextFields hold what was typed (they keep no binding), and with
@@ -1287,18 +1258,11 @@ Item {
             // is also what shows a lookup-filled title/track as "multiple" again,
             // since those fields settle to null rather than to one shared value.
             root.syncFields()
-            // The selection's own objects still hold what the files said when the
-            // editor opened, and a rename is planned from them. Bring them up to
-            // what was just written, or pressing Rename after Save would name the
-            // file after the tag it used to have. Cue tracks cannot take a write
-            // and never enter a rename plan, so they are left as they were.
-            for (var w = 0; w < root.songs.length; w++) {
-                var written = root.songs[w]
-                if (root.mpd.writablePath(String(written.file)) === "") continue
-                for (var tk in tags) written[tk] = tags[tk]
-                var own = perFile[String(written.file)]
-                if (own) for (var pk in own) written[pk] = own[pk]
-            }
+            // The selection's own objects still say what the files said when the
+            // editor opened, and a rename is planned from them; catch them up or
+            // Rename would name the file after the tag it used to have.
+            TagSave.absorb(root.songs, tags, perFile,
+                function (file) { return root.mpd.writablePath(String(file)) })
 
             if (!renaming) {
                 root.busy = false
@@ -1314,11 +1278,8 @@ Item {
             root.mpd.renameFiles(items, function (result) {
                 if (sess !== root.session) return
                 root.busy = false
-                var bits = []
-                if (result.moved > 0) bits.push(result.moved + " renamed")
-                if (result.skipped > 0) bits.push(result.skipped + " skipped")
-                if (result.failed > 0) bits.push(result.failed + " failed")
-                root.status = baseStatus + (bits.length > 0 ? " · " + bits.join(" · ") : "")
+                var bits = TagSave.renameSummary(result)
+                root.status = baseStatus + (bits !== "" ? " · " + bits : "")
                 // The paths this session was opened on no longer exist. The
                 // update MPD was just sent brings the tree back with the new
                 // names, so close rather than keep editing files that are not
@@ -1331,15 +1292,15 @@ Item {
         // Tags first, then the cover: both rewrite the same files, and the two
         // taggers must not be open on one file at once. A rename-only save skips
         // straight to the move.
-        if (any || hasPerFile) {
-            root.mpd.applyTagsSet(files, tags, perFile, function (tagResult) {
+        if (edit.writing) {
+            root.mpd.applyTagsSet(edit.songs, tags, perFile, function (tagResult) {
                 if (cover === "") { finish(tagResult, null); return }
-                root.mpd.applyCover(files, cover, coverPath, function (coverResult) {
+                root.mpd.applyCover(edit.songs, cover, edit.coverPath, function (coverResult) {
                     finish(tagResult, coverResult)
                 })
             })
         } else if (cover !== "") {
-            root.mpd.applyCover(files, cover, coverPath, function (coverResult) {
+            root.mpd.applyCover(edit.songs, cover, edit.coverPath, function (coverResult) {
                 finish(null, coverResult)
             })
         } else {
@@ -1353,19 +1314,7 @@ Item {
     // value in each file, so it reads as "multiple" again; a field nobody touched
     // keeps what it showed before.
     function settleAgreed(tags, hasPerFile) {
-        var a = {}
-        for (var f = 0; f < root.fields.length; f++) {
-            var key = root.fields[f].key
-            if (tags[key] !== undefined) {
-                a[key] = tags[key]
-            } else if (hasPerFile
-                    && (key === "title" || key === "track" || key === "disc")) {
-                a[key] = null
-            } else {
-                a[key] = root.agreed[key]
-            }
-        }
-        root.agreed = a
+        root.agreed = TagSave.agreed(root.fields, tags, hasPerFile, root.agreed)
     }
 
     Rectangle {
