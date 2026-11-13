@@ -126,7 +126,8 @@ Item {
             readonly property var entryData: modelData.entry
             readonly property var opts: entryData.options || []
             readonly property bool numeric: opts.length > 0 && typeof opts[0] === "number"
-            readonly property int optIndex: opts.indexOf(entryData.get())
+            readonly property int optIndex: root.config
+                ? opts.indexOf(root.config.valueFor(entryData)) : -1
             readonly property real fraction: opts.length > 1 ? Math.max(0, optIndex) / (opts.length - 1) : 0
             // The caret's currency is this integer, straight from the model.
             readonly property int visIndex: modelData.index
@@ -310,10 +311,11 @@ Item {
                                 var f = Math.max(0, Math.min(1, mx / width))
                                 var i = Math.round(f * (row.opts.length - 1))
                                 root.indexRequested(row.visIndex)
-                                row.entryData.set(row.opts[i])
+                                if (!root.config) return
+                                root.config.assign(row.entryData, row.opts[i])
                                 // Debounced inside the config, so a drag is one
                                 // write and not one per pixel.
-                                if (root.config) root.config.saveSoon()
+                                root.config.saveSoon()
                             }
                             onClicked: function (mouse) { pick(mouse.x); root.editModeRequested(true) }
                             onPositionChanged: function (mouse) { if (pressed) { pick(mouse.x); root.editModeRequested(true) } }

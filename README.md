@@ -484,12 +484,15 @@ can also be run one at a time (`node extras/test-paths.js`, `test-names.js`,
 `test-tag-frames.js`).
 
 The last line is the QML-level half: it runs `qmltestrunner` against the real
-`GrimPaletteStore.qml`, `GrimTheme.qml` and `PaletteSync.js`, with Quickshell's
-`FileView`/`Process` and the shell's `qs.Commons` tokens swapped for the small
-stand-ins under `extras/qmltest/stubs`. That covers the cache's hit/miss path,
-the JSON round trip and its validation, the theme's delegation, and the race
-guard that keeps a stale quantization from being applied to or cached under the
-next cover. Nothing in the suite writes to the real state directory.
+`GrimPaletteStore.qml`, `GrimTheme.qml`, `PaletteSync.js` and
+`GrimPlayerConfig.qml`, with Quickshell's `FileView`/`Process` and the shell's
+`qs.Commons` tokens swapped for the small stand-ins under
+`extras/qmltest/stubs`. That covers the cache's hit/miss path, the JSON round
+trip and its validation, the theme's delegation, the race guard that keeps a
+stale quantization from being applied to or cached under the next cover, and the
+settings table's schema -- every row naming a real store property, offering
+rungs of that property's own type, and landing in a column. Nothing in the suite
+writes to the real state directory.
 
 Lint the QML against the shell's own module root:
 

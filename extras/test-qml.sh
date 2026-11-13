@@ -1,6 +1,6 @@
 #!/bin/sh
-# Run the QML-level tests for the palette cache, the theme's delegation to it
-# and the cover race guard.
+# Run the QML-level tests: the palette cache, the theme's delegation to it, the
+# cover race guard, and the settings table's schema.
 #
 # The real Quickshell types are C++ plugins that only load inside the running
 # shell, so the test imports stand-ins from extras/qmltest/stubs: an in-memory

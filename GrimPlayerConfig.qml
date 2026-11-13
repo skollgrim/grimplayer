@@ -320,6 +320,13 @@ Item {
     // directory that does not exist yet and be lost silently.
     property bool stateDirReady: false
 
+    // What reset() restores: the store's own initialisers, captured before the
+    // stored file is applied. Keeping them here rather than in every entry means
+    // a row cannot drift from the state it is meant to restore -- the property
+    // declaration at the top of this file is the only place a default is written
+    // down -- and adding an option still needs nothing else.
+    property var codeDefaults: ({})
+
     FileView {
         id: stateFile
         path: root.statePath
@@ -474,6 +481,10 @@ Item {
     }
 
     Component.onCompleted: {
+        // Capture the defaults while the store still holds them: this runs before
+        // applyStored() touches a single one, and never again.
+        for (var d = 0; d < entries.length; d++)
+            codeDefaults[entries[d].key] = store[entries[d].key]
         // Read synchronously: the panel mounts at shell startup and the panes
         // bind to these values on their first evaluation, so an async load would
         // show one frame at the defaults and then jump.
@@ -593,10 +604,15 @@ Item {
     }
 
     // The rows the settings card offers, in the order each column shows them.
-    // Each entry carries its own defaultValue, which is what reset() restores, so
-    // adding an option here needs nothing else. get/set are closures rather than
-    // store[key] because dynamic property access on a typed QObject is not
-    // something to lean on from QML.
+    // An entry is a name, a place and a set of rungs: the value itself is the
+    // store property the key names, reached through valueFor() and assign(). The
+    // defaults live with the store at the top of the file; an entry names only
+    // the rungs a value may take.
+    //
+    // A row prints itself without a `format` wherever the obvious reading is the
+    // right one -- on/off for a switch, a capitalised word for a named choice, a
+    // bare number -- and spells one out only for a unit, a percentage or a
+    // phrasing that says more than the option does.
     //
     // Which column an entry lands in follows from a single `section` tag, and
     // table order is the order each section shows its rows. Sections are cut by
@@ -620,20 +636,14 @@ Item {
             section: "list",
             label: "Wrap lists",
             hint: "Down on the last row goes to the top, up on the first goes to the last",
-            options: [true, false],
-            get: function () { return store.wrapAround },
-            set: function (v) { store.wrapAround = v },
-            format: root.boolText
+            options: [true, false]
         },
         {
             key: "playingHighlight",
             section: "list",
             label: "Playing tint",
             hint: "Tint the current track while browsing its album",
-            options: [true, false],
-            get: function () { return store.playingHighlight },
-            set: function (v) { store.playingHighlight = v },
-            format: root.boolText
+            options: [true, false]
         },
         {
             key: "playingMarkerSides",
@@ -641,12 +651,8 @@ Item {
             label: "Marker sides",
             hint: "Which edges of the playing row carry the accent bar; the tint stays either way",
             options: ["none", "left", "right", "both"],
-            defaultValue: "right",
             dependsOn: function () { return store.playingHighlight },
-            after: "playingHighlight",
-            get: function () { return store.playingMarkerSides },
-            set: function (v) { store.playingMarkerSides = v },
-            format: root.titleText
+            after: "playingHighlight"
         },
         {
             key: "rowSpacing",
@@ -654,9 +660,6 @@ Item {
             label: "Row height",
             hint: "Height of each list row; the gap between rows follows it",
             options: [24, 28, 32, 36, 40],
-            defaultValue: 28,
-            get: function () { return store.rowSpacing },
-            set: function (v) { store.rowSpacing = v },
             format: function (v) { return v + " px" }
         },
         {
@@ -665,10 +668,6 @@ Item {
             label: "Row lines",
             hint: "Draw a faint line between rows in each pane",
             options: [true, false],
-            defaultValue: false,
-            get: function () { return store.rowSeparators },
-            set: function (v) { store.rowSeparators = v },
-            format: root.boolText
         },
         {
             key: "seekThickness",
@@ -680,9 +679,6 @@ Item {
             // ended. The bar's slot grows with it (see SeekBar), so a thicker bar
             // takes more room rather than crowding the elapsed time above it.
             options: [3, 5, 7, 9, 11, 13, 15],
-            defaultValue: 9,
-            get: function () { return store.seekThickness },
-            set: function (v) { store.seekThickness = v },
             format: function (v) { return v + " px" }
         },
         {
@@ -691,10 +687,6 @@ Item {
             label: "Headings",
             hint: "Show the pane name over a rule at the top; off starts the lists at the very top",
             options: [true, false],
-            defaultValue: false,
-            get: function () { return store.paneHeadings },
-            set: function (v) { store.paneHeadings = v },
-            format: root.boolText
         },
         {
             key: "fontBodySmall",
@@ -712,11 +704,8 @@ Item {
             // than a size below it, since a heading smaller than the theme's own
             // small text has nothing to be smaller than.
             options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
-            defaultValue: 4,
             dependsOn: function () { return store.paneHeadings },
             after: "paneHeadings",
-            get: function () { return store.fontBodySmall },
-            set: function (v) { store.fontBodySmall = v },
             format: root.deltaText
         },
         {
@@ -725,10 +714,6 @@ Item {
             label: "Pane dividers",
             hint: "Draw the rules between the list panes and the artwork pane",
             options: [true, false],
-            defaultValue: true,
-            get: function () { return store.paneSeparators },
-            set: function (v) { store.paneSeparators = v },
-            format: root.boolText
         },
         {
             key: "borderWidth",
@@ -743,8 +728,6 @@ Item {
             options: [1, 2, 3, 4],
             dependsOn: function () { return store.paneSeparators || store.paneHeadings },
             after: "paneSeparators",
-            get: function () { return store.borderWidth },
-            set: function (v) { store.borderWidth = v },
             format: function (v) { return v + " px" }
         },
         {
@@ -752,10 +735,7 @@ Item {
             section: "panes",
             label: "Dim unfocused",
             hint: "Fade the two unfocused panes so the active one stands out",
-            options: [true, false],
-            get: function () { return store.focusGlow },
-            set: function (v) { store.focusGlow = v },
-            format: root.boolText
+            options: [true, false]
         },
         {
             key: "activeRowBorder",
@@ -763,10 +743,6 @@ Item {
             label: "Caret frame",
             hint: "Draw a heavier frame around the caret row in the focused pane",
             options: [true, false],
-            defaultValue: false,
-            get: function () { return store.activeRowBorder },
-            set: function (v) { store.activeRowBorder = v },
-            format: root.boolText
         },
         {
             key: "albumCaption",
@@ -774,10 +750,6 @@ Item {
             label: "Album caption",
             hint: "Name the record above the titles in album view; off leaves just the songs",
             options: [true, false],
-            defaultValue: true,
-            get: function () { return store.albumCaption },
-            set: function (v) { store.albumCaption = v },
-            format: root.boolText
         },
         {
             key: "trackNumberFormat",
@@ -785,9 +757,6 @@ Item {
             label: "Number format",
             hint: "How the tracks pane writes each number before its title; numbers are padded to two digits",
             options: ["dot", "dash"],
-            defaultValue: "dot",
-            get: function () { return store.trackNumberFormat },
-            set: function (v) { store.trackNumberFormat = v },
             format: function (v) { return v === "dash" ? "01 - Title" : "01. Title" }
         },
         {
@@ -796,10 +765,6 @@ Item {
             label: "Quiet numbers",
             hint: "Draw track numbers in the muted ink, like the durations, so the titles lead",
             options: [true, false],
-            defaultValue: false,
-            get: function () { return store.trackNumberMuted },
-            set: function (v) { store.trackNumberMuted = v },
-            format: root.boolText
         },
 
         // ---- Navigation ----
@@ -809,20 +774,13 @@ Item {
             label: "Vim keys",
             hint: "Use j/k/h/l/g/G for navigation",
             options: [true, false],
-            defaultValue: false,
-            get: function () { return store.vimKeys },
-            set: function (v) { store.vimKeys = v },
-            format: root.boolText
         },
         {
             key: "typeaheadSearch",
             section: "list",
             label: "Type-to-find",
             hint: "Jump by typing first letters of names",
-            options: [true, false],
-            get: function () { return store.typeaheadSearch },
-            set: function (v) { store.typeaheadSearch = v },
-            format: root.boolText
+            options: [true, false]
         },
         {
             key: "typeaheadPlace",
@@ -834,12 +792,8 @@ Item {
             // still says "typed letters" rather than leaning on the label, since
             // it is read on its own at the foot of the card.
             options: ["bottom", "center"],
-            defaultValue: "bottom",
             dependsOn: function () { return store.typeaheadSearch },
-            after: "typeaheadSearch",
-            get: function () { return store.typeaheadPlace },
-            set: function (v) { store.typeaheadPlace = v },
-            format: root.titleText
+            after: "typeaheadSearch"
         },
         {
             key: "typeaheadScale",
@@ -855,11 +809,8 @@ Item {
             // so the resting size sits centred and a bigger readout is a step
             // away in either direction.
             options: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-            defaultValue: 6,
             dependsOn: function () { return store.typeaheadSearch },
             after: "typeaheadSearch",
-            get: function () { return store.typeaheadScale },
-            set: function (v) { store.typeaheadScale = v },
             format: root.deltaText
         },
 
@@ -870,9 +821,6 @@ Item {
             label: "UI scale",
             hint: "Scales rows, spacing, fonts, icons and cover art together",
             options: [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5],
-            defaultValue: 1.0,
-            get: function () { return store.uiScale },
-            set: function (v) { store.uiScale = v },
             format: function (v) { return (v * 100).toFixed(0) + "%" }
         },
         {
@@ -881,9 +829,6 @@ Item {
             label: "Icon size",
             hint: "Transport and UI icons",
             options: [12, 14, 16, 18, 20],
-            defaultValue: 16,
-            get: function () { return store.iconSize },
-            set: function (v) { store.iconSize = v },
             format: function (v) { return v + " px" }
         },
         {
@@ -892,9 +837,6 @@ Item {
             label: "Now playing",
             hint: "Now playing title, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
-            defaultValue: 0,
-            get: function () { return store.fontTitle },
-            set: function (v) { store.fontTitle = v },
             format: root.deltaText
         },
         {
@@ -903,9 +845,6 @@ Item {
             label: "Rows",
             hint: "Album and track rows, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
-            defaultValue: 0,
-            get: function () { return store.fontSubtitle },
-            set: function (v) { store.fontSubtitle = v },
             format: root.deltaText
         },
         {
@@ -914,9 +853,6 @@ Item {
             label: "Artist & time",
             hint: "Artist and the elapsed/total time, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
-            defaultValue: 2,
-            get: function () { return store.fontBody },
-            set: function (v) { store.fontBody = v },
             format: root.deltaText
         },
         {
@@ -925,9 +861,6 @@ Item {
             label: "Captions",
             hint: "The album caption, the up-next label and the MPD banner, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
-            defaultValue: 0,
-            get: function () { return store.fontCaption },
-            set: function (v) { store.fontCaption = v },
             format: root.deltaText
         },
         {
@@ -939,9 +872,6 @@ Item {
             // aside, and on a small panel a quieter line is a legitimate choice.
             // Zero is the untouched theme size.
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
-            defaultValue: 0,
-            get: function () { return store.noticeScale },
-            set: function (v) { store.noticeScale = v },
             format: root.deltaText
         },
         {
@@ -949,10 +879,7 @@ Item {
             section: "text",
             label: "Album years",
             hint: "Prefix each album with its release year, read from the Date tag",
-            options: [true, false],
-            get: function () { return store.albumYears },
-            set: function (v) { store.albumYears = v },
-            format: root.boolText
+            options: [true, false]
         },
 
         // ---- Cover art ----
@@ -966,10 +893,6 @@ Item {
             label: "Cover border",
             hint: "Ring around the cover art, separate from the pane rules",
             options: [true, false],
-            defaultValue: false,
-            get: function () { return store.coverBorder },
-            set: function (v) { store.coverBorder = v },
-            format: root.boolText
         },
         {
             key: "coverBorderWidth",
@@ -977,11 +900,8 @@ Item {
             label: "Cover border width",
             hint: "Thickness of the ring around the cover art",
             options: [1, 2, 3, 4, 6, 8],
-            defaultValue: 1,
             dependsOn: function () { return store.coverBorder },
             after: "coverBorder",
-            get: function () { return store.coverBorderWidth },
-            set: function (v) { store.coverBorderWidth = v },
             format: function (v) { return v + " px" }
         },
         {
@@ -990,10 +910,6 @@ Item {
             label: "Round corners",
             hint: "Round the artwork's corners; off draws it as a plain square",
             options: [true, false],
-            defaultValue: true,
-            get: function () { return store.coverRounded },
-            set: function (v) { store.coverRounded = v },
-            format: root.boolText
         },
         {
             key: "coverTransition",
@@ -1001,9 +917,6 @@ Item {
             label: "Cover fade",
             hint: "Fade the new album cover in over the old one; instant is a plain swap",
             options: [0, 100, 200, 300, 400, 500, 600],
-            defaultValue: 400,
-            get: function () { return store.coverTransition },
-            set: function (v) { store.coverTransition = v },
             format: function (v) { return v === 0 ? "instant" : v + " ms" }
         },
         {
@@ -1012,10 +925,6 @@ Item {
             label: "Placeholder art",
             hint: "Show a CD when the album has no artwork, or leave the space empty",
             options: [true, false],
-            defaultValue: true,
-            get: function () { return store.coverPlaceholder },
-            set: function (v) { store.coverPlaceholder = v },
-            format: root.boolText
         },
         {
             key: "upNextCover",
@@ -1023,10 +932,6 @@ Item {
             label: "Up next cover",
             hint: "In album view, preview the next album's art above the bar",
             options: [true, false],
-            defaultValue: true,
-            get: function () { return store.upNextCover },
-            set: function (v) { store.upNextCover = v },
-            format: root.boolText
         },
 
         {
@@ -1035,10 +940,6 @@ Item {
             label: "Cover decode size",
             hint: "Maximum resolution to decode embedded art at",
             options: ["full", "large", "medium"],
-            defaultValue: "medium",
-            get: function () { return store.coverDecodeSize },
-            set: function (v) { store.coverDecodeSize = v },
-            format: root.titleText
         },
         // The pane settings sit together, the mode row first, with its dependents
         // grouped under it: the card sits each one directly beneath the row it
@@ -1049,8 +950,6 @@ Item {
             label: "Cover pane",
             hint: "Give the album art its own pane on the right, or let it follow window size",
             options: ["off", "on", "auto"],
-            defaultValue: "auto",
-            get: function () { return store.coverBandMode },
             set: function (v) {
                 store.coverBandMode = v
                 // Pinning the placement moves the artwork size to match it: the
@@ -1065,8 +964,7 @@ Item {
                 // save then covers along with this one.
                 if (v === "on") store.coverScale = 100
                 else if (v === "off") store.coverScale = 30
-            },
-            format: root.titleText
+            }
         },
         {
             key: "coverBandAlign",
@@ -1074,12 +972,8 @@ Item {
             label: "Cover position",
             hint: "Where the cover sits vertically in the artwork pane",
             options: ["top", "middle", "bottom"],
-            defaultValue: "middle",
             dependsOn: function () { return store.coverBandMode !== "off" },
-            after: "coverBandMode",
-            get: function () { return store.coverBandAlign },
-            set: function (v) { store.coverBandAlign = v },
-            format: root.titleText
+            after: "coverBandMode"
         },
         {
             key: "coverPadding",
@@ -1087,12 +981,8 @@ Item {
             label: "Cover padding",
             hint: "Keep a margin between the cover and the pane edges; off runs it flush",
             options: [true, false],
-            defaultValue: false,
             dependsOn: function () { return store.coverBandMode !== "off" },
-            after: "coverBandMode",
-            get: function () { return store.coverPadding },
-            set: function (v) { store.coverPadding = v },
-            format: root.boolText
+            after: "coverBandMode"
         },
         {
             key: "coverScale",
@@ -1110,11 +1000,8 @@ Item {
             // and pinned "on" the pane's own full height is what the toggle above
             // just wrote into this value, so offering the slider there would be
             // offering to undo the choice that was just made.
-            defaultValue: 30,
             dependsOn: function () { return store.coverBandMode === "off" },
             after: "coverBandMode",
-            get: function () { return store.coverScale },
-            set: function (v) { store.coverScale = v },
             format: function (v) { return v + "%" }
         },
         {
@@ -1127,11 +1014,8 @@ Item {
             // the screen; lower it to admit smaller windows. Five-step rungs so a
             // nudge is visible without walking a long ramp.
             options: [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
-            defaultValue: 100,
             dependsOn: function () { return store.coverBandMode === "auto" },
             after: "coverBandMode",
-            get: function () { return store.coverBandMinPct },
-            set: function (v) { store.coverBandMinPct = v },
             format: function (v) { return v + "%" }
         },
         {
@@ -1140,10 +1024,6 @@ Item {
             label: "Fetch covers",
             hint: "Look a cover up on iTunes or Deezer when an album has none, and cache it",
             options: [true, false],
-            defaultValue: true,
-            get: function () { return store.fetchCovers },
-            set: function (v) { store.fetchCovers = v },
-            format: root.boolText
         },
         {
             key: "adaptiveColors",
@@ -1151,10 +1031,6 @@ Item {
             label: "Adaptive colours",
             hint: "Follow the current album cover instead of the shell theme",
             options: [true, false],
-            defaultValue: false,
-            get: function () { return store.adaptiveColors },
-            set: function (v) { store.adaptiveColors = v },
-            format: root.boolText
         },
 
         // ---- Lyrics ----
@@ -1169,9 +1045,6 @@ Item {
             label: "Line spacing",
             hint: "Gap between lyric lines in both views: tight, normal or airy",
             options: [4, 8, 12],
-            defaultValue: 8,
-            get: function () { return store.lyricsSpacing },
-            set: function (v) { store.lyricsSpacing = v },
             format: function (v) { return v === 4 ? "Tight" : v === 8 ? "Normal" : "Airy" }
         },
         {
@@ -1180,10 +1053,6 @@ Item {
             label: "Dim other lines",
             hint: "How far the lines around a marked one fade back in both views",
             options: ["subtle", "medium", "strong"],
-            defaultValue: "medium",
-            get: function () { return store.lyricsDim },
-            set: function (v) { store.lyricsDim = v },
-            format: root.titleText
         },
         {
             key: "lyricsResume",
@@ -1191,9 +1060,6 @@ Item {
             label: "Resume after scroll",
             hint: "How long either view waits after a manual scroll before returning to the playing line",
             options: [5000, 15000, 0],
-            defaultValue: 5000,
-            get: function () { return store.lyricsResume },
-            set: function (v) { store.lyricsResume = v },
             format: function (v) { return v === 0 ? "Never" : (v / 1000) + " s" }
         },
         {
@@ -1202,9 +1068,6 @@ Item {
             label: "Sync offset",
             hint: "Shift synced lyrics that run early or late in both views; positive delays the highlight",
             options: [-2000, -1500, -1000, -500, 0, 500, 1000, 1500, 2000],
-            defaultValue: 0,
-            get: function () { return store.lyricsOffset },
-            set: function (v) { store.lyricsOffset = v },
             format: function (v) {
                 return v === 0 ? "0 s" : (v > 0 ? "+" : "") + (v / 1000).toFixed(1) + " s"
             }
@@ -1215,10 +1078,6 @@ Item {
             label: "Click to seek",
             hint: "Click a timed line in either view to jump to that point in the track",
             options: [true, false],
-            defaultValue: true,
-            get: function () { return store.lyricsClickSeek },
-            set: function (v) { store.lyricsClickSeek = v },
-            format: root.boolText
         },
         {
             key: "lyricsDownloads",
@@ -1226,10 +1085,6 @@ Item {
             label: "Fetch lyrics",
             hint: "Ask lrclib when a track has no lyrics on disk, for both views; off keeps the player local-only",
             options: [true, false],
-            defaultValue: true,
-            get: function () { return store.lyricsDownloads },
-            set: function (v) { store.lyricsDownloads = v },
-            format: root.boolText
         },
 
         // ---- Lyrics view ----
@@ -1243,10 +1098,6 @@ Item {
             label: "Alignment",
             hint: "In the lyrics view, align the lines left or centre them in the reading column",
             options: ["left", "center"],
-            defaultValue: "left",
-            get: function () { return store.lyricsAlign },
-            set: function (v) { store.lyricsAlign = v },
-            format: root.titleText
         },
         {
             key: "lyricsFont",
@@ -1254,9 +1105,6 @@ Item {
             label: "Text size",
             hint: "Lyrics view size as an offset from the theme; karaoke has its own",
             options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
-            defaultValue: 2,
-            get: function () { return store.lyricsFont },
-            set: function (v) { store.lyricsFont = v },
             format: root.deltaText
         },
         {
@@ -1265,10 +1113,6 @@ Item {
             label: "Track info",
             hint: "In the lyrics view, show the title and artist above the text, the title alone, or neither",
             options: ["both", "title", "off"],
-            defaultValue: "both",
-            get: function () { return store.lyricsInfo },
-            set: function (v) { store.lyricsInfo = v },
-            format: root.titleText
         },
         {
             key: "lyricsFollow",
@@ -1276,10 +1120,6 @@ Item {
             label: "Follow along",
             hint: "In the lyrics view, scroll to the current line and highlight it, highlight it without scrolling, or leave the text still",
             options: ["follow", "highlight", "off"],
-            defaultValue: "follow",
-            get: function () { return store.lyricsFollow },
-            set: function (v) { store.lyricsFollow = v },
-            format: root.titleText
         },
         {
             key: "lyricsWidth",
@@ -1287,10 +1127,6 @@ Item {
             label: "Text width",
             hint: "How wide the lyrics view's reading column may get; a narrower column keeps long lines readable",
             options: ["full", "wide", "narrow"],
-            defaultValue: "full",
-            get: function () { return store.lyricsWidth },
-            set: function (v) { store.lyricsWidth = v },
-            format: root.titleText
         },
         {
             key: "lyricsCover",
@@ -1298,10 +1134,6 @@ Item {
             label: "Cover beside lyrics",
             hint: "In the lyrics view, keep the artwork beside the lyrics or give the text the full width",
             options: ["show", "hide"],
-            defaultValue: "show",
-            get: function () { return store.lyricsCover },
-            set: function (v) { store.lyricsCover = v },
-            format: root.titleText
         },
 
         // ---- Karaoke ----
@@ -1316,9 +1148,6 @@ Item {
             label: "Text size",
             hint: "Karaoke size as an offset from the theme; independent of the lyrics view",
             options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
-            defaultValue: 2,
-            get: function () { return store.karaokeFont },
-            set: function (v) { store.karaokeFont = v },
             format: root.deltaText
         },
         {
@@ -1327,9 +1156,6 @@ Item {
             label: "Track info",
             hint: "Keep the track details above the scrolling lyrics: the track, the track and artist, or those plus the album",
             options: ["off", "track", "both", "all"],
-            defaultValue: "both",
-            get: function () { return store.karaokeInfo },
-            set: function (v) { store.karaokeInfo = v },
             format: function (v) {
                 return v === "off" ? "Off"
                     : v === "track" ? "Track"
@@ -1343,9 +1169,6 @@ Item {
             label: "Cover",
             hint: "Put the album cover beside the lyrics, behind them at low opacity, or away entirely",
             options: ["side", "background", "hide"],
-            defaultValue: "side",
-            get: function () { return store.karaokeCover },
-            set: function (v) { store.karaokeCover = v },
             format: function (v) {
                 return v === "side" ? "Beside" : v === "background" ? "Background" : "Hidden"
             }
@@ -1356,17 +1179,37 @@ Item {
             label: "Cover opacity",
             hint: "How strongly the background cover shows through behind the lyrics",
             options: [0.1, 0.2, 0.3, 0.4],
-            defaultValue: 0.2,
             dependsOn: function () { return store.karaokeCover === "background" },
             after: "karaokeCover",
-            get: function () { return store.karaokeCoverOpacity },
-            set: function (v) { store.karaokeCoverOpacity = v },
             format: function (v) { return Math.round(v * 100) + "%" }
         },
     ]
 
+    // The stored value behind a row. Entries name a key rather than carrying a
+    // pair of closures: store is a plain typed QtObject and both saveNow() and
+    // applyStored() already reach it dynamically, so a per-entry getter would be
+    // a second way to say the same thing. An entry may still override either
+    // side, which is how coverBandMode also moves the artwork size when it is
+    // pinned.
+    function valueFor(entry) {
+        return entry.get ? entry.get() : store[entry.key]
+    }
+
+    function assign(entry, value) {
+        if (entry.set) entry.set(value)
+        else store[entry.key] = value
+    }
+
+    // How a row prints its value. An entry only spells `format` out when the
+    // answer is not the obvious one: switches read on/off, a named choice reads
+    // as a capitalised word, and a number prints bare unless it has a unit.
     function textOf(entry) {
-        return entry.format(entry.get())
+        var value = valueFor(entry)
+        if (entry.format) return entry.format(value)
+        var first = entry.options && entry.options[0]
+        if (typeof first === "boolean") return root.boolText(value)
+        if (typeof first === "string") return root.titleText(value)
+        return String(value)
     }
 
     // A slider is anything numeric; everything else is a switch or a named
@@ -1384,9 +1227,9 @@ Item {
         return !entry || !entry.dependsOn || entry.dependsOn()
     }
 
-    // Every entry the card draws, in table order. Nothing is filtered out any
-    // more: a dependent whose parent is off stays in the list, greyed, so a hunt
-    // for a setting always finds the row and the row can say what it is waiting
+    // Every entry the card draws, in table order. A dependent whose parent is off
+    // stays in the list, greyed, so a hunt for a setting always finds the row and
+    // the row can say what it is waiting
     // on. It is not navigable and not editable in that state (see isActive, which
     // the panel's movement and the card's clicks both check), but its stored
     // value is untouched and reset() still restores it.
@@ -1534,22 +1377,20 @@ Item {
     function cycle(entry, delta) {
         if (!isActive(entry)) return
         var options = entry.options
-        var i = options.indexOf(entry.get())
+        var i = options.indexOf(valueFor(entry))
         if (i === -1) {
-            entry.set(options[0])
+            assign(entry, options[0])
             saveSoon()
             return
         }
-        entry.set(options[(i + delta + options.length) % options.length])
+        assign(entry, options[(i + delta + options.length) % options.length])
         saveSoon()
     }
 
-    // The value an entry rests at: its own default, or the first option for an
-    // entry that predates `defaultValue`. Kept in one place so reset-all and the
+    // The value an entry rests at. Kept in one place so reset-all and the
     // per-row reset cannot disagree about what "default" means.
     function defaultOf(entry) {
-        if (!entry || !entry.options || entry.options.length === 0) return undefined
-        return entry.defaultValue !== undefined ? entry.defaultValue : entry.options[0]
+        return entry ? root.codeDefaults[entry.key] : undefined
     }
 
     // Restore one row without touching the rest. Called from the card's
@@ -1559,19 +1400,17 @@ Item {
         if (!entry) return
         var value = defaultOf(entry)
         if (value === undefined) return
-        entry.set(value)
+        assign(entry, value)
         saveSoon()
     }
 
     // Restores each entry's own default rather than options[0]. They are not the
-    // same: a setting's natural resting point can be away from the low end of its
-    // range. The font offsets run -4..+4 so the slider knob sits centred on
-    // "theme", and reset would otherwise slam every font down by four pixels. An
-    // entry without `defaultValue` still falls back to options[0].
+    // same: a setting's natural resting point is often away from the low end of
+    // its range -- the font offsets rest at the step the theme already draws at,
+    // not at their floor.
     function reset() {
         for (var i = 0; i < entries.length; i++) {
-            var entry = entries[i]
-            entry.set(defaultOf(entry))
+            assign(entries[i], defaultOf(entries[i]))
         }
         saveSoon()
     }
