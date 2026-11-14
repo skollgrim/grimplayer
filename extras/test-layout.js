@@ -218,6 +218,87 @@ check("windowInset: unknown widths leave it at zero", () => {
     assert.equal(Layout.windowInset(3, 3, 1536, 1536), 6)
 })
 
+// ---- compositor readings ----
+
+check("optionInt: a plain int, and a CSS value that wins over it", () => {
+    assert.equal(Layout.optionInt('{"int": 4}'), 4)
+    assert.equal(Layout.optionInt('{"css": "3px", "int": 9}'), 3)
+    assert.equal(Layout.optionInt('{"css": "2.6px"}'), 3)
+    assert.equal(Layout.optionInt('{"int": 4.4}'), 4)
+})
+
+check("optionInt: negative and unusable answers become zero", () => {
+    assert.equal(Layout.optionInt('{"css": "-2px"}'), 0)
+    assert.equal(Layout.optionInt(""), 0)
+    assert.equal(Layout.optionInt("null"), 0)
+    assert.equal(Layout.optionInt("{}"), 0)
+    assert.equal(Layout.optionInt("not json"), 0)
+})
+
+check("gapsOutHorizontal: one number is every side", () => {
+    assert.equal(Layout.gapsOutHorizontal('{"css": "10"}'), 10)
+    assert.equal(Layout.gapsOutHorizontal('{"int": 8}'), 8)
+    assert.equal(Layout.gapsOutHorizontal('{"css": "10 10 10 10"}'), 10)
+})
+
+check("gapsOutHorizontal: two numbers are vertical then horizontal", () => {
+    assert.equal(Layout.gapsOutHorizontal('{"css": "5 20"}'), 20)
+    assert.equal(Layout.gapsOutHorizontal('{"css": "5 20 5 20"}'), 20)
+})
+
+check("gapsOutHorizontal: three numbers keep Hyprland's odd middle rule", () => {
+    assert.equal(Layout.gapsOutHorizontal('{"css": "1 6 2"}'), 6)
+})
+
+check("gapsOutHorizontal: an asymmetric pair is averaged, not half-read", () => {
+    // left 40 and right 20: the window loses 60 across, i.e. 30 per side.
+    assert.equal(Layout.gapsOutHorizontal('{"css": "5 20 5 40"}'), 30)
+    assert.equal(Layout.gapsOutHorizontal('{"css": "0 30 0 10"}'), 20)
+})
+
+check("gapsOutHorizontal: a negative side and malformed input are zero", () => {
+    assert.equal(Layout.gapsOutHorizontal('{"css": "5 -20 5 40"}'), 0)
+    assert.equal(Layout.gapsOutHorizontal(""), 0)
+    assert.equal(Layout.gapsOutHorizontal("nope"), 0)
+})
+
+const monitors = JSON.stringify([
+    { name: "DP-1", width: 2560, scale: 1.5 },
+    { name: "HDMI-A-1", width: 1920, scale: 1 }
+])
+
+check("monitorWidthFor: matches the panel's screen by name", () => {
+    assert.equal(Layout.monitorWidthFor(monitors, "HDMI-A-1"), 1920)
+    assert.equal(Layout.monitorWidthFor(monitors, "DP-1"), 2560)
+})
+
+check("monitorWidthFor: falls back to the first entry when it cannot match", () => {
+    assert.equal(Layout.monitorWidthFor(monitors, ""), 2560)
+    assert.equal(Layout.monitorWidthFor(monitors, "UNKNOWN"), 2560)
+})
+
+check("monitorWidthFor: unusable answers are zero", () => {
+    assert.equal(Layout.monitorWidthFor("[]", "DP-1"), 0)
+    assert.equal(Layout.monitorWidthFor("nope", "DP-1"), 0)
+    assert.equal(Layout.monitorWidthFor(JSON.stringify([{ name: "DP-1" }]), "DP-1"), 0)
+})
+
+check("monitorScaleFor: matches the panel's screen by name", () => {
+    assert.equal(Layout.monitorScaleFor(monitors, "DP-1"), 1.5)
+    assert.equal(Layout.monitorScaleFor(monitors, "HDMI-A-1"), 1)
+})
+
+check("monitorScaleFor: falls back to the first entry when it cannot match", () => {
+    assert.equal(Layout.monitorScaleFor(monitors, ""), 1.5)
+    assert.equal(Layout.monitorScaleFor(monitors, "UNKNOWN"), 1.5)
+})
+
+check("monitorScaleFor: a zero or unusable scale is zero", () => {
+    assert.equal(Layout.monitorScaleFor(JSON.stringify([{ name: "DP-1", scale: 0 }]), "DP-1"), 0)
+    assert.equal(Layout.monitorScaleFor("[]", "DP-1"), 0)
+    assert.equal(Layout.monitorScaleFor("nope", "DP-1"), 0)
+})
+
 if (failed > 0) {
     console.log("\n" + failed + " failed")
     process.exit(1)

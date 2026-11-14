@@ -451,7 +451,7 @@ Item {
         stdout: StdioCollector {
             waitForEnd: true
             onStreamFinished: {
-                root.frameGap = root.gapsOutHorizontal(text)
+                root.frameGap = LayoutMath.gapsOutHorizontal(text)
                 root.framePartArrived("gap")
             }
         }
@@ -468,7 +468,7 @@ Item {
         stdout: StdioCollector {
             waitForEnd: true
             onStreamFinished: {
-                root.frameBorder = root.optionInt(text)
+                root.frameBorder = LayoutMath.optionInt(text)
                 root.framePartArrived("border")
             }
         }
@@ -481,7 +481,7 @@ Item {
             waitForEnd: true
             onStreamFinished: {
                 root.physicalScreenWidth =
-                    root.monitorWidthFor(text, root.activeScreen ? root.activeScreen.name : "")
+                    LayoutMath.monitorWidthFor(text, root.activeScreen ? root.activeScreen.name : "")
                 root.framePartArrived("monitor")
             }
         }
@@ -499,7 +499,7 @@ Item {
             waitForEnd: true
             onStreamFinished: {
                 root.compositorScale =
-                    root.monitorScaleFor(text, root.activeScreen ? root.activeScreen.name : "")
+                    LayoutMath.monitorScaleFor(text, root.activeScreen ? root.activeScreen.name : "")
             }
         }
     }
@@ -526,92 +526,6 @@ Item {
         repeat: false
         running: root.frameReading
         onTriggered: root.frameRunExpired()
-    }
-    // The single integer an option carries. border_size is a plain int, so it is
-    // read from `int`; a value given as CSS would still parse through the same
-    // path, which is why both keys are tried rather than assuming one shape.
-    function optionInt(raw) {
-        try {
-            var json = JSON.parse(raw || "{}")
-            var css = String(json.css || "")
-            var parts = css.match(/-?\d+(?:\.\d+)?/g) || []
-            var n = parts.length > 0 ? Number(parts[0]) : Number(json.int)
-            return isFinite(n) && n >= 0 ? Math.round(n) : 0
-        } catch (e) {
-            return 0
-        }
-    }
-    // One side of a css_gaps option, in the order Hyprland reads them:
-    // "top right bottom left" when four numbers are given, "top/bottom left/right"
-    // when two, and all four the same when one. The width a window loses is the
-    // left plus the right gap, so a lone number is correct for a uniform config
-    // and wrong for an asymmetric one -- `gaps_out = 20 40` puts 40 on the sides
-    // and would otherwise measure 20. Reading the horizontal pair is the whole
-    // point of not just taking the first number.
-    function gapsOutHorizontal(raw) {
-        try {
-            var json = JSON.parse(raw || "{}")
-            var css = String(json.css || "")
-            var parts = css.match(/-?\d+(?:\.\d+)?/g)
-            if (!parts || parts.length === 0) {
-                var n = Number(json.int)
-                return isFinite(n) && n >= 0 ? Math.round(n) : 0
-            }
-            var v = parts.map(Number)
-            var left, right
-            if (v.length >= 4) { right = v[1]; left = v[3] }
-            else if (v.length === 3) { right = v[1]; left = v[1] }
-            else if (v.length === 2) { right = v[1]; left = v[1] }
-            else { right = v[0]; left = v[0] }
-            if (!isFinite(left) || !isFinite(right) || left < 0 || right < 0) return 0
-            // The inset is per side, and this figure is used as one side, so the
-            // two sides are averaged: an asymmetric gap has no single per-side
-            // value, and the threshold only needs the window's reduction, which
-            // left + right gives exactly when doubled at the call site.
-            return Math.round((left + right) / 2)
-        } catch (e) {
-            return 0
-        }
-    }
-    // The physical width of the monitor the panel is on, found by name rather
-    // than taken as the first entry: on a multi-monitor desk Hyprland lists the
-    // monitors in its own order, and the first is not necessarily the one this
-    // window opened on. Falling back to the first is only for the case where the
-    // screen has no name to match yet; the inset is then wrong on a mixed-scale
-    // desk, which is the same fault as before and no worse.
-    function monitorWidthFor(raw, name) {
-        try {
-            var list = JSON.parse(raw || "[]")
-            if (!list || list.length === 0) return 0
-            for (var i = 0; i < list.length; i++) {
-                if (name !== "" && list[i].name === name && isFinite(Number(list[i].width)))
-                    return Math.round(Number(list[i].width))
-            }
-            if (isFinite(Number(list[0].width))) return Math.round(Number(list[0].width))
-        } catch (e) {
-            // hyprctl missing / Hyprland not running: leave the inset at zero.
-        }
-        return 0
-    }
-    // The scale of the monitor the panel is on, matched by name for the same
-    // reason as monitorWidthFor: on a mixed-scale desk the first entry is not
-    // necessarily the screen this window opened on. Hyprland reports `scale` as
-    // physical pixels per logical pixel, which is the number the divider quantum
-    // is derived from. Zero means "not answered"; the panel then falls back to
-    // the screen's own ratio.
-    function monitorScaleFor(raw, name) {
-        try {
-            var list = JSON.parse(raw || "[]")
-            if (!list || list.length === 0) return 0
-            for (var i = 0; i < list.length; i++) {
-                if (name !== "" && list[i].name === name && Number(list[i].scale) > 0)
-                    return Number(list[i].scale)
-            }
-            if (Number(list[0].scale) > 0) return Number(list[0].scale)
-        } catch (e) {
-            // hyprctl missing / Hyprland not running: the fallback handles it.
-        }
-        return 0
     }
     // The share of the pane region the art takes. The two placements want
     // different sizes -- the pane is the point of its layout and opens full, the
