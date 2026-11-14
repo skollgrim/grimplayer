@@ -125,7 +125,7 @@ Item {
             required property var modelData
             readonly property var entryData: modelData.entry
             readonly property var opts: entryData.options || []
-            readonly property bool numeric: opts.length > 0 && typeof opts[0] === "number"
+            readonly property bool numeric: root.config ? root.config.isSlider(entryData) : false
             readonly property int optIndex: root.config
                 ? opts.indexOf(root.config.valueFor(entryData)) : -1
             readonly property real fraction: opts.length > 1 ? Math.max(0, optIndex) / (opts.length - 1) : 0

@@ -20,7 +20,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import QtCore
 import "Covers.js" as Covers
 import "TagFrames.js" as TagFrames
 
@@ -30,7 +29,6 @@ Item {
     // ---- injected by shell.qml (_syncServices/ensureService) ----
     property var shell: null
     property var manifest: null
-    property var pluginRegistry: null
 
     // Quickshell.env() returns null for a variable that is not set, and null does
     // not equal "", so the override has to be tested for truthiness rather than

@@ -69,9 +69,6 @@ QtObject {
     property color foreground: override ? override.foreground : Commons.Color.foreground
     property color muted: override ? override.muted : Commons.Color.muted
     property color accent: override ? override.accent : Commons.Color.accent
-    readonly property color accentHover: Util.alpha(accent, 0.8)
-    readonly property color accentPressed: Util.alpha(accent, 0.65)
-    readonly property color accentSubtle: Util.alpha(accent, 0.16)
     // The alert colour is semantic, not part of the album, so it always follows
     // the live theme rather than the palette copy. Cached palettes are derived
     // once and can outlive a theme switch; reading the token straight from the

@@ -12,7 +12,6 @@ pragma ComponentBehavior: Bound
 // calls open()/close() below. See the host contract comment further down for why
 // visibility is owned here instead of by flipping a special workspace.
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -1568,8 +1567,8 @@ Item {
         var items = cols[c].items || []
         if (items.length > 0) {
             var row = loader ? (loader.columnRow[c] || 0) : 0
-            var target = items[Math.max(0, Math.min(row, items.length - 1))]
-            settingIndex = target.index
+            var target = prefs.indexAt(c, row)
+            if (target >= 0) settingIndex = target
         }
         settingsEditMode = false
     }
@@ -2811,7 +2810,7 @@ Item {
                     // caret -- the row is on the card -- so the shape test is
                     // gated on active rather than the row being refused outright.
                     var editable = entry && prefs.isActive(entry)
-                    var isNumeric = !!(editable && entry.options && entry.options.length > 0 && typeof entry.options[0] === "number")
+                    var isNumeric = editable && prefs.isSlider(entry)
 
                     switch (event.key) {
                     case Qt.Key_Escape:

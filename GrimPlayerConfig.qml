@@ -1213,8 +1213,8 @@ Item {
     }
 
     // A slider is anything numeric; everything else is a switch or a named
-    // choice. Topic decides which column an entry lands in; the card still needs
-    // this to know whether a row draws a track.
+    // choice. The card and the panel's key handler both ask this rather than
+    // repeating the shape test, so "numeric" has one definition.
     function isSlider(entry) {
         var o = entry ? entry.options : null
         return !!(o && o.length > 0 && typeof o[0] === "number")
