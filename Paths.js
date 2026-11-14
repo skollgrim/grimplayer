@@ -13,8 +13,32 @@ function realFile(path) {
     return cue ? p.substring(0, cue.index + 4) : p
 }
 
-function libraryDir(musicDir) {
-    var dir = String(musicDir === undefined || musicDir === null ? "" : musicDir)
+// The plugin's own directory under the XDG state home: settings, the palette
+// cache and the cover cache all live below it.
+//
+// The two environment values are passed in rather than read here, so this stays
+// a pure script Node can exercise. Quickshell.env() answers null for an unset
+// variable, and null does not stringify to "", so both are guarded: an
+// unguarded HOME would root the path at "null/.local/state" instead of failing.
+// An empty HOME leaves the path rooted at "/.local/state", which is still one
+// real path rather than a concatenation accident.
+function stateDir(xdgStateHome, home) {
+    var base = xdgStateHome
+        ? String(xdgStateHome)
+        : (home ? String(home) : "") + "/.local/state"
+    return base + "/skollgrim.grimplayer"
+}
+
+// MPD reports paths relative to its music_directory, which mpd.conf sets to
+// $XDG_MUSIC_DIR with ~/Music as the fallback. Guarded for the same reason as
+// stateDir: an unset HOME must not become "null/Music".
+function musicDir(xdgMusicDir, home) {
+    if (xdgMusicDir) return String(xdgMusicDir)
+    return (home ? String(home) : "") + "/Music"
+}
+
+function libraryDir(root) {
+    var dir = String(root === undefined || root === null ? "" : root)
     // A trailing slash would turn the prefix test into "//" and leak the
     // absolute path into the line.
     while (dir.length > 1 && dir.charAt(dir.length - 1) === "/") {
@@ -131,6 +155,8 @@ function folderTarget(pane, index, lists, musicDir, albumDirOf) {
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         realFile: realFile,
+        stateDir: stateDir,
+        musicDir: musicDir,
         relative: relative,
         describe: describe,
         localPath: localPath,

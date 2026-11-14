@@ -18,6 +18,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "Paths.js" as Paths
 
 Item {
     id: root
@@ -25,10 +26,9 @@ Item {
     property var cache: ({})
     readonly property int limit: 48
 
-    readonly property string statePath:
-        (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state"))
-        + "/skollgrim.grimplayer/palettes.json"
-    readonly property string stateDir: statePath.substring(0, statePath.lastIndexOf("/"))
+    readonly property string stateDir:
+        Paths.stateDir(Quickshell.env("XDG_STATE_HOME"), Quickshell.env("HOME"))
+    readonly property string statePath: stateDir + "/palettes.json"
 
     // Quickshell.Io cannot make a directory, so the mkdir below has to run
     // before the first write. Writes are blocked until it reports back rather

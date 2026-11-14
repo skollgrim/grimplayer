@@ -43,6 +43,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import "Covers.js" as Covers
+import "Paths.js" as Paths
 
 Item {
     id: root
@@ -230,8 +231,10 @@ Item {
                                   && root.onlineState === ""
 
     // MPD reports paths relative to its music_directory, which mpd.conf sets to
-    // $XDG_MUSIC_DIR with ~/Music as the fallback on the next line.
-    readonly property string musicDir: Quickshell.env("XDG_MUSIC_DIR") || ((Quickshell.env("HOME") || "") + "/Music")
+    // $XDG_MUSIC_DIR with ~/Music as the fallback. Paths.musicDir owns that
+    // derivation, shared with the service and the panel.
+    readonly property string musicDir:
+        Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
 
     // ---- embedded artwork cache ----
     //
@@ -239,7 +242,8 @@ Item {
     // same kind of thing: something derived from the library that should survive a
     // shell restart without being recomputed. Keyed by album rather than by track,
     // since every track on an album carries the same picture.
-    readonly property string cacheDir: (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state")) + "/skollgrim.grimplayer/covers"
+    readonly property string cacheDir:
+        Paths.stateDir(Quickshell.env("XDG_STATE_HOME"), Quickshell.env("HOME")) + "/covers"
     readonly property int maxCachedCovers: 150
     property var coverAccess: ({})
 

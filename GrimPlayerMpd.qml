@@ -21,6 +21,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "Covers.js" as Covers
+import "Paths.js" as Paths
 import "TagFrames.js" as TagFrames
 
 Item {
@@ -45,23 +46,17 @@ Item {
     }
 
     // MPD reports every path relative to its music_directory, so writing tags
-    // means turning one back into a filesystem path. Same derivation as the panel
-    // side, kept here as well because this is the half that touches the disk.
-    readonly property string musicDir: {
-        var dir = Quickshell.env("XDG_MUSIC_DIR")
-        if (dir) return String(dir)
-        var home = Quickshell.env("HOME")
-        return (home ? String(home) : "") + "/Music"
-    }
+    // means turning one back into a filesystem path. The derivation lives in
+    // Paths.musicDir, which the panel and CoverArt share, so the two halves of
+    // the plugin cannot drift apart on where the library is.
+    readonly property string musicDir:
+        Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
 
     // Everything the plugin keeps on disk lives under one state directory:
-    // XDG_STATE_HOME, or ~/.local/state. Quickshell.env() answers null for an
-    // unset variable, and null + "/.local/state" would stringify to
-    // "null/.local/state" rather than failing, so HOME is guarded -- an empty
-    // HOME leaves the path rooted at "/" instead of prefixed with "null".
+    // XDG_STATE_HOME, or ~/.local/state. The null-HOME guard that keeps an unset
+    // variable from becoming a "null/..." path lives in Paths.stateDir.
     readonly property string stateDir:
-        (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state"))
-        + "/skollgrim.grimplayer"
+        Paths.stateDir(Quickshell.env("XDG_STATE_HOME"), Quickshell.env("HOME"))
 
     property bool connected: false
     property bool everConnected: false

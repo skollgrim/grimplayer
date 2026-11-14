@@ -159,6 +159,24 @@ check("folderTarget: no music directory", Paths.folderTarget("tracks", 0, LISTS,
 check("folderTarget: no album-dir resolver",
     Paths.folderTarget("tracks", 0, LISTS, MUSIC_DIR, null), null)
 
+// ---- environment paths ----
+
+check("stateDir: XDG_STATE_HOME wins", Paths.stateDir("/state", "/home/grim"),
+    "/state/skollgrim.grimplayer")
+check("stateDir: falls back to ~/.local/state", Paths.stateDir(null, "/home/grim"),
+    "/home/grim/.local/state/skollgrim.grimplayer")
+check("stateDir: an empty HOME is not spelled null", Paths.stateDir(null, null),
+    "/.local/state/skollgrim.grimplayer")
+check("stateDir: an empty XDG value falls back", Paths.stateDir("", "/home/grim"),
+    "/home/grim/.local/state/skollgrim.grimplayer")
+
+check("musicDir: XDG_MUSIC_DIR wins", Paths.musicDir("/library", "/home/grim"), "/library")
+check("musicDir: falls back to ~/Music", Paths.musicDir(null, "/home/grim"),
+    "/home/grim/Music")
+check("musicDir: an empty HOME is not spelled null", Paths.musicDir(null, null), "/Music")
+check("musicDir: an empty XDG value falls back", Paths.musicDir("", "/home/grim"),
+    "/home/grim/Music")
+
 if (failed > 0) {
     console.log("\n" + failed + " of " + (cases.length + more) + " failed")
     process.exit(1)

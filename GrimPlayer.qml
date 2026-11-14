@@ -1154,10 +1154,7 @@ Item {
     // for a track whose lyrics have to be extracted or fetched.
     readonly property string lyricsMusicDir: {
         if (root.mpd && root.mpd.musicDir) return String(root.mpd.musicDir)
-        var dir = Quickshell.env("XDG_MUSIC_DIR")
-        if (dir) return String(dir)
-        var home = Quickshell.env("HOME")
-        return (home ? String(home) : "") + "/Music"
+        return Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
     }
 
     // fetch_lyrics.py, resolved beside this file so the plugin stays portable.
