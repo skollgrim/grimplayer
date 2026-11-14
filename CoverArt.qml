@@ -115,11 +115,11 @@ Item {
     //
     // `quantizeSource` is its own property rather than a binding straight to
     // `resolvedSource`, so a cover already in the panel's palette cache can skip
-    // the pass without the pass's own answer clearing it again. depth 3 is eight
-    // colours, which is enough to find a vivid one without giving the recursive
-    // split more work than it needs; rescaleSize is the recommended shrink that
-    // keeps the pass cheap. The panel watches `palette` and folds it into its
-    // theme.
+    // the pass without the pass's own answer clearing it again. depth 4 is
+    // sixteen colours: enough for a small vivid detail to hold its own cluster
+    // instead of being averaged into a neighbouring one, at one split level more
+    // than eight; rescaleSize is the recommended shrink that keeps the pass
+    // cheap. The panel watches `palette` and folds it into its theme.
     property string quantizeSource: ""
 
     // Which resolved source `palette` was quantized from, or "" while the pass
@@ -169,7 +169,7 @@ Item {
     ColorQuantizer {
         id: quantizer
         source: root.quantize ? root.quantizeSource : ""
-        depth: 3
+        depth: 4
         // Downscale aggressively for palette extraction - full resolution not needed
         rescaleSize: 48
     }

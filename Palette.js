@@ -195,17 +195,20 @@ function chroma(rgb) {
     return Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b)
 }
 
-// Distinct, opaque colours only: a PNG with alpha can leave transparent or
-// near-black entries behind, and duplicates say nothing about the sleeve.
+// Opaque colours only: a PNG with alpha can leave transparent entries behind.
+//
+// Repeats are kept on purpose. The quantizer answers with one colour per
+// cluster, so a colour that appears twice is a cluster that held twice as many
+// pixels, and the median cut's equal-population split only averages back to the
+// sleeve while every cluster keeps its place in the list. Dropping repeats
+// reweights the mean toward whichever colours happened to split distinctly: a
+// cream-heavy sleeve whose cream came back three times at depth 4 averaged
+// 0.012 under the light/dark line and turned the panel dark.
 function sanitize(colors) {
     var out = []
-    var seen = {}
     for (var i = 0; i < (colors ? colors.length : 0); i++) {
         var rgb = toRgb(colors[i])
         if (!rgb || rgb.a < 0.5) continue
-        var key = toHex(rgb)
-        if (seen[key]) continue
-        seen[key] = true
         out.push(rgb)
     }
     return out

@@ -195,14 +195,34 @@ check("no colours returns the fallback untouched", () => {
     assert.equal(Palette.derive(null, FALLBACK), FALLBACK)
 })
 
-check("transparent and duplicate entries do not change the result", () => {
+check("a transparent entry says nothing about the sleeve", () => {
     const plain = Palette.derive(covers[0][1], FALLBACK)
     const noisy = Palette.derive(covers[0][1].concat([
-        { r: 1, g: 1, b: 1, a: 0 },
-        covers[0][1][0],
-        covers[0][1][1]
+        { r: 1, g: 1, b: 1, a: 0 }
     ]), FALLBACK)
     assert.deepEqual(noisy, plain)
+})
+
+check("a repeated colour carries the weight of its cluster", () => {
+    // The quantizer returns one colour per cluster, so a repeat is a cluster
+    // holding more of the sleeve, not a duplicated observation. Two thirds
+    // white is a light sleeve; dropping the repeat would average it to mid-grey
+    // and put it on a dark ground.
+    const p = Palette.derive(["#ffffff", "#ffffff", "#000000"], FALLBACK)
+    assert.ok(Palette.luminance(rgb(p.background)) > 0.55,
+        "background " + p.background + " is not light")
+})
+
+check("a repeated cream cluster keeps its light ground", () => {
+    // Real depth-4 output for The Twilight Sad's It Won't Be Like This All the
+    // Time: the cream came back three times, and deduping the list put the mean
+    // 0.012 under the light/dark line and turned the panel dark.
+    const p = Palette.derive(["#151515", "#171717", "#2a2526", "#4b4947",
+                              "#8c3f52", "#847877", "#9e9b95", "#b8b4ac",
+                              "#d63f67", "#d0bfbb", "#dad7cd", "#e9dfd6",
+                              "#ebe8dd", "#ede9de", "#ede9de", "#ede9de"], FALLBACK)
+    assert.equal(p.background, "#ead7d6")
+    assert.equal(p.accent, "#db3765")
 })
 
 // A spread of one-off colours, so the contrast guard is tested on more than the

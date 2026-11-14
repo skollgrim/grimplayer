@@ -103,7 +103,7 @@ TestCase {
         palettes.put("file:///a.jpg", paletteA)
         palettes.put("file:///b.jpg", paletteB)
         var parsed = JSON.parse(palettes.serialize())
-        compare(parsed.version, 1)
+        compare(parsed.version, 2)
         compare(Object.keys(parsed.entries).length, 2)
         compare(parsed.entries["file:///a.jpg"].palette.background, "#231512")
         compare(Object.keys(parsed.entries["file:///a.jpg"].palette).length, 4)
@@ -127,25 +127,34 @@ TestCase {
         // The cache is only replaced by a parse that succeeds, so a broken file
         // leaves it alone rather than throwing. On startup the map is empty and
         // this is the whole result: a cache miss for every cover.
-        palettes.load("{ \"version\": 1, \"entries\": {")
+        palettes.load("{ \"version\": 2, \"entries\": {")
         compare(Object.keys(palettes.cache).length, 0)
 
         // A good file still loads after a bad one.
-        palettes.load('{"version": 1, "entries": {"file:///a.jpg": {"at": 1, "palette": {'
+        palettes.load('{"version": 2, "entries": {"file:///a.jpg": {"at": 1, "palette": {'
             + '"background": "#000000", "foreground": "#ffffff",'
             + '"muted": "#808080", "accent": "#ff0000"}}}}')
         verify(palettes.has("file:///a.jpg"))
     }
 
     function test_load_of_an_unknown_version_starts_empty() {
-        palettes.load('{"version": 2, "entries": {"file:///a.jpg": {"at": 1, "palette": {'
+        palettes.load('{"version": 3, "entries": {"file:///a.jpg": {"at": 1, "palette": {'
+            + '"background": "#000000", "foreground": "#ffffff",'
+            + '"muted": "#808080", "accent": "#ff0000"}}}}')
+        compare(Object.keys(palettes.cache).length, 0)
+    }
+
+    function test_load_discards_the_old_depth_three_file() {
+        // Version 1 palettes were derived at depth 3 with duplicate clusters
+        // dropped from the mean; loading them would mix two derivations.
+        palettes.load('{"version": 1, "entries": {"file:///a.jpg": {"at": 1, "palette": {'
             + '"background": "#000000", "foreground": "#ffffff",'
             + '"muted": "#808080", "accent": "#ff0000"}}}}')
         compare(Object.keys(palettes.cache).length, 0)
     }
 
     function test_load_drops_a_bad_entry_but_keeps_the_good_one() {
-        palettes.load('{"version": 1, "entries": {'
+        palettes.load('{"version": 2, "entries": {'
             + '"file:///good.jpg": {"at": 1, "palette": {'
             + '"background": "#000000", "foreground": "#ffffff",'
             + '"muted": "#808080", "accent": "#ff0000"}},'

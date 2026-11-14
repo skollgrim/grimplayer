@@ -10,6 +10,11 @@ pragma ComponentBehavior: Bound
 //
 // Only the four cover-derived tokens are stored. `urgent` is semantic and read
 // live from the theme, so it has no business in a palette cache.
+//
+// The file is versioned by the rules that derived it: 2 is the depth-4 palette
+// whose mean keeps duplicate clusters (see Palette.sanitize). Version 1 entries
+// were derived at depth 3 with repeats dropped, so they are discarded on load
+// rather than served as if they were the same thing.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -108,7 +113,7 @@ Item {
             if (!entry || !entry.palette) continue
             entries[k] = { at: Number(entry.at) || 0, palette: entry.palette }
         }
-        return JSON.stringify({ version: 1, entries: entries }, null, 2)
+        return JSON.stringify({ version: 2, entries: entries }, null, 2)
     }
 
     function saveNow() {
@@ -159,7 +164,7 @@ Item {
         if (!text) return
         try {
             var parsed = JSON.parse(text)
-            if (!parsed || parsed.version !== 1
+            if (!parsed || parsed.version !== 2
                     || !parsed.entries || typeof parsed.entries !== "object") return
             var loaded = {}
             for (var key in parsed.entries) {
