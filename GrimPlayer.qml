@@ -16,6 +16,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import "Palette.js" as Palette
 import "PaletteSync.js" as PaletteSync
 import "Lyrics.js" as Lyrics
 import "Layout.js" as LayoutMath
@@ -1270,25 +1271,17 @@ Item {
     // than the reading view's; the ratio keeps the same hierarchy between rows.
     readonly property real lyricsHeaderScale: root.karaokeView ? 1.25 : 1
 
-    // Relative luminance and the WCAG contrast ratio between two colours.
-    // Palette.derive guarantees the accent at least 3:1 against the ground,
-    // which on a near-white sleeve still reads as a faint tint; the highlight is
-    // text, so it wants the 4.5:1 a reader's eye expects.
-    function relativeLuminance(c) {
-        function linear(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
-        return 0.2126 * linear(c.r) + 0.7152 * linear(c.g) + 0.0722 * linear(c.b)
-    }
-    function contrastRatio(a, b) {
-        var la = root.relativeLuminance(a)
-        var lb = root.relativeLuminance(b)
-        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
-    }
-
     // The current line's colour. The cover accent is used when it is readable
     // on the panel's ground; otherwise the foreground ink takes over, so a
     // white sleeve gets a dark bold line instead of a pale accent one.
-    readonly property color lyricsHighlightColor: root.contrastRatio(theme.accent, theme.background) >= 4.5
-        ? theme.accent : theme.foreground
+    //
+    // Palette.derive guarantees the accent at least 3:1 against the ground,
+    // which on a near-white sleeve still reads as a faint tint; the highlight is
+    // text, so it wants the 4.5:1 a reader's eye expects. The ratio itself comes
+    // from Palette.js, which test-palette.js exercises directly.
+    readonly property color lyricsHighlightColor:
+        Palette.contrastRatio(Palette.toRgb(theme.accent), Palette.toRgb(theme.background)) >= 4.5
+            ? theme.accent : theme.foreground
 
     // The reading column's width inside the flickable. "wide" and "narrow" cap
     // the measure and the column is centred, so a long line does not run the
