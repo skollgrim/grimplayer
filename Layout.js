@@ -1,5 +1,6 @@
 // The cover's geometry: how big it is in each placement, where the artwork
-// pane sits, and the window inset the threshold is measured against.
+// pane sits, the window inset the threshold is measured against, and the
+// hyprctl readings that feed the inset.
 //
 // These are the numbers behind the divider and anchor regressions: a cover a
 // few pixels too wide eats the pane rule, a band that does not yield to a full

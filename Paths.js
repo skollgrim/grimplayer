@@ -1,4 +1,6 @@
-// Path arithmetic shared by the panel and the tag editor.
+// Path arithmetic shared by the panel, the tag editor and the service: the XDG
+// state and music roots, the file behind an MPD path, and how a selection is
+// summarised in the tag editor's header.
 //
 // Kept out of the QML so it can be exercised without a shell running:
 // extras/test-paths.js loads this file under Node. The guarded module export at

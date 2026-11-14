@@ -453,7 +453,11 @@ copy instead. `CoverArt.qml`'s `ColorQuantizer` exposes the palette the panel
 reads, and the derived result is cached against the resolved cover URL so a
 revisited album skips both the colour pass and the derivation. That cache is
 kept in `palettes.json` under the state directory, bounded to 48 entries, so a
-shell restart does not make every album pay the colour pass again.
+shell restart does not make every album pay the colour pass again. It is
+versioned by the rules that derived it: entries are depth-4 palettes (sixteen
+clusters, repeats kept so a colour that fills the sleeve carries its weight),
+and entries from an older derivation are discarded on load rather than served
+as if they were the same thing.
 
 Lightness is moved in OKLCH rather than HSL: OKLCH keeps a colour's perceived
 brightness and hue while the lightness changes, where HSL's channel average

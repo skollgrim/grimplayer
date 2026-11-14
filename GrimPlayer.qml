@@ -1071,11 +1071,12 @@ Item {
         return Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
     }
 
-    // fetch_lyrics.py, resolved beside this file so the plugin stays portable.
-    // Quickshell serves its files under qs://, so the scheme is stripped to
-    // leave the plain path python3 can open.
+    // fetch_lyrics.py, under extras/ beside lookup.py and open_folder.sh, so
+    // the plugin's runtime helpers all sit together. Quickshell serves its files
+    // under qs://, so the scheme is stripped to leave the plain path python3 can
+    // open.
     readonly property string lyricsScript:
-        Paths.localPath(Qt.resolvedUrl("fetch_lyrics.py"))
+        Paths.localPath(Qt.resolvedUrl("extras/fetch_lyrics.py"))
 
     // extras/open_folder.sh, resolved the same way. It owns the file-manager
     // fallbacks (Flea, Nautilus, FileManager1, xdg-open) so this file only has

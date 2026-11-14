@@ -101,8 +101,8 @@ check("localPath: strips file:// and decodes",
     Paths.localPath("file:///home/grim/Music/01%20Song.flac"),
     "/home/grim/Music/01 Song.flac")
 check("localPath: strips Quickshell's qs:// scheme",
-    Paths.localPath("qs:///home/grim/.config/omarchy/plugins/skollgrim.grimplayer/fetch_lyrics.py"),
-    "/home/grim/.config/omarchy/plugins/skollgrim.grimplayer/fetch_lyrics.py")
+    Paths.localPath("qs:///home/grim/.config/omarchy/plugins/skollgrim.grimplayer/extras/fetch_lyrics.py"),
+    "/home/grim/.config/omarchy/plugins/skollgrim.grimplayer/extras/fetch_lyrics.py")
 check("localPath: a plain path is untouched",
     Paths.localPath("/home/grim/Music/a b.flac"), "/home/grim/Music/a b.flac")
 check("localPath: a relative path is untouched",

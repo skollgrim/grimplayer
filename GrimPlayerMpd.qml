@@ -1000,12 +1000,8 @@ Item {
     // extras/lookup.py, resolved relative to this file so the plugin stays
     // portable. Quickshell serves its files under the qs:// scheme, so the
     // scheme is stripped to leave a plain path the taggers can open.
-    readonly property string lookupScript: {
-        var url = String(Qt.resolvedUrl("extras/lookup.py"))
-        var path = url.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "")
-        try { path = decodeURIComponent(path) } catch (e) {}
-        return path
-    }
+    readonly property string lookupScript:
+        Paths.localPath(Qt.resolvedUrl("extras/lookup.py"))
 
     // entries is the editor's selection; an optional mbid re-fetches one
     // candidate (cycling matches) instead of searching again.
