@@ -268,6 +268,18 @@ Item {
                 readonly property bool isSelected: index === root.currentIndex
                 readonly property bool isHovered: rowArea.containsMouse
 
+                // The duration is drawn over the same stretch of row as the
+                // label, so a title long enough to reach it used to run straight
+                // under the time and the two read as one smeared line. The title
+                // gives up the sublabel's own width plus a gap, which is what
+                // makes it elide before the column instead of beneath it. Capped
+                // at just under half the row so an unusually long sublabel can
+                // never squeeze the title out of the pane entirely.
+                readonly property real sublabelInset: sublabelText.text === "" ? 0
+                    : Math.min(Math.ceil(sublabelText.implicitWidth)
+                               + Math.round(8 * root.uiScale),
+                               Math.round(row.width * 0.45))
+
                 // Selection still wins, then hover. The caret is what the user
                 // is about to act on, so it stays the strongest thing in the
                 // row -- but the playing tint below marks the track when the
@@ -345,7 +357,7 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: Math.round(16 * root.uiScale)
                         + (prefixText.visible ? prefixText.width + root.prefixGap : 0)
-                    anchors.rightMargin: root.rowRightMargin
+                    anchors.rightMargin: root.rowRightMargin + row.sublabelInset
                     verticalAlignment: Text.AlignVCenter
                     text: root.label ? root.label(row.modelData) : ""
                     color: root.colForeground
@@ -355,6 +367,7 @@ Item {
                 }
 
                 Text {
+                    id: sublabelText
                     anchors.fill: parent
                     anchors.leftMargin: Math.round(16 * root.uiScale)
                     anchors.rightMargin: root.rowRightMargin
