@@ -2092,7 +2092,12 @@ Item {
                                 Text {
                                     Layout.fillWidth: true
                                     Layout.topMargin: Math.round(12 * prefs.uiScale)
+                                    // Only a track that has been looked up can say
+                                    // "no lyrics". With nothing playing the header
+                                    // already says so, and this line would claim a
+                                    // search that never ran.
                                     visible: root.lyricsLines.length === 0
+                                            && root.lyricsFileKey !== ""
                                             && (!root.lyricsLoading || root.lyricsSearching)
                                     text: root.lyricsSearching ? "Looking for lyrics…" : "No lyrics found"
                                     horizontalAlignment: root.lyricsTextAlign
