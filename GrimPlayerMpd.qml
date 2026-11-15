@@ -54,6 +54,13 @@ Item {
     property string musicDir:
         Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
 
+    // The root MPD reports for itself, read once from `config` at bootstrap.
+    // Empty until that answer arrives, and empty for good on a server that
+    // refuses the command (a remote one, or an MPD older than 0.18). The panel
+    // adopts it only when no folder has ever been saved, so this is a hint about
+    // a first run rather than an override of a chosen setting.
+    property string configMusicDir: ""
+
     // Everything the plugin keeps on disk lives under one state directory:
     // XDG_STATE_HOME, or ~/.local/state. The null-HOME guard that keeps an unset
     // variable from becoming a "null/..." path lives in Paths.stateDir.
@@ -365,7 +372,22 @@ Item {
         root.refreshQueued = false
         root.pending = []
         root.refreshState()
+        root.readConfigMusicDir()
         root.loadLibrary()
+    }
+
+    // Where MPD says its library actually lives. A remote or older MPD refuses
+    // `config`, and the failure is deliberately silent: the panel's XDG default
+    // is still a usable answer, and there is nothing the user could act on. The
+    // read is queued before listallinfo so the hint arrives while the library is
+    // still being parsed.
+    function readConfigMusicDir() {
+        root.send("config", function (lines, error) {
+            if (error) return
+            var dir = Paths.musicDirectoryFromConfig(lines.join("\n"),
+                                                     Quickshell.env("HOME"))
+            if (dir !== "" && dir !== root.configMusicDir) root.configMusicDir = dir
+        })
     }
 
     // ---- library ----

@@ -195,6 +195,43 @@ check("musicRoot: empty and missing values are refused",
     [Paths.musicRoot("", "/home/grim"), Paths.musicRoot(null, "/home/grim")], ["", ""])
 check("musicRoot: ~ without a home is refused", Paths.musicRoot("~/Music", null), "")
 
+// ---- MPD's own music_directory ----
+
+check("config: reads music_directory out of the full block",
+    Paths.musicDirectoryFromConfig(
+        "music_directory: /home/grim/Music\nplaylist_directory: /home/grim/.mpd/playlists\n"
+        + "db_file: /home/grim/.mpd/database\naudio_output: pulse\n", "/home/grim"),
+    "/home/grim/Music")
+check("config: expands ~ in the value",
+    Paths.musicDirectoryFromConfig("music_directory: ~/Music\n", "/home/grim"),
+    "/home/grim/Music")
+check("config: drops a trailing slash",
+    Paths.musicDirectoryFromConfig("music_directory: /srv/music/\n", "/home/grim"),
+    "/srv/music")
+check("config: keeps spaces in the folder name",
+    Paths.musicDirectoryFromConfig("music_directory: /mnt/My Music\n", "/home/grim"),
+    "/mnt/My Music")
+check("config: a colon in the folder is not a separator",
+    Paths.musicDirectoryFromConfig("music_directory: /mnt/music: archive\n", "/home/grim"),
+    "/mnt/music: archive")
+check("config: tolerates CRLF line endings",
+    Paths.musicDirectoryFromConfig(
+        "music_directory: /home/grim/Music\r\nplaylist_directory: /tmp\r\n", "/home/grim"),
+    "/home/grim/Music")
+check("config: a missing key leaves the default alone",
+    Paths.musicDirectoryFromConfig("playlist_directory: /tmp\n", "/home/grim"), "")
+check("config: an empty value is refused",
+    Paths.musicDirectoryFromConfig("music_directory: \n", "/home/grim"), "")
+check("config: a relative value is refused",
+    Paths.musicDirectoryFromConfig("music_directory: Music\n", "/home/grim"), "")
+check("config: a bare root is refused",
+    Paths.musicDirectoryFromConfig("music_directory: /\n", "/home/grim"), "")
+check("config: a key that merely starts the same is ignored",
+    Paths.musicDirectoryFromConfig("music_directory_extra: /nope\n", "/home/grim"), "")
+check("config: an empty or missing answer is refused",
+    [Paths.musicDirectoryFromConfig("", "/home/grim"),
+     Paths.musicDirectoryFromConfig(null, "/home/grim")], ["", ""])
+
 if (failed > 0) {
     console.log("\n" + failed + " of " + (cases.length + more) + " failed")
     process.exit(1)

@@ -340,6 +340,13 @@ Item {
     // down -- and adding an option still needs nothing else.
     property var codeDefaults: ({})
 
+    // Whether the current music folder came from the stored file or from a
+    // choice made in the card. False on a machine that has never saved one,
+    // which is the only state in which the service may adopt MPD's own
+    // music_directory over the XDG default. Not persisted: a file that carries a
+    // musicDir is itself the record that one was chosen.
+    property bool musicDirSaved: false
+
     FileView {
         id: stateFile
         path: root.statePath
@@ -480,7 +487,13 @@ Item {
                 if (entry.kind === "text") {
                     if (typeof v === "string") {
                         var clean = entry.normalize ? entry.normalize(v) : v
-                        if (clean !== "" && clean !== undefined) store[k] = clean
+                        if (clean !== "" && clean !== undefined) {
+                            store[k] = clean
+                            // A folder in the file is a folder that was chosen, or
+                            // one an earlier run adopted and wrote down. Either way
+                            // the MPD hint must not move it again.
+                            if (k === "musicDir") root.musicDirSaved = true
+                        }
                     }
                     continue
                 }
@@ -502,6 +515,26 @@ Item {
             else if (k === "shuffleMode" && typeof v === "number")
                 store[k] = Math.max(0, Math.min(3, Math.round(v)))
         }
+    }
+
+    // Takes MPD's own music_directory as the root, once, when no folder has ever
+    // been saved. After this the value is an ordinary explicit setting: the card
+    // shows what the player uses, a later edit is not overwritten by the hint on
+    // the next start, and a library the user chose is never silently moved.
+    // Returns whether the store actually changed, so tests can tell adoption
+    // from a no-op. A hint that is not a usable absolute path is ignored.
+    function adoptMusicDir(value) {
+        if (root.musicDirSaved) return false
+        var clean = Paths.musicRoot(value, Quickshell.env("HOME"))
+        if (clean === "") return false
+        // A hint that agrees with the default still settles the question: the
+        // derived value was right, so there is nothing to write and nothing to
+        // keep asking MPD about.
+        root.musicDirSaved = true
+        if (clean === store.musicDir) return false
+        store.musicDir = clean
+        saveSoon()
+        return true
     }
 
     Component.onCompleted: {
@@ -1234,6 +1267,10 @@ Item {
     function assign(entry, value) {
         if (entry.set) entry.set(value)
         else store[entry.key] = value
+        // Any value the settings machinery writes is a choice, so the music
+        // folder stops following MPD's hint. resetEntry() and reset() undo this
+        // deliberately when they restore the derived default.
+        if (entry.key === "musicDir") root.musicDirSaved = true
     }
 
     // How a row prints its value. An entry only spells `format` out when the
@@ -1512,6 +1549,9 @@ Item {
         var value = defaultOf(entry)
         if (value === undefined) return
         assign(entry, value)
+        // Back at the derived default means back to "not chosen", so a hint that
+        // arrives later (or is already here) can still replace the guess.
+        if (entry.key === "musicDir") root.musicDirSaved = false
         saveSoon()
     }
 
@@ -1523,6 +1563,9 @@ Item {
         for (var i = 0; i < entries.length; i++) {
             assign(entries[i], defaultOf(entries[i]))
         }
+        // Every row is back at its derived default, the folder included, so the
+        // "chosen" record this session held no longer applies.
+        root.musicDirSaved = false
         saveSoon()
     }
 }

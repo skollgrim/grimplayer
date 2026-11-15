@@ -56,6 +56,29 @@ function musicRoot(value, home) {
     return libraryDir(p)
 }
 
+// The library root MPD reports for itself. The `config` command answers with one
+// `key: value` line per configured setting, and `music_directory` is the folder
+// every path in `listallinfo` is relative to -- so it is the one value that is
+// right by construction, where the XDG derivation is only a guess. Normalised
+// through musicRoot, which expands `~` and refuses a value that is not an
+// absolute path. Returns "" when the answer has no usable line: a server that
+// refuses `config` (older or remote MPD) simply leaves the caller's default
+// alone.
+function musicDirectoryFromConfig(text, home) {
+    var lines = String(text === undefined || text === null ? "" : text).split("\n")
+    for (var i = 0; i < lines.length; i++) {
+        // Tolerate CRLF: a trailing \r would otherwise be carried into the path.
+        var line = lines[i]
+        if (line.length > 0 && line.charAt(line.length - 1) === "\r")
+            line = line.substring(0, line.length - 1)
+        var sep = line.indexOf(": ")
+        if (sep < 0) continue
+        if (line.substring(0, sep) !== "music_directory") continue
+        return musicRoot(line.substring(sep + 2), home)
+    }
+    return ""
+}
+
 function libraryDir(root) {
     var dir = String(root === undefined || root === null ? "" : root)
     // A trailing slash would turn the prefix test into "//" and leak the
@@ -177,6 +200,7 @@ if (typeof module !== "undefined" && module.exports) {
         stateDir: stateDir,
         musicDir: musicDir,
         musicRoot: musicRoot,
+        musicDirectoryFromConfig: musicDirectoryFromConfig,
         relative: relative,
         describe: describe,
         localPath: localPath,

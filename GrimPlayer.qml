@@ -69,8 +69,18 @@ Item {
     // Pushes the saved library root into the service. The panel owns the
     // setting, and everything that turns an MPD path into a file reads it back
     // from the service, so there is one value and not a copy per component.
+    //
+    // MPD is also asked where its own library is. The service reports that in
+    // configMusicDir, empty until the `config` read answers and empty for good
+    // on a server that refuses it, so this runs again when the hint arrives.
+    // Adoption only happens while no folder has ever been saved; after that the
+    // setting is the truth and the hint is ignored.
     function applyMusicDir() {
         if (!root.mpd || root.mpd.musicDir === undefined) return
+        var hint = root.mpd.configMusicDir === undefined
+            ? "" : String(root.mpd.configMusicDir)
+        if (hint !== "" && typeof prefs.adoptMusicDir === "function")
+            prefs.adoptMusicDir(hint)
         if (root.mpd.musicDir !== prefs.musicDir) root.mpd.musicDir = prefs.musicDir
     }
 
@@ -1721,6 +1731,12 @@ Item {
         target: root.mpd
         function onStatusChanged() {
             root.reanchor()
+        }
+        // The service reads MPD's own music_directory after connecting. The panel
+        // may well have mounted before that answer arrived, so the folder is
+        // handed over again here rather than only on service appearance.
+        function onConfigMusicDirChanged() {
+            root.applyMusicDir()
         }
         function onCurrentChanged() {
             root.reanchor()

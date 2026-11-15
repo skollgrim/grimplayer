@@ -424,10 +424,13 @@ with Nautilus, the desktop `FileManager1` service and `xdg-open` as fallbacks.
   stores means telling them the artist and album name — the same query iTunes and
   Deezer's own search boxes send — so this is on by default but can be turned off
   for a library that should stay offline.
-- **The music directory** is set under **List & playing** in the settings card. It
-  starts at `~/Music`, honouring `XDG_MUSIC_DIR` when it is exported, and should
-  match MPD's `music_directory`; the setting exists for a library MPD keeps
-  somewhere else. `~` expands to your home folder and a relative path is
+- **The music directory** is set under **List & playing** in the settings card.
+  On a first run it is taken from MPD's own `music_directory` (read with the
+  `config` command after connecting), which is the folder every path MPD reports
+  is relative to; a server that refuses `config` falls back to `XDG_MUSIC_DIR`,
+  then to `~/Music`. The answer is adopted as an ordinary setting, so the card
+  always shows what the player uses and a library you choose is never moved by a
+  later hint. `~` expands to your home folder and a relative path is
   refused, so a typo cannot point tag saves or artwork at a folder that is not
   the library.
 - **Typeahead accepts ASCII letters and digits plus `æøåÆØÅ` and `-`.** Widen the

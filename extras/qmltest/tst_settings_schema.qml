@@ -213,7 +213,6 @@ TestCase {
     function test_editing_a_text_row_commits_only_on_accept() {
         var e = entryFor("musicDir")
         config.assign(e, "/srv/music")
-
         config.beginTextEdit(e)
         config.textKeyStroke("x")
         compare(config.textEditDraft, "x", "the first keystroke replaces the value")
@@ -236,5 +235,43 @@ TestCase {
         config.textKeyStroke("w")
         config.endTextEdit(true)
         compare(config.musicDir, "/new")
+    }
+
+    // MPD reports its own music_directory, which is the folder every path it
+    // serves is relative to -- a better default than the XDG guess. It may only
+    // stand in while nothing has ever been saved; after that the setting wins.
+    function test_the_mpd_hint_is_adopted_once() {
+        config.reset()
+        compare(config.musicDirSaved, false, "a fresh config should not be saved yet")
+        compare(config.adoptMusicDir("/srv/from-mpd"), true)
+        compare(config.musicDir, "/srv/from-mpd")
+        compare(config.musicDirSaved, true)
+        // A later hint must not move a library that is now an explicit setting.
+        compare(config.adoptMusicDir("/elsewhere"), false)
+        compare(config.musicDir, "/srv/from-mpd")
+    }
+
+    function test_the_mpd_hint_is_validated() {
+        config.reset()
+        compare(config.adoptMusicDir("relative/music"), false)
+        compare(config.musicDir, config.codeDefaults.musicDir)
+        compare(config.musicDirSaved, false, "a refused hint settles nothing")
+    }
+
+    function test_a_stored_folder_beats_the_mpd_hint() {
+        config.reset()
+        config.applyStored({ musicDir: "/mine" })
+        compare(config.musicDirSaved, true)
+        compare(config.adoptMusicDir("/srv/from-mpd"), false)
+        compare(config.musicDir, "/mine")
+    }
+
+    function test_resetting_the_folder_lets_the_hint_back_in() {
+        config.applyStored({ musicDir: "/mine" })
+        config.resetEntry(entryFor("musicDir"))
+        compare(config.musicDir, config.codeDefaults.musicDir)
+        compare(config.musicDirSaved, false)
+        compare(config.adoptMusicDir("/srv/from-mpd"), true)
+        compare(config.musicDir, "/srv/from-mpd")
     }
 }
