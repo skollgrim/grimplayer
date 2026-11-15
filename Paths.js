@@ -1,6 +1,7 @@
 // Path arithmetic shared by the panel, the tag editor and the service: the XDG
-// state and music roots, the file behind an MPD path, and how a selection is
-// summarised in the tag editor's header.
+// state and music roots, MPD's own music_directory from its `config` answer, the
+// file behind an MPD path, and how a selection is summarised in the tag editor's
+// header.
 //
 // Kept out of the QML so it can be exercised without a shell running:
 // extras/test-paths.js loads this file under Node. The guarded module export at
@@ -31,9 +32,10 @@ function stateDir(xdgStateHome, home) {
     return base + "/skollgrim.grimplayer"
 }
 
-// MPD reports paths relative to its music_directory, which mpd.conf sets to
-// $XDG_MUSIC_DIR with ~/Music as the fallback. Guarded for the same reason as
-// stateDir: an unset HOME must not become "null/Music".
+// The XDG guess at MPD's music_directory: $XDG_MUSIC_DIR, or ~/Music. It is what
+// the player starts with until -- or unless -- the server's own `config` answer
+// arrives, since MPD does not have to live where the XDG spec suggests. Guarded
+// for the same reason as stateDir: an unset HOME must not become "null/Music".
 function musicDir(xdgMusicDir, home) {
     if (xdgMusicDir) return String(xdgMusicDir)
     return (home ? String(home) : "") + "/Music"
@@ -196,7 +198,6 @@ function folderTarget(pane, index, lists, musicDir, albumDirOf) {
 
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
-        realFile: realFile,
         stateDir: stateDir,
         musicDir: musicDir,
         musicRoot: musicRoot,

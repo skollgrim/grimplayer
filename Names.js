@@ -141,10 +141,7 @@ function build(track, title, ext, options) {
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         baseName: baseName,
-        splitExtension: splitExtension,
         parse: parse,
-        build: build,
-        padNumber: padNumber,
-        tidyTitle: tidyTitle
+        build: build
     }
 }

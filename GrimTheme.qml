@@ -40,8 +40,6 @@ QtObject {
     // palette -- it just forgets it when the shell stops.
     property var store: null
 
-    readonly property var paletteCache: root.store ? root.store.cache : ({})
-
     function cachedPalette(source) {
         return root.store ? root.store.get(source) : null
     }

@@ -9,7 +9,7 @@ import "../../" as Plugin
 // store property behind it (the row would never read or write anything), an
 // option whose type does not match the property (applyStored drops it, so the
 // setting looks changeable but never survives a restart), and a section tag that
-// names no column (the row would be in the table and on no tab).
+// matches no section (the row would be in the table and on no tab).
 //
 // It runs against the real GrimPlayerConfig.qml with the stub FileView, so the
 // user's own settings.json is neither read nor written.
@@ -98,13 +98,13 @@ TestCase {
         }
     }
 
-    function test_every_row_lands_in_a_column() {
+    function test_every_row_lands_in_a_tab() {
         var tags = []
         for (var s = 0; s < config.sections.length; s++) tags.push(config.sections[s].tag)
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
             verify(tags.indexOf(e.section) >= 0,
-                e.key + " names the section " + e.section + ", which is not a column")
+                e.key + " names the section " + e.section + ", which matches no section")
         }
     }
 

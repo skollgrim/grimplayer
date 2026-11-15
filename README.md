@@ -150,7 +150,7 @@ resets everything, `?` switches to the key reference, `Esc` steps back out and `
 closes. The visible tab follows the caret, and each tab remembers the row you
 left it on.
 
-The card is cut into columns by topic — the list and what plays it, the panes and
+The card is cut into tabs by topic — the list and what plays it, the panes and
 their rules, the text and its scale, the cover art, the lyric choices both
 surfaces share, the reading view's own, and karaoke's own surface — so a slider
 and a switch sit together where their subject says they should, and a setting is
@@ -503,7 +503,7 @@ The last line is the QML-level half: it runs `qmltestrunner` against the real
 trip and its validation, the theme's delegation, the race guard that keeps a
 stale quantization from being applied to or cached under the next cover, and the
 settings table's schema -- every row naming a real store property, offering
-rungs of that property's own type, and landing in a column. Nothing in the suite
+rungs of that property's own type, and landing in a tab. Nothing in the suite
 writes to the real state directory.
 
 Lint the QML against the shell's own module root:

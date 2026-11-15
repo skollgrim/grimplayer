@@ -27,14 +27,16 @@ Item {
     QtObject {
         id: store
 
-        // The root MPD reports every file path relative to. Usually mpd.conf's
-        // music_directory, which is $XDG_MUSIC_DIR with ~/Music as the fallback,
-        // but MPD does not have to live there, so this is the one setting that
-        // says where the library is. Every local path in the plugin follows it:
-        // tag saves, embedded artwork, sidecar lyrics and the folder shortcut.
-        // A value that is not an absolute path is refused on load, leaving the
-        // default in place rather than pointing every file operation at a path
-        // that cannot be right.
+        // The root MPD reports every file path relative to: mpd.conf's
+        // music_directory. On a machine that has never saved a folder, the panel
+        // adopts the value MPD reports over its own `config` command (see
+        // GrimPlayer.adoptMusicDir); until then -- and for a remote or older MPD
+        // that refuses that command -- it starts at $XDG_MUSIC_DIR, or ~/Music.
+        // Every local path in the plugin follows it: tag saves, embedded
+        // artwork, sidecar lyrics and the folder shortcut. A value that is not
+        // an absolute path is refused on load, leaving the default in place
+        // rather than pointing every file operation at a path that cannot be
+        // right.
         property string musicDir:
             Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
 
@@ -661,7 +663,7 @@ Item {
         return (value > 0 ? "+" : "") + value + " px"
     }
 
-    // The rows the settings card offers, in the order each column shows them.
+    // The rows the settings card offers, in the order each tab shows them.
     // An entry is a name, a place and a set of rungs: the value itself is the
     // store property the key names, reached through valueFor() and assign(). The
     // defaults live with the store at the top of the file; an entry names only
@@ -672,13 +674,13 @@ Item {
     // bare number -- and spells one out only for a unit, a percentage or a
     // phrasing that says more than the option does.
     //
-    // Which column an entry lands in follows from a single `section` tag, and
+    // Which tab an entry lands in follows from a single `section` tag, and
     // table order is the order each section shows its rows. Sections are cut by
     // topic -- what part of the player the setting is about -- and not by the
     // kind of control it is, so a slider and a switch sit side by side wherever
     // the subject they share says they should. Sorting by shape instead (as this
     // table did before) put a list setting next to a font size and left every
-    // new entry needing to be told which column it "was".
+    // new entry needing to be told which tab it "was".
     //
     // An entry with `dependsOn` is greyed and non-navigable until its predicate
     // is true, rather than being hidden. Keeping the row in place means a hunt
@@ -954,7 +956,7 @@ Item {
         // ---- Cover art ----
         //
         // Every entry in this section carries section: "artwork". That is what
-        // the card gathers into its own Artwork column, so the cover settings sit
+        // the card gathers into its own Artwork tab, so the cover settings sit
         // together in one place rather than split across the other topics.
         {
             key: "coverBorder",
@@ -1381,7 +1383,7 @@ Item {
     // value is untouched and reset() still restores it.
     readonly property var visibleEntries: entries
 
-    // The sections the card draws, in column order, each a name and the tag its
+    // The sections the card draws, in tab order, each a name and the tag its
     // entries carry. A section is one topic -- the lists and what plays them, the
     // panes and their rules, the text and scale, the cover art, the lyric choices
     // both surfaces share, the reading view's own, karaoke's own surface --
@@ -1458,9 +1460,9 @@ Item {
     }
 
     // The entries behind each section, worked out once and read by the card, the
-    // navigation and the caret's column lookup alike. Filtering the table five
-    // times over on every read would be five passes over every entry each time
-    // the caret moves a row, for a list that only changes when a dependent flips.
+    // navigation and the caret's tab lookup alike. Filtering the table once per
+    // section on every read would be a pass over every entry each time the caret
+    // moves a row, for a list that only changes when a dependent flips.
     readonly property var sectionLists: {
         var out = {}
         for (var i = 0; i < sections.length; i++) out[sections[i].tag] = []
@@ -1472,20 +1474,20 @@ Item {
         return out
     }
 
-    readonly property var columns: sections.map(function (s) {
-        return { name: s.name, items: indexed(sectionLists[s.tag] || []), fill: s.fill }
+    readonly property var tabs: sections.map(function (s) {
+        return { name: s.name, items: indexed(sectionLists[s.tag] || []) }
     })
 
-    // The entries behind a column, for the panel's navigation.
-    function columnEntries(column) {
-        var s = sections[column]
+    // The entries behind a tab, for the panel's navigation.
+    function tabEntries(tab) {
+        var s = sections[tab]
         return s ? (sectionLists[s.tag] || []) : []
     }
 
-    // Which column an entry sits in, from its section tag. An entry with no tag
+    // Which tab an entry sits in, from its section tag. An entry with no tag
     // -- one added without reading the note above -- falls to the first section
     // rather than vanishing, so the card still shows it.
-    function columnOf(index) {
+    function tabOf(index) {
         var e = visibleEntries[index]
         if (!e) return 0
         for (var i = 0; i < sections.length; i++) {
@@ -1497,15 +1499,15 @@ Item {
     function rowOf(index) {
         var e = visibleEntries[index]
         if (!e) return 0
-        var list = columnEntries(columnOf(index))
+        var list = tabEntries(tabOf(index))
         return Math.max(0, list.indexOf(e))
     }
 
-    // The visibleEntries index at a column and row. A row past the end clamps to
-    // the column's last entry -- so stepping sideways into a shorter column lands
-    // on its bottom rather than stalling -- and an empty column answers -1.
-    function indexAt(column, row) {
-        var list = columnEntries(column)
+    // The visibleEntries index at a tab and row. A row past the end clamps to
+    // the tab's last entry -- so stepping sideways into a shorter tab lands on
+    // its bottom rather than stalling -- and an empty tab answers -1.
+    function indexAt(tab, row) {
+        var list = tabEntries(tab)
         if (list.length === 0) return -1
         var r = Math.max(0, Math.min(row, list.length - 1))
         return visibleEntries.indexOf(list[r])

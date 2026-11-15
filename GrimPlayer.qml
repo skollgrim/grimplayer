@@ -1431,10 +1431,11 @@ Item {
     //
     // settingIndex is an index into prefs.visibleEntries -- the settings the card
     // is showing. Every entry is in that list now, greyed ones included, so the
-    // index numbers every row on the card. Up/down walks the caret down its own
-    // column (stepping over greyed rows), left/right crosses to the neighbouring
-    // column at the same height. The config owns that geometry, keyed on the bare
-    // index, so the panel and the card cannot disagree about where anything is.
+    // index numbers every row on the card. Up/down walks the caret down the
+    // visible tab (stepping over greyed rows), left/right crosses to the
+    // neighbouring tab at the same height. The config owns that geometry, keyed
+    // on the bare index, so the panel and the card cannot disagree about where
+    // anything is.
     //
     // The index is only good for as long as the list does not change shape. A
     // setting that reveals or hides its dependents rebuilds it, so the caret also
@@ -1483,9 +1484,9 @@ Item {
         if (!settingsOpen) return
         var step = delta < 0 ? -1 : 1
         var loader = settingsLoader.item
-        if (!loader || !prefs.columns) return
+        if (!loader || !prefs.tabs) return
         var cat = loader.categoryIndex || 0
-        var items = prefs.columns[cat] ? prefs.columns[cat].items : []
+        var items = prefs.tabs[cat] ? prefs.tabs[cat].items : []
         if (items.length === 0) return
         var idx = -1
         for (var i = 0; i < items.length; i++) {
@@ -1499,18 +1500,18 @@ Item {
     // Left/right cross the tabs, landing on the row the caret last held there
     // (or the tab's first row on a first visit). The card derives its visible
     // tab from the caret, so moving the caret is all that is needed.
-    function moveSettingColumns(delta) {
+    function moveSettingTabs(delta) {
         if (!settingsOpen) return
-        var cols = prefs.columns || []
-        if (cols.length === 0) return
+        var tabs = prefs.tabs || []
+        if (tabs.length === 0) return
         var loader = settingsLoader.item
-        var cat = loader ? (loader.categoryIndex || 0) : prefs.columnOf(settingIndex)
+        var cat = loader ? (loader.categoryIndex || 0) : prefs.tabOf(settingIndex)
         var c = cat + (delta < 0 ? -1 : 1)
-        if (c < 0) c = cols.length - 1
-        if (c >= cols.length) c = 0
-        var items = cols[c].items || []
+        if (c < 0) c = tabs.length - 1
+        if (c >= tabs.length) c = 0
+        var items = tabs[c].items || []
         if (items.length > 0) {
-            var row = loader ? (loader.columnRow[c] || 0) : 0
+            var row = loader ? (loader.tabRow[c] || 0) : 0
             var target = prefs.indexAt(c, row)
             if (target >= 0) settingIndex = target
         }
@@ -2752,7 +2753,7 @@ Item {
                 // the caret moves in a list nobody can see.
                 //
                 // Two modes. Browsing: all four arrows, and the hjkl equivalents,
-                // walk the grid -- up/down a column, left/right across columns.
+                // walk the card -- up/down a tab's rows, left/right across tabs.
                 // Editing: a slider is open, so left/right belong to it and
                 // up/down go back to moving the caret. Enter is the toggle for
                 // the plain switches and the way into a slider, which is the
@@ -2833,12 +2834,12 @@ Item {
                     case Qt.Key_Left:
                     case Qt.Key_H:
                         if (root.settingsEditMode) root.changeSetting(-1)
-                        else root.moveSettingColumns(-1)
+                        else root.moveSettingTabs(-1)
                         break
                     case Qt.Key_Right:
                     case Qt.Key_L:
                         if (root.settingsEditMode) root.changeSetting(1)
-                        else root.moveSettingColumns(1)
+                        else root.moveSettingTabs(1)
                         break
 
                     case Qt.Key_Return:
@@ -2859,9 +2860,10 @@ Item {
                         if (root.settingsEditMode) {
                             root.changeSetting(shift ? -1 : 1)
                         } else {
-                            // The first and last settings in the card. With four
-                            // columns there is no single end column to ask for, so
-                            // the ends are the ends of the flat visible list.
+                            // The first and last settings in the card. With the
+                            // card cut into tabs there is no single end tab to
+                            // ask for, so the ends are the ends of the flat
+                            // visible list.
                             if (count > 0) root.settingIndex = shift ? count - 1 : 0
                             root.settingsEditMode = false
                         }

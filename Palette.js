@@ -389,7 +389,6 @@ if (typeof module !== "undefined" && module.exports) {
         clamp: clamp,
         toRgb: toRgb,
         toHex: toHex,
-        relLuminance: relLuminance,
         contrastRatio: contrastRatio,
         rgbToOklch: rgbToOklch,
         oklchToRgb: oklchToRgb,

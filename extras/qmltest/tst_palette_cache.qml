@@ -195,7 +195,7 @@ TestCase {
         compare(theme.cachedPalette("file:///a.jpg").background, "#231512")
         verify(theme.hasPalette("file:///a.jpg"))
         verify(!theme.hasPalette("file:///other.jpg"))
-        compare(Object.keys(theme.paletteCache).length, 1)
+        compare(Object.keys(palettes.cache).length, 1)
     }
 
     function test_theme_clears_the_cache_through_the_store() {
@@ -234,7 +234,7 @@ TestCase {
         verify(bare !== null)
         compare(bare.cachedPalette("file:///a.jpg"), null)
         compare(bare.hasPalette("file:///a.jpg"), false)
-        compare(Object.keys(bare.paletteCache).length, 0)
+        compare(bare.store, null)
         // Neither call may throw when no store is wired.
         bare.storePalette("file:///a.jpg", paletteA)
         bare.clearPaletteCache()

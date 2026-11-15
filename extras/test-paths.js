@@ -6,7 +6,7 @@
 const assert = require("node:assert/strict")
 const Paths = require("../Paths.js")
 
-const MUSIC = "/home/grim/Music"
+const MUSIC = "/home/user/Music"
 const cases = [
     ["empty selection", Paths.describe([], MUSIC), ""],
     ["lone track", Paths.describe([MUSIC + "/Slomosa/2024 - Tundra Rock/01. Afghansk Rev.mp3"], MUSIC),
@@ -56,9 +56,9 @@ const cases = [
         MUSIC + "/Slomosa/2024 - Tundra Rock/01. Afghansk Rev.mp3"
     ], MUSIC + "/"), "Slomosa/2024 - Tundra Rock/01. Afghansk Rev.mp3"],
     ["no musicDir configured", Paths.describe([
-        "/home/grim/Music/Slomosa/01.mp3",
-        "/home/grim/Music/Slomosa/02.mp3"
-    ], ""), "/home/grim/Music/Slomosa/"],
+        "/home/user/Music/Slomosa/01.mp3",
+        "/home/user/Music/Slomosa/02.mp3"
+    ], ""), "/home/user/Music/Slomosa/"],
     ["single cue sheet in a folder", Paths.describe([
         MUSIC + "/Ayreon/2017 - The Source/album.cue/track0001",
         MUSIC + "/Ayreon/2017 - The Source/album.cue/track0002"
@@ -98,13 +98,13 @@ function check(name, actual, expected) {
 // ---- localPath ----
 
 check("localPath: strips file:// and decodes",
-    Paths.localPath("file:///home/grim/Music/01%20Song.flac"),
-    "/home/grim/Music/01 Song.flac")
+    Paths.localPath("file:///home/user/Music/01%20Song.flac"),
+    "/home/user/Music/01 Song.flac")
 check("localPath: strips Quickshell's qs:// scheme",
-    Paths.localPath("qs:///home/grim/.config/omarchy/plugins/skollgrim.grimplayer/extras/fetch_lyrics.py"),
-    "/home/grim/.config/omarchy/plugins/skollgrim.grimplayer/extras/fetch_lyrics.py")
+    Paths.localPath("qs:///home/user/.config/omarchy/plugins/skollgrim.grimplayer/extras/fetch_lyrics.py"),
+    "/home/user/.config/omarchy/plugins/skollgrim.grimplayer/extras/fetch_lyrics.py")
 check("localPath: a plain path is untouched",
-    Paths.localPath("/home/grim/Music/a b.flac"), "/home/grim/Music/a b.flac")
+    Paths.localPath("/home/user/Music/a b.flac"), "/home/user/Music/a b.flac")
 check("localPath: a relative path is untouched",
     Paths.localPath("extras/open_folder.sh"), "extras/open_folder.sh")
 check("localPath: encoded plus sign",
@@ -161,76 +161,76 @@ check("folderTarget: no album-dir resolver",
 
 // ---- environment paths ----
 
-check("stateDir: XDG_STATE_HOME wins", Paths.stateDir("/state", "/home/grim"),
+check("stateDir: XDG_STATE_HOME wins", Paths.stateDir("/state", "/home/user"),
     "/state/skollgrim.grimplayer")
-check("stateDir: falls back to ~/.local/state", Paths.stateDir(null, "/home/grim"),
-    "/home/grim/.local/state/skollgrim.grimplayer")
+check("stateDir: falls back to ~/.local/state", Paths.stateDir(null, "/home/user"),
+    "/home/user/.local/state/skollgrim.grimplayer")
 check("stateDir: an empty HOME is not spelled null", Paths.stateDir(null, null),
     "/.local/state/skollgrim.grimplayer")
-check("stateDir: an empty XDG value falls back", Paths.stateDir("", "/home/grim"),
-    "/home/grim/.local/state/skollgrim.grimplayer")
+check("stateDir: an empty XDG value falls back", Paths.stateDir("", "/home/user"),
+    "/home/user/.local/state/skollgrim.grimplayer")
 
-check("musicDir: XDG_MUSIC_DIR wins", Paths.musicDir("/library", "/home/grim"), "/library")
-check("musicDir: falls back to ~/Music", Paths.musicDir(null, "/home/grim"),
-    "/home/grim/Music")
+check("musicDir: XDG_MUSIC_DIR wins", Paths.musicDir("/library", "/home/user"), "/library")
+check("musicDir: falls back to ~/Music", Paths.musicDir(null, "/home/user"),
+    "/home/user/Music")
 check("musicDir: an empty HOME is not spelled null", Paths.musicDir(null, null), "/Music")
-check("musicDir: an empty XDG value falls back", Paths.musicDir("", "/home/grim"),
-    "/home/grim/Music")
+check("musicDir: an empty XDG value falls back", Paths.musicDir("", "/home/user"),
+    "/home/user/Music")
 
 // ---- music root as the settings card stores it ----
 
-check("musicRoot: an absolute path is kept", Paths.musicRoot("/library", "/home/grim"),
+check("musicRoot: an absolute path is kept", Paths.musicRoot("/library", "/home/user"),
     "/library")
-check("musicRoot: a trailing slash is dropped", Paths.musicRoot("/library/", "/home/grim"),
+check("musicRoot: a trailing slash is dropped", Paths.musicRoot("/library/", "/home/user"),
     "/library")
 check("musicRoot: surrounding whitespace is trimmed",
-    Paths.musicRoot("  /library\n", "/home/grim"), "/library")
-check("musicRoot: ~ expands to the home directory", Paths.musicRoot("~/Music", "/home/grim"),
-    "/home/grim/Music")
-check("musicRoot: ~ alone expands to the home directory", Paths.musicRoot("~", "/home/grim"),
-    "/home/grim")
-check("musicRoot: a relative path is refused", Paths.musicRoot("Music", "/home/grim"), "")
-check("musicRoot: a bare root is refused", Paths.musicRoot("/", "/home/grim"), "")
+    Paths.musicRoot("  /library\n", "/home/user"), "/library")
+check("musicRoot: ~ expands to the home directory", Paths.musicRoot("~/Music", "/home/user"),
+    "/home/user/Music")
+check("musicRoot: ~ alone expands to the home directory", Paths.musicRoot("~", "/home/user"),
+    "/home/user")
+check("musicRoot: a relative path is refused", Paths.musicRoot("Music", "/home/user"), "")
+check("musicRoot: a bare root is refused", Paths.musicRoot("/", "/home/user"), "")
 check("musicRoot: empty and missing values are refused",
-    [Paths.musicRoot("", "/home/grim"), Paths.musicRoot(null, "/home/grim")], ["", ""])
+    [Paths.musicRoot("", "/home/user"), Paths.musicRoot(null, "/home/user")], ["", ""])
 check("musicRoot: ~ without a home is refused", Paths.musicRoot("~/Music", null), "")
 
 // ---- MPD's own music_directory ----
 
 check("config: reads music_directory out of the full block",
     Paths.musicDirectoryFromConfig(
-        "music_directory: /home/grim/Music\nplaylist_directory: /home/grim/.mpd/playlists\n"
-        + "db_file: /home/grim/.mpd/database\naudio_output: pulse\n", "/home/grim"),
-    "/home/grim/Music")
+        "music_directory: /home/user/Music\nplaylist_directory: /home/user/.mpd/playlists\n"
+        + "db_file: /home/user/.mpd/database\naudio_output: pulse\n", "/home/user"),
+    "/home/user/Music")
 check("config: expands ~ in the value",
-    Paths.musicDirectoryFromConfig("music_directory: ~/Music\n", "/home/grim"),
-    "/home/grim/Music")
+    Paths.musicDirectoryFromConfig("music_directory: ~/Music\n", "/home/user"),
+    "/home/user/Music")
 check("config: drops a trailing slash",
-    Paths.musicDirectoryFromConfig("music_directory: /srv/music/\n", "/home/grim"),
+    Paths.musicDirectoryFromConfig("music_directory: /srv/music/\n", "/home/user"),
     "/srv/music")
 check("config: keeps spaces in the folder name",
-    Paths.musicDirectoryFromConfig("music_directory: /mnt/My Music\n", "/home/grim"),
+    Paths.musicDirectoryFromConfig("music_directory: /mnt/My Music\n", "/home/user"),
     "/mnt/My Music")
 check("config: a colon in the folder is not a separator",
-    Paths.musicDirectoryFromConfig("music_directory: /mnt/music: archive\n", "/home/grim"),
+    Paths.musicDirectoryFromConfig("music_directory: /mnt/music: archive\n", "/home/user"),
     "/mnt/music: archive")
 check("config: tolerates CRLF line endings",
     Paths.musicDirectoryFromConfig(
-        "music_directory: /home/grim/Music\r\nplaylist_directory: /tmp\r\n", "/home/grim"),
-    "/home/grim/Music")
+        "music_directory: /home/user/Music\r\nplaylist_directory: /tmp\r\n", "/home/user"),
+    "/home/user/Music")
 check("config: a missing key leaves the default alone",
-    Paths.musicDirectoryFromConfig("playlist_directory: /tmp\n", "/home/grim"), "")
+    Paths.musicDirectoryFromConfig("playlist_directory: /tmp\n", "/home/user"), "")
 check("config: an empty value is refused",
-    Paths.musicDirectoryFromConfig("music_directory: \n", "/home/grim"), "")
+    Paths.musicDirectoryFromConfig("music_directory: \n", "/home/user"), "")
 check("config: a relative value is refused",
-    Paths.musicDirectoryFromConfig("music_directory: Music\n", "/home/grim"), "")
+    Paths.musicDirectoryFromConfig("music_directory: Music\n", "/home/user"), "")
 check("config: a bare root is refused",
-    Paths.musicDirectoryFromConfig("music_directory: /\n", "/home/grim"), "")
+    Paths.musicDirectoryFromConfig("music_directory: /\n", "/home/user"), "")
 check("config: a key that merely starts the same is ignored",
-    Paths.musicDirectoryFromConfig("music_directory_extra: /nope\n", "/home/grim"), "")
+    Paths.musicDirectoryFromConfig("music_directory_extra: /nope\n", "/home/user"), "")
 check("config: an empty or missing answer is refused",
-    [Paths.musicDirectoryFromConfig("", "/home/grim"),
-     Paths.musicDirectoryFromConfig(null, "/home/grim")], ["", ""])
+    [Paths.musicDirectoryFromConfig("", "/home/user"),
+     Paths.musicDirectoryFromConfig(null, "/home/user")], ["", ""])
 
 if (failed > 0) {
     console.log("\n" + failed + " of " + (cases.length + more) + " failed")

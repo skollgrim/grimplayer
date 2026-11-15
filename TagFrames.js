@@ -155,9 +155,6 @@ function parseCountry(output) {
 
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
-        ID3_FRAMES: ID3_FRAMES,
-        VORBIS_FIELDS: VORBIS_FIELDS,
-        ID3_TXXX: ID3_TXXX,
         vorbisFieldsFor: vorbisFieldsFor,
         mergeTags: mergeTags,
         command: command,

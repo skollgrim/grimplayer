@@ -1,12 +1,12 @@
 pragma ComponentBehavior: Bound
 // The settings card, modal over the browser.
 //
-// The settings are laid out as columns cut by topic, each a single list under its
-// own heading: the list and what plays it, the panes and their rules, the text
-// and its scale, the cover art, the lyrics view, and karaoke's own surface. A
-// column is one subject rather than one kind of control, so a slider and a
-// switch sit together in a column where the thing they share says they should,
-// and a setting is always in the same place every time the card opens.
+// The settings are cut into tabs by topic, each a single list under its own
+// heading: the list and what plays it, the panes and their rules, the text and
+// its scale, the cover art, the lyrics view, and karaoke's own surface. A tab is
+// one subject rather than one kind of control, so a slider and a switch sit
+// together in a tab where the thing they share says they should, and a setting
+// is always in the same place every time the card opens.
 //
 // A setting that waits on another is drawn greyed rather than hidden, and is
 // indented beneath the row it waits on, so the row above is why it is greyed and
@@ -15,7 +15,7 @@ pragma ComponentBehavior: Bound
 // it does not move the thing under the caret.
 //
 // Within a cell the label sits on the left and a fixed-width control block on the
-// right, so every value in a column lines up on the same vertical edge. That fixed
+// right, so every value in a tab lines up on the same vertical edge. That fixed
 // width is what makes it look deliberate rather than ragged: without it the
 // numeric rows push their values further right than the switches do.
 //
@@ -45,12 +45,12 @@ Item {
     // The tab always follows the caret: a setting lives in exactly one section,
     // so the section that contains the caret is the one to show. Tab clicks move
     // the caret into the tab they choose, which is what changes this.
-    readonly property int categoryIndex: config ? config.columnOf(index) : 0
+    readonly property int categoryIndex: config ? config.tabOf(index) : 0
 
     // The row the caret last held in each tab, so stepping away and back returns
     // to the row you left rather than to the tab's first row. The caret itself
     // lives in the panel; this is only the card's memory of where it was.
-    property var columnRow: ({})
+    property var tabRow: ({})
 
     // The panel's colour tokens, injected. The card is modal over the panel, so
     // it follows the same palette as everything behind it.
@@ -69,26 +69,23 @@ Item {
     signal editModeRequested(bool on)
     signal dismissed()
 
-    // The card renders the config's columns directly. Each column arrives as a
+    // The card renders the config's tabs directly. Each tab arrives as a
     // name plus its entries, and each entry carries its own index into the
     // visible list along with whether it is currently active -- that index, not
     // the entry object, is what the caret compares against, because an object
     // identity does not survive the trip through the Repeater's model.
-    readonly property var columns: config ? config.columns : []
+    readonly property var tabs: config ? config.tabs : []
 
-    // Always use stacked vertical sections
-    readonly property bool compact: true
-    
     // Slider plus value, in one fixed-width block, so the values line up down the
-    // column. The value column is the widest text any setting produces ("300 ms",
+    // tab. The value block is the widest text any setting produces ("300 ms",
     // "instant"), so it holds the odd one without the numbers jumping about.
-    readonly property int sliderWidth: compact ? Math.round(56 * uiScale) : Math.round(80 * uiScale)
-    readonly property int valueWidth: compact ? Math.round(44 * uiScale) : Math.round(56 * uiScale)
+    readonly property int sliderWidth: Math.round(56 * uiScale)
+    readonly property int valueWidth: Math.round(44 * uiScale)
     readonly property int controlWidth: sliderWidth + Math.round(6 * uiScale) + valueWidth
     // A free-text row prints a whole path, which is far wider than any switch
     // value. It gets its own width and elides on the left, so the tail -- the
     // part that says which folder -- is what stays visible.
-    readonly property int textWidth: compact ? Math.round(260 * uiScale) : Math.round(360 * uiScale)
+    readonly property int textWidth: Math.round(260 * uiScale)
 
     // The hint belongs to the entry under the caret, and the caret is an index
     // into config.visibleEntries -- the same list the panel walks.
@@ -106,18 +103,18 @@ Item {
     // tab can restore the row instead of landing on its first entry.
     function rememberRow() {
         if (!root.config) return
-        var c = root.config.columnOf(root.index)
+        var c = root.config.tabOf(root.index)
         var r = root.config.rowOf(root.index)
         var next = {}
-        for (var k in root.columnRow) next[k] = root.columnRow[k]
+        for (var k in root.tabRow) next[k] = root.tabRow[k]
         next[c] = r
-        root.columnRow = next
+        root.tabRow = next
     }
 
     onIndexChanged: root.rememberRow()
     Component.onCompleted: root.rememberRow()
 
-    // One setting cell. The same component draws every column; the model
+    // One setting cell. The same component draws every tab; the model
     // states the entry and its index, and the cell reads the entry for the label
     // and value and for whether it is a slider.
     Component {
@@ -150,13 +147,12 @@ Item {
             readonly property int indent: Math.round(16 * root.uiScale)
 
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.round((root.compact ? 32 : 36) * root.uiScale)
-            // The row's own content width, exposed so a column that hugs its
-            // content (see the columns' fill flag) has something to size to. The
-            // inner RowLayout is anchored, so it does not feed the implicit width
-            // on its own; its natural width plus the two margins is what the cell
-            // actually needs. The child indent is part of that, or an indented row
-            // would claim less width than it draws.
+            Layout.preferredHeight: Math.round(32 * root.uiScale)
+            // The row's own content width, exposed so the tab has something to
+            // size to. The inner RowLayout is anchored, so it does not feed the
+            // implicit width on its own; its natural width plus the two margins
+            // is what the cell actually needs. The child indent is part of that,
+            // or an indented row would claim less width than it draws.
             implicitWidth: innerRow.implicitWidth
                 + Math.round(16 * root.uiScale) + Math.round(10 * root.uiScale)
                 + (dependent ? indent : 0)
@@ -239,12 +235,10 @@ Item {
                 spacing: Math.round(8 * root.uiScale)
 
                 // The label is deliberately not bolded when the row is selected.
-                // Bolding changes its advance, which changes this cell's implicit
-                // width, which changes the column's -- and the columns divide the
-                // row in proportion to their implicit widths, so every column
-                // would shift a pixel or two each time the caret reached the
-                // longest label. The accent ink, the filled row and the bar down
-                // its edge already carry the selection.
+                // Bolding changes its advance, which moves the elide point and
+                // makes the longest label jitter under the caret. The accent ink,
+                // the filled row and the bar down its edge already carry the
+                // selection.
                 //
                 // A greyed dependent carries no note of its own: it is indented
                 // under the setting it waits on, so the row above is the note. When
@@ -264,7 +258,7 @@ Item {
                 // Only a slider row reserves the track. A switch only needs the
                 // value, and holding it a track's width from its label across an
                 // empty gap would read as a broken row; values still line up
-                // within a column, which is what the layout asks for.
+                // within a tab, which is what the layout asks for.
                 RowLayout {
                     Layout.preferredWidth: row.numeric ? root.controlWidth
                         : (row.textRow ? root.textWidth : root.valueWidth)
@@ -292,7 +286,7 @@ Item {
                             opacity: row.selected ? 1.0 : 0.55
                         }
                         // Drawn only once the setting is under the caret, so a
-                        // column of resting sliders reads as a scale rather than
+                        // stack of resting sliders reads as a scale rather than
                         // a row of knobs competing with the labels.
                         Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
@@ -369,20 +363,14 @@ Item {
     Rectangle {
         id: card
         anchors.centerIn: parent
-        // Wide enough for six columns of label-left / control-right without the
-        // labels having to elide, and no wider than the window allows: on a panel
-        // too small for the full width this falls back to the panel width less its
-        // margin rather than overflowing it.
-        //
-        // Six rather than four columns is what the topic cut costs: splitting by
-        // subject needs somewhere for the panes and the text to each live on their
-        // own, and later the artwork and the lyrics. The width is fixed and
-        // generous enough that no label has to elide at full size, so on a narrow
-        // panel the columns share what there is and the labels elide rather than
-        // the card overflowing.
-        width: root.compact 
-            ? Math.min(Math.round(700 * root.uiScale), parent.width - Math.round(16 * root.uiScale))
-            : Math.min(Math.round(1100 * root.uiScale), parent.width - Math.round(32 * root.uiScale))
+        // Wide enough for a label-left / control-right row without the labels
+        // having to elide, and no wider than the window allows: on a panel too
+        // small for the full width this falls back to the panel width less its
+        // margin rather than overflowing it. The tabs take turns in this width
+        // rather than sharing it, so the card no longer has to grow to fit every
+        // topic at once.
+        width: Math.min(Math.round(700 * root.uiScale),
+                        parent.width - Math.round(16 * root.uiScale))
         // Fixed rather than window-relative: the list scrolls inside a Flickable,
         // so the card has no reason to grow with the panel.
         height: Math.min(Math.round(700 * root.uiScale), parent.height - Math.round(32 * root.uiScale))
@@ -412,7 +400,7 @@ Item {
                 spacing: Math.round(6 * root.uiScale)
 
                 Repeater {
-                    model: root.columns
+                    model: root.tabs
                     delegate: Rectangle {
                         id: tab
                         required property var modelData
@@ -439,10 +427,10 @@ Item {
                                     root.editModeRequested(false)
                                     return
                                 }
-                                var items = root.columns[tab.index]
-                                    ? root.columns[tab.index].items : []
+                                var items = root.tabs[tab.index]
+                                    ? root.tabs[tab.index].items : []
                                 if (items.length === 0) return
-                                var row = root.columnRow[tab.index] || 0
+                                var row = root.tabRow[tab.index] || 0
                                 var target = items[Math.max(0, Math.min(row, items.length - 1))]
                                 root.indexRequested(target.index)
                                 root.editModeRequested(false)
@@ -497,7 +485,7 @@ Item {
                     spacing: Math.round(2 * root.uiScale)
 
                     Repeater {
-                        model: root.columns[root.categoryIndex] ? root.columns[root.categoryIndex].items : []
+                        model: root.tabs[root.categoryIndex] ? root.tabs[root.categoryIndex].items : []
                         delegate: settingCell
                     }
                 }
@@ -516,10 +504,10 @@ Item {
                 text: root.current ? root.current.hint : ""
                 textFormat: Text.PlainText
                 color: root.colMuted
-                font.pixelSize: Math.round((root.themeFont.bodySmall - (root.compact ? 1 : 0)) * root.uiScale)
+                font.pixelSize: Math.round(root.themeFont.bodySmall * root.uiScale)
                 wrapMode: Text.WordWrap
                 elide: Text.ElideRight
-                maximumLineCount: root.compact ? 1 : 2
+                maximumLineCount: 1
                 Layout.bottomMargin: Math.round(6 * root.uiScale)
             }
 

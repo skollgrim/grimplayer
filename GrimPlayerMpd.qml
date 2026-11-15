@@ -48,9 +48,9 @@ Item {
     // MPD reports every path relative to its music_directory, so writing tags
     // means turning one back into a filesystem path. The panel seeds this from
     // the saved setting as soon as the service appears (see onMpdChanged); the
-    // default here is the same path that setting starts at, so a service without
-    // a panel -- or one whose panel has not mounted yet -- still has a usable
-    // library root. Paths.musicDir owns the XDG derivation.
+    // property default is the XDG guess the panel's own setting starts at, so a
+    // service without a panel -- or one whose panel has not mounted yet -- still
+    // has a usable library root. Paths.musicDir owns that derivation.
     property string musicDir:
         Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
 
