@@ -55,11 +55,23 @@ Item {
     // The service starts each shell session at mode 0, so the persisted mode has
     // to be handed over once the service appears. Handing it over as a binding
     // would fight the service's own updates: this is a one-way seed, not a mirror.
+    // The music folder rides the same handover: the service defaults to the XDG
+    // path so it can work on its own, and the saved setting -- which may point
+    // somewhere else -- is what it should actually use.
     onMpdChanged: {
         if (root.mpd && typeof root.mpd.adoptStoredMode === "function")
             root.mpd.adoptStoredMode(prefs.repeatMode)
         if (root.mpd && typeof root.mpd.adoptStoredShuffleMode === "function")
             root.mpd.adoptStoredShuffleMode(prefs.shuffleMode)
+        root.applyMusicDir()
+    }
+
+    // Pushes the saved library root into the service. The panel owns the
+    // setting, and everything that turns an MPD path into a file reads it back
+    // from the service, so there is one value and not a copy per component.
+    function applyMusicDir() {
+        if (!root.mpd || root.mpd.musicDir === undefined) return
+        if (root.mpd.musicDir !== prefs.musicDir) root.mpd.musicDir = prefs.musicDir
     }
 
     // ---- persisted preferences ----
@@ -269,6 +281,10 @@ Item {
             root.lyricsFollowPaused = false
             root.scrollToCurrentLyric()
         }
+        // A new library root has to reach the service immediately: the next
+        // tag save, artwork extraction or lyrics lookup must not still use the
+        // folder the panel was seeded with at startup.
+        function onMusicDirChanged() { root.applyMusicDir() }
     }
 
     // Re-read on the monitor changing under the open window. The frame figures
@@ -738,6 +754,19 @@ Item {
     property string settingKey: ""
     property bool settingsEditMode: false
     property bool helpOpen: false
+
+    // Entering edit mode on a free-text row starts its draft; leaving it -- by
+    // Enter, a caret move away or a click elsewhere -- commits what was typed.
+    // Esc cancels the draft itself before dropping edit mode, so the commit
+    // handler finds nothing left to write.
+    onSettingsEditModeChanged: {
+        if (root.settingsEditMode) {
+            var e = prefs.visibleEntries[root.settingIndex]
+            if (e && prefs.isActive(e) && prefs.isText(e)) prefs.beginTextEdit(e)
+        } else {
+            prefs.endTextEdit(true)
+        }
+    }
 
     readonly property var artistList: mpd && mpd.artists ? mpd.artists : []
     readonly property var albumList: artistIndex >= 0 && artistIndex < artistList.length
@@ -2721,6 +2750,45 @@ Item {
                     // gated on active rather than the row being refused outright.
                     var editable = entry && prefs.isActive(entry)
                     var isNumeric = editable && prefs.isSlider(entry)
+                    var isText = editable && prefs.isText(entry)
+
+                    // A free-text row's edit mode has its own keymap: the typed
+                    // characters are the value, so only the keys that leave the
+                    // editor are commands. Everything printable goes to the
+                    // draft, including Space, which is a legal path character.
+                    if (root.settingsEditMode && prefs.textEditKey !== "") {
+                        switch (event.key) {
+                        case Qt.Key_Escape:
+                            // Cancel, not commit: Esc is the way back out of a
+                            // path that was typed wrong.
+                            prefs.endTextEdit(false)
+                            root.settingsEditMode = false
+                            break
+                        case Qt.Key_Return:
+                        case Qt.Key_Enter:
+                            root.settingsEditMode = false
+                            break
+                        case Qt.Key_Backspace:
+                            prefs.textBackspace()
+                            break
+                        case Qt.Key_Up:
+                            root.settingsEditMode = false
+                            root.moveSettingRows(-1)
+                            break
+                        case Qt.Key_Down:
+                            root.settingsEditMode = false
+                            root.moveSettingRows(1)
+                            break
+                        default:
+                            if (!ctrl && !alt && event.text && event.text.length > 0
+                                    && event.text.charCodeAt(0) >= 32)
+                                prefs.textKeyStroke(event.text)
+                            else
+                                handled = false
+                        }
+                        if (handled) event.accepted = true
+                        return
+                    }
 
                     switch (event.key) {
                     case Qt.Key_Escape:
@@ -2759,10 +2827,16 @@ Item {
 
                     case Qt.Key_Return:
                     case Qt.Key_Enter:
+                        if (root.settingsEditMode) root.settingsEditMode = false
+                        else if (isNumeric || isText) root.settingsEditMode = true
+                        else root.changeSetting(1)
+                        break
                     case Qt.Key_Space:
+                        // A free-text row opens with Enter: Space belongs in a
+                        // path, and starting an editor on it would surprise.
                         if (root.settingsEditMode) root.settingsEditMode = false
                         else if (isNumeric) root.settingsEditMode = true
-                        else root.changeSetting(1)
+                        else if (!isText) root.changeSetting(1)
                         break
 
                     case Qt.Key_G:

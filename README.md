@@ -24,7 +24,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
 - **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. A small preview of the next album's cover sits above the bar. `Esc` returns to the browser.
-- **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, lyrics, themes and optional features.
+- **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, lyrics, themes, the music folder and optional features.
 - **Vim motions (optional)** — `j` `k` `h` `l` `g` `G` alongside arrows; with them on, `Shift` + `h`/`l` seek.
 - **Key reference** (`?`) — quick overview of keys.
 
@@ -424,8 +424,12 @@ with Nautilus, the desktop `FileManager1` service and `xdg-open` as fallbacks.
   stores means telling them the artist and album name — the same query iTunes and
   Deezer's own search boxes send — so this is on by default but can be turned off
   for a library that should stay offline.
-- **The music directory** is assumed to be `~/Music`, honouring `XDG_MUSIC_DIR`
-  when it is exported, which should match MPD's `music_directory`.
+- **The music directory** is set under **List & playing** in the settings card. It
+  starts at `~/Music`, honouring `XDG_MUSIC_DIR` when it is exported, and should
+  match MPD's `music_directory`; the setting exists for a library MPD keeps
+  somewhere else. `~` expands to your home folder and a relative path is
+  refused, so a typo cannot point tag saves or artwork at a folder that is not
+  the library.
 - **Typeahead accepts ASCII letters and digits plus `æøåÆØÅ` and `-`.** Widen the
   regex at the bottom of the key handler in `GrimPlayer.qml` for other scripts.
 - **Album repeat is client-side**, so there is a fraction of a second of silence

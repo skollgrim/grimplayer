@@ -46,10 +46,12 @@ Item {
     }
 
     // MPD reports every path relative to its music_directory, so writing tags
-    // means turning one back into a filesystem path. The derivation lives in
-    // Paths.musicDir, which the panel and CoverArt share, so the two halves of
-    // the plugin cannot drift apart on where the library is.
-    readonly property string musicDir:
+    // means turning one back into a filesystem path. The panel seeds this from
+    // the saved setting as soon as the service appears (see onMpdChanged); the
+    // default here is the same path that setting starts at, so a service without
+    // a panel -- or one whose panel has not mounted yet -- still has a usable
+    // library root. Paths.musicDir owns the XDG derivation.
+    property string musicDir:
         Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
 
     // Everything the plugin keeps on disk lives under one state directory:

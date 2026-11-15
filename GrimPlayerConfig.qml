@@ -27,6 +27,17 @@ Item {
     QtObject {
         id: store
 
+        // The root MPD reports every file path relative to. Usually mpd.conf's
+        // music_directory, which is $XDG_MUSIC_DIR with ~/Music as the fallback,
+        // but MPD does not have to live there, so this is the one setting that
+        // says where the library is. Every local path in the plugin follows it:
+        // tag saves, embedded artwork, sidecar lyrics and the folder shortcut.
+        // A value that is not an absolute path is refused on load, leaving the
+        // default in place rather than pointing every file operation at a path
+        // that cannot be right.
+        property string musicDir:
+            Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
+
         // Down on the last row goes to the top and up on the first goes to the
         // bottom. On by default, because a list that stops dead at both ends
         // reads like a scrollbar that ran out of document.
@@ -382,7 +393,7 @@ Item {
     function saveNow() {
         var out = {}
         // Only real properties, not the id or the functions hanging off it.
-        var keys = ["wrapAround", "seekThickness", "albumYears", "playingHighlight",
+        var keys = ["musicDir", "wrapAround", "seekThickness", "albumYears", "playingHighlight",
                     "playingMarkerSides", "adaptiveColors", "fetchCovers",
                     "vimKeys", "rowSpacing", "typeaheadSearch", "typeaheadPlace",
                     "typeaheadScale", "rowSeparators",
@@ -462,6 +473,17 @@ Item {
             var current = store[k]
             var entry = root.entryFor(k)
             if (entry) {
+                // A free-text row has no rungs to check against. Its own
+                // normaliser decides: an absolute path (with ~ expanded and a
+                // trailing slash dropped) is accepted, anything else leaves the
+                // default in place.
+                if (entry.kind === "text") {
+                    if (typeof v === "string") {
+                        var clean = entry.normalize ? entry.normalize(v) : v
+                        if (clean !== "" && clean !== undefined) store[k] = clean
+                    }
+                    continue
+                }
                 var offered = entry.options || []
                 var accepted = false
                 for (var i = 0; i < offered.length; i++) {
@@ -513,6 +535,7 @@ Item {
         }
     }
 
+    readonly property string musicDir: store.musicDir
     readonly property bool wrapAround: store.wrapAround
     readonly property int seekThickness: store.seekThickness
     readonly property bool albumYears: store.albumYears
@@ -633,6 +656,17 @@ Item {
     // still restores it too.
     readonly property var entries: [
         // ---- List & playing ----
+        {
+            key: "musicDir",
+            section: "list",
+            label: "Music folder",
+            // A free-text row rather than a list of rungs: the library can live
+            // anywhere, so there is nothing finite to offer. The card gives it
+            // an editing mode of its own (see the panel's key handler).
+            kind: "text",
+            hint: "The folder MPD plays from; it must match MPD's music_directory. Absolute, or start with ~ for your home folder",
+            normalize: function (v) { return Paths.musicRoot(v, Quickshell.env("HOME")) }
+        },
         {
             key: "wrapAround",
             section: "list",
@@ -1222,6 +1256,79 @@ Item {
         return !!(o && o.length > 0 && typeof o[0] === "number")
     }
 
+    // A free-text row, of which the music folder is currently the only one. It
+    // has no rungs, so it is neither a switch nor a slider; the card and the
+    // key handler ask this instead of testing for an empty options list.
+    function isText(entry) {
+        return !!(entry && entry.kind === "text")
+    }
+
+    // ---- free-text editing ----
+    //
+    // A text row edits a draft and writes it only once the edit is accepted.
+    // Writing on every keystroke would feed the service half-typed paths
+    // ("/home/g") and do file work against them. The draft lives here so the
+    // card, the panel's keys and saveSoon() all read one place.
+    property string textEditKey: ""
+    property string textEditDraft: ""
+    // The first keystroke replaces the whole value, so opening the row does not
+    // mean deleting a long path first.
+    property bool textEditFresh: false
+
+    function beginTextEdit(entry) {
+        if (!isText(entry)) return
+        textEditKey = entry.key
+        textEditDraft = String(valueFor(entry))
+        textEditFresh = true
+    }
+
+    // What the row draws: the draft while it is being edited, the stored value
+    // otherwise.
+    function displayText(entry) {
+        if (isText(entry) && textEditKey === entry.key) return textEditDraft
+        return textOf(entry)
+    }
+
+    function textKeyStroke(text) {
+        if (textEditKey === "") return
+        var s = String(text)
+        if (s === "") return
+        if (textEditFresh) {
+            textEditDraft = ""
+            textEditFresh = false
+        }
+        textEditDraft += s
+    }
+
+    function textBackspace() {
+        if (textEditKey === "") return
+        if (textEditFresh || textEditDraft.length === 0) {
+            textEditDraft = ""
+            textEditFresh = false
+            return
+        }
+        textEditDraft = textEditDraft.slice(0, -1)
+    }
+
+    // Accepts or discards the draft. `commit` is false for Esc, which leaves the
+    // stored value untouched. Even a committed value has to pass the row's
+    // normaliser: a relative path is dropped rather than saved, so a typo cannot
+    // point the tag editor at a folder that is not the library.
+    function endTextEdit(commit) {
+        if (textEditKey === "") return
+        var entry = entryFor(textEditKey)
+        if (commit && entry) {
+            var clean = entry.normalize ? entry.normalize(textEditDraft) : textEditDraft
+            if (clean !== "" && clean !== undefined) {
+                assign(entry, clean)
+                saveSoon()
+            }
+        }
+        textEditKey = ""
+        textEditDraft = ""
+        textEditFresh = false
+    }
+
     // Whether a dependent setting's parent is satisfied. Every entry is in the
     // card either way; this is what the row is greyed and made non-navigable on
     // while it is false.
@@ -1378,7 +1485,9 @@ Item {
     // with no effect and no way to see that it is doing anything.
     function cycle(entry, delta) {
         if (!isActive(entry)) return
-        var options = entry.options
+        var options = entry.options || []
+        // A free-text row has nothing to cycle; the card opens its editor.
+        if (options.length === 0) return
         var i = options.indexOf(valueFor(entry))
         if (i === -1) {
             assign(entry, options[0])

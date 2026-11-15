@@ -230,11 +230,14 @@ Item {
                                   && !resolving
                                   && root.onlineState === ""
 
-    // MPD reports paths relative to its music_directory, which mpd.conf sets to
-    // $XDG_MUSIC_DIR with ~/Music as the fallback. Paths.musicDir owns that
-    // derivation, shared with the service and the panel.
-    readonly property string musicDir:
-        Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
+    // MPD reports paths relative to its music_directory, which is usually
+    // $XDG_MUSIC_DIR with ~/Music as the fallback. The service holds the live
+    // root (the panel seeds it from the saved setting), so reading it from there
+    // keeps the cover walk on the same library as every other local path.
+    readonly property string musicDir: {
+        if (root.mpd && root.mpd.musicDir) return String(root.mpd.musicDir)
+        return Paths.musicDir(Quickshell.env("XDG_MUSIC_DIR"), Quickshell.env("HOME"))
+    }
 
     // ---- embedded artwork cache ----
     //

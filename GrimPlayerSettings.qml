@@ -85,6 +85,10 @@ Item {
     readonly property int sliderWidth: compact ? Math.round(56 * uiScale) : Math.round(80 * uiScale)
     readonly property int valueWidth: compact ? Math.round(44 * uiScale) : Math.round(56 * uiScale)
     readonly property int controlWidth: sliderWidth + Math.round(6 * uiScale) + valueWidth
+    // A free-text row prints a whole path, which is far wider than any switch
+    // value. It gets its own width and elides on the left, so the tail -- the
+    // part that says which folder -- is what stays visible.
+    readonly property int textWidth: compact ? Math.round(260 * uiScale) : Math.round(360 * uiScale)
 
     // The hint belongs to the entry under the caret, and the caret is an index
     // into config.visibleEntries -- the same list the panel walks.
@@ -126,6 +130,7 @@ Item {
             readonly property var entryData: modelData.entry
             readonly property var opts: entryData.options || []
             readonly property bool numeric: root.config ? root.config.isSlider(entryData) : false
+            readonly property bool textRow: root.config ? root.config.isText(entryData) : false
             readonly property int optIndex: root.config
                 ? opts.indexOf(root.config.valueFor(entryData)) : -1
             readonly property real fraction: opts.length > 1 ? Math.max(0, optIndex) / (opts.length - 1) : 0
@@ -215,8 +220,9 @@ Item {
                     // says so right there on the row.
                     if (!row.active) return
                     // Clicking the row you are already on does what Enter does: a
-                    // plain switch flips, a slider opens for editing.
-                    if (row.numeric) {
+                    // plain switch flips, a slider or a text row opens for
+                    // editing (and clicking it again accepts the edit).
+                    if (row.numeric || row.textRow) {
                         root.editModeRequested(!root.editMode)
                     } else if (root.config) {
                         root.config.cycle(row.entryData, 1)
@@ -260,7 +266,8 @@ Item {
                 // empty gap would read as a broken row; values still line up
                 // within a column, which is what the layout asks for.
                 RowLayout {
-                    Layout.preferredWidth: row.numeric ? root.controlWidth : root.valueWidth
+                    Layout.preferredWidth: row.numeric ? root.controlWidth
+                        : (row.textRow ? root.textWidth : root.valueWidth)
                     Layout.alignment: Qt.AlignRight
                     spacing: 8
 
@@ -326,15 +333,24 @@ Item {
                     // the box is fixed and the ink right-aligned, bolding would
                     // nudge the value sideways as the caret lands on the row.
                     Text {
-                        text: root.config ? root.config.textOf(row.entryData) : ""
+                        text: root.config ? root.config.displayText(row.entryData) : ""
                         textFormat: Text.PlainText
                         // The accent marks a live value; a greyed row's value is
                         // muted so it reads as held-but-inactive rather than
                         // current.
                         color: row.active ? root.colAccent : root.colMuted
-                        font.pixelSize: Math.round(root.themeFont.body * root.uiScale)
+                        font.pixelSize: Math.round((row.textRow
+                            ? root.themeFont.bodySmall : root.themeFont.body) * root.uiScale)
+                        // The path's tail names the folder; the head is what can
+                        // be spared on a narrow card.
+                        elide: row.textRow ? Text.ElideLeft : Text.ElideNone
+                        // An underline on the row being typed into is the one
+                        // cue that the text is a draft and not the stored value.
+                        font.underline: row.textRow && root.config
+                            ? root.config.textEditKey === row.entryData.key : false
                         horizontalAlignment: Text.AlignRight
                         Layout.preferredWidth: root.valueWidth
+                        Layout.fillWidth: row.textRow
                     }
                 }
             }
@@ -508,9 +524,12 @@ Item {
             }
 
             Text {
-                text: (root.editMode
-                        ? "EDITING — ←/→ or H/L adjust  ·  Enter/Esc step back"
-                        : "↑↓←→ or J K H L move  ·  Enter toggles, or opens a slider  ·  g/G first/last  ·  Backspace resets row  ·  R resets all  ·  ? keys  ·  Esc/Q closes")
+                Layout.fillWidth: true
+                text: root.editMode
+                    ? (root.config && root.config.textEditKey !== ""
+                        ? "EDITING — type a path  ·  Enter saves  ·  Esc cancels  ·  Backspace deletes"
+                        : "EDITING — ←/→ or H/L adjust  ·  Enter/Esc step back")
+                    : "↑↓←→ or J K H L move  ·  Enter toggles, or edits a slider or path  ·  g/G first/last  ·  Backspace resets row  ·  R resets all  ·  ? keys  ·  Esc/Q closes"
                 textFormat: Text.PlainText
                 color: root.editMode ? root.colAccent : root.colMuted
                 font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)

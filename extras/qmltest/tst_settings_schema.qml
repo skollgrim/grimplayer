@@ -55,10 +55,11 @@ TestCase {
         }
     }
 
-    function test_every_row_offers_options() {
+    function test_every_row_offers_options_or_is_free_text() {
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
-            verify(e.options && e.options.length > 0, e.key + " has no options")
+            verify((e.options && e.options.length > 0) || config.isText(e),
+                e.key + " has no options and is not a text row")
             verify(e.label && e.label.length > 0, e.key + " has no label")
             verify(e.hint && e.hint.length > 0, e.key + " has no hint")
         }
@@ -70,6 +71,7 @@ TestCase {
     function test_option_types_match_their_property() {
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
+            if (config.isText(e)) continue
             var current = config.valueFor(e)
             for (var o = 0; o < e.options.length; o++) {
                 compare(typeof e.options[o], typeof current,
@@ -84,8 +86,14 @@ TestCase {
     function test_every_default_is_an_offered_option() {
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
-            verify(e.options.indexOf(config.codeDefaults[e.key]) >= 0,
-                e.key + " rests at " + config.codeDefaults[e.key]
+            var value = config.codeDefaults[e.key]
+            if (config.isText(e)) {
+                compare(typeof value, "string", e.key + " does not rest at a string")
+                compare(value.charAt(0), "/", e.key + " does not rest at an absolute path")
+                continue
+            }
+            verify(e.options.indexOf(value) >= 0,
+                e.key + " rests at " + value
                     + ", which it does not offer")
         }
     }
@@ -103,6 +111,10 @@ TestCase {
     function test_reset_restores_the_captured_defaults() {
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
+            if (config.isText(e)) {
+                config.assign(e, "/tmp/somewhere-else")
+                continue
+            }
             var moved = e.options[(e.options.indexOf(config.valueFor(e)) + 1) % e.options.length]
             config.assign(e, moved)
         }
@@ -177,5 +189,52 @@ TestCase {
         compare(config.seekThickness, 7)
         compare(config.rowSpacing, config.codeDefaults.rowSpacing)
         compare(config.coverBandMode, config.codeDefaults.coverBandMode)
+    }
+
+    // The music folder is the one free-text row. Its value survives a load only
+    // when it can be a real root: absolute, with ~ expanded and a trailing slash
+    // dropped; a relative path is refused so it cannot point the tag editor at a
+    // folder that is not the library.
+    function test_the_music_folder_is_free_text_and_validated() {
+        var e = entryFor("musicDir")
+        verify(config.isText(e), "the music folder should be a text row")
+        verify(!config.isSlider(e), "the music folder is not a slider")
+
+        config.applyStored({ musicDir: "/srv/music/" })
+        compare(config.musicDir, "/srv/music")
+
+        config.applyStored({ musicDir: "relative/music" })
+        compare(config.musicDir, "/srv/music", "a relative path must not replace a good one")
+
+        config.applyStored({ musicDir: 42 })
+        compare(config.musicDir, "/srv/music", "a non-string must not replace a good one")
+    }
+
+    function test_editing_a_text_row_commits_only_on_accept() {
+        var e = entryFor("musicDir")
+        config.assign(e, "/srv/music")
+
+        config.beginTextEdit(e)
+        config.textKeyStroke("x")
+        compare(config.textEditDraft, "x", "the first keystroke replaces the value")
+        config.textBackspace()
+        compare(config.textEditDraft, "")
+        config.textKeyStroke("/")
+        config.textKeyStroke("l")
+        config.textKeyStroke("i")
+        config.textKeyStroke("b")
+        compare(config.displayText(e), "/lib")
+        compare(config.musicDir, "/srv/music", "the store waits for acceptance")
+        config.endTextEdit(false)
+        compare(config.musicDir, "/srv/music", "Esc leaves the stored value alone")
+        compare(config.displayText(e), "/srv/music")
+
+        config.beginTextEdit(e)
+        config.textKeyStroke("/")
+        config.textKeyStroke("n")
+        config.textKeyStroke("e")
+        config.textKeyStroke("w")
+        config.endTextEdit(true)
+        compare(config.musicDir, "/new")
     }
 }

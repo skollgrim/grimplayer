@@ -39,6 +39,23 @@ function musicDir(xdgMusicDir, home) {
     return (home ? String(home) : "") + "/Music"
 }
 
+// A music root as the settings card stores it: absolute, trimmed and without a
+// trailing slash, so the panel's `root + "/" + rel` never doubles the separator.
+// `home` lets a typed `~/Music` become the real path rather than a folder named
+// "~". An empty or relative value -- or a bare "/", which no library lives at --
+// answers "" so the caller keeps the previous root instead of pointing every
+// file operation at a path that cannot be right.
+function musicRoot(value, home) {
+    var p = String(value === undefined || value === null ? "" : value).trim()
+    var base = home ? String(home) : ""
+    if (base !== "") {
+        if (p === "~") p = base
+        else if (p.indexOf("~/") === 0) p = base + p.substring(1)
+    }
+    if (p.length < 2 || p.charAt(0) !== "/") return ""
+    return libraryDir(p)
+}
+
 function libraryDir(root) {
     var dir = String(root === undefined || root === null ? "" : root)
     // A trailing slash would turn the prefix test into "//" and leak the
@@ -159,6 +176,7 @@ if (typeof module !== "undefined" && module.exports) {
         realFile: realFile,
         stateDir: stateDir,
         musicDir: musicDir,
+        musicRoot: musicRoot,
         relative: relative,
         describe: describe,
         localPath: localPath,

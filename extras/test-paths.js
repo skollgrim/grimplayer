@@ -177,6 +177,24 @@ check("musicDir: an empty HOME is not spelled null", Paths.musicDir(null, null),
 check("musicDir: an empty XDG value falls back", Paths.musicDir("", "/home/grim"),
     "/home/grim/Music")
 
+// ---- music root as the settings card stores it ----
+
+check("musicRoot: an absolute path is kept", Paths.musicRoot("/library", "/home/grim"),
+    "/library")
+check("musicRoot: a trailing slash is dropped", Paths.musicRoot("/library/", "/home/grim"),
+    "/library")
+check("musicRoot: surrounding whitespace is trimmed",
+    Paths.musicRoot("  /library\n", "/home/grim"), "/library")
+check("musicRoot: ~ expands to the home directory", Paths.musicRoot("~/Music", "/home/grim"),
+    "/home/grim/Music")
+check("musicRoot: ~ alone expands to the home directory", Paths.musicRoot("~", "/home/grim"),
+    "/home/grim")
+check("musicRoot: a relative path is refused", Paths.musicRoot("Music", "/home/grim"), "")
+check("musicRoot: a bare root is refused", Paths.musicRoot("/", "/home/grim"), "")
+check("musicRoot: empty and missing values are refused",
+    [Paths.musicRoot("", "/home/grim"), Paths.musicRoot(null, "/home/grim")], ["", ""])
+check("musicRoot: ~ without a home is refused", Paths.musicRoot("~/Music", null), "")
+
 if (failed > 0) {
     console.log("\n" + failed + " of " + (cases.length + more) + " failed")
     process.exit(1)
