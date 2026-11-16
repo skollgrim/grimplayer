@@ -267,6 +267,32 @@ Item {
         command: []
     }
 
+    // ffmpeg opens its output before it can know the file holds a picture, so a
+    // failed run can leave a partial JPEG behind. A success renames the temporary
+    // into the cache; a failure queues it here instead, or a long session
+    // collects hidden temp files that the cover prune never looks at.
+    property var tempDrops: []
+
+    Process {
+        id: tempCleaner
+        running: false
+        command: []
+        onExited: function () { Qt.callLater(root.flushTempDrops) }
+    }
+
+    function dropTemp() {
+        if (root.extractTemp !== "") root.tempDrops.push(root.extractTemp)
+        root.flushTempDrops()
+    }
+
+    function flushTempDrops() {
+        if (tempCleaner.running || root.tempDrops.length === 0) return
+        var files = root.tempDrops
+        root.tempDrops = []
+        tempCleaner.command = ["rm", "-f"].concat(files)
+        tempCleaner.running = true
+    }
+
     function pruneCacheIfNeeded() {
         if (!root.coverAccess) return
         // A pass already in flight has its own list; the next call will see the
@@ -495,10 +521,12 @@ Item {
                 // next spelling before concluding there is no picture at all.
                 var next = root.extractIndex + 1
                 if (next < root.extractFiles.length) {
+                    root.dropTemp()
                     root.extractIndex = next
                     root.runExtraction()
                     return
                 }
+                root.dropTemp()
                 root.extractingDir = ""
                 root.extractTemp = ""
                 // ffmpeg exits non-zero on a track with no attached picture, which is
@@ -531,6 +559,9 @@ Item {
         command: []
         onExited: function (exitCode) {
             var dir = root.extractingDir
+            // A failed rename leaves the picture in the temporary, so drop it
+            // before the path is forgotten.
+            if (exitCode !== 0) root.dropTemp()
             root.extractingDir = ""
             root.extractTemp = ""
             if (exitCode === 0) {
