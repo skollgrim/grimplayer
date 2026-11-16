@@ -789,20 +789,41 @@ Item {
         ? albumList[albumIndex] : null
     readonly property string albumViewTitle: root.albumViewAlbum
         ? (root.albumViewAlbum.name || "") : ""
-    readonly property string albumViewDetail: {
-        var album = root.albumViewAlbum
-        if (!album) return ""
-        var parts = []
-        var artist = root.artistList[root.artistIndex]
-        if (artist && artist.name) parts.push(artist.name)
-        if (album.year) parts.push(String(album.year))
-        var tracks = album.tracks || []
-        var total = 0
-        for (var i = 0; i < tracks.length; i++) total += Number(tracks[i].duration) || 0
-        var running = root.formatAlbumDuration(total)
-        if (running !== "") parts.push(running)
-        return parts.join(" · ")
+    readonly property string albumViewDetail: root.albumDetailText(
+        root.albumViewAlbum, root.artistList[root.artistIndex])
+
+    // The record that is playing, read from MPD's own location map rather than
+    // from the browser's selection. The lyrics view's companion column shows
+    // this album, so the words and the titles stay in step even when the caret
+    // is somewhere else in the library.
+    readonly property var playingLocation: {
+        if (!root.mpd || !root.mpd.current || !root.mpd.current.file) return null
+        var locations = root.mpd.trackLocations
+        return locations ? (locations[String(root.mpd.current.file)] || null) : null
     }
+    readonly property var playingArtist: {
+        var loc = root.playingLocation
+        if (!loc || loc.artist < 0 || loc.artist >= root.artistList.length) return null
+        return root.artistList[loc.artist]
+    }
+    readonly property var playingAlbum: {
+        var loc = root.playingLocation
+        var artist = root.playingArtist
+        if (!loc || !artist || !artist.albums
+                || loc.album < 0 || loc.album >= artist.albums.length) return null
+        return artist.albums[loc.album]
+    }
+    readonly property var playingAlbumTracks:
+        root.playingAlbum && root.playingAlbum.tracks ? root.playingAlbum.tracks : []
+    readonly property int playingAlbumTrackIndex: {
+        var loc = root.playingLocation
+        if (!loc || root.playingAlbumTracks.length === 0) return -1
+        return Math.max(0, Math.min(loc.track, root.playingAlbumTracks.length - 1))
+    }
+    readonly property string playingAlbumTitle:
+        root.playingAlbum ? (root.playingAlbum.name || "") : ""
+    readonly property string playingAlbumDetail:
+        root.albumDetailText(root.playingAlbum, root.playingArtist)
     readonly property string albumViewEmptyText: {
         if (!root.mpd) return "Waiting for MPD…"
         if (!root.mpd.connected)
@@ -1142,6 +1163,28 @@ Item {
         folderOpener.running = true
     }
 
+    // The lyrics companion plays and reveals files from the album it shows --
+    // the playing record -- rather than from the browser's selection, which may
+    // be somewhere else in the library.
+    function playPlayingAlbumTrack(index) {
+        var loc = root.playingLocation
+        if (!loc || !root.mpd) return
+        if (index < 0 || index >= root.playingAlbumTracks.length) return
+        root.mpd.playArtistAndBelow(loc.artist, loc.album, index)
+    }
+
+    function openPlayingAlbumFolder(index) {
+        var track = index >= 0 && index < root.playingAlbumTracks.length
+            ? root.playingAlbumTracks[index] : null
+        if (!track || !root.mpd) return
+        var music = String(root.mpd.musicDir || "")
+        if (music === "") return
+        var dir = root.mpd.albumDirOf(track.file)
+        folderOpener.command = [root.folderScript, music + "/" + dir,
+            music + "/" + track.file]
+        folderOpener.running = true
+    }
+
     function clearLyrics() {
         root.lyricsText = ""
         root.lyricsLines = []
@@ -1256,6 +1299,37 @@ Item {
     readonly property bool karaokeCoverVisible: root.karaokeCoverSide
         || root.karaokeCoverBackground
     readonly property bool lyricsCoverVisible: root.lyricsSideCoverVisible || root.karaokeCoverVisible
+
+    // ---- shared tracks + lyrics surface ----
+    //
+    // Album view can keep the playing lyrics beside its titles, and the reading
+    // view can keep the playing album beside the words. Both are the same
+    // three-column surface: a compact track column, the words, and the cover
+    // pane when it is showing. One width helper decides whether that surface
+    // fits; when it does not, album view keeps the tracks and the reading view
+    // keeps the words, so neither column is squeezed to something unreadable.
+    readonly property int companionMinLyrics: Math.round(240 * prefs.uiScale)
+    readonly property int companionContentWidth: Math.max(0, window.width
+        - (root.lyricsSideCoverVisible ? root.coverPaneWidth : 0))
+    readonly property int companionTrackWidth: LayoutMath.companionTrackWidth({
+        contentWidth: root.companionContentWidth,
+        minLyricsWidth: root.companionMinLyrics,
+        uiScale: prefs.uiScale
+    })
+    // Karaoke is a lyricsView but not a reading view: its own surface is the
+    // words alone, so the tracks stay out of it even with the setting on.
+    readonly property bool lyricsTracksShown: root.lyricsView && !root.karaokeView
+        && prefs.lyricsTracks && root.companionTrackWidth > 0
+    readonly property bool albumLyricsShown: root.albumView && prefs.albumLyrics
+        && root.companionTrackWidth > 0
+    readonly property bool companionTracksShown: root.lyricsTracksShown
+        || root.albumLyricsShown
+    // The lyrics are on screen in their own view or beside album view's titles.
+    // Loading, following and the playback tick read this rather than lyricsView,
+    // so the shared surface behaves like the reading view without becoming one.
+    readonly property bool lyricsSurfaceActive: root.lyricsView || root.albumLyricsShown
+    readonly property int lyricsLeftInset: root.companionTracksShown
+        ? root.companionTrackWidth : 0
     // Lyric type. Karaoke has its own offset, so enlarging the words there does
     // not also enlarge the reading view; the 1.9 multiplier is what makes karaoke
     // read from across the room, and it applies on top of whichever size is in
@@ -1280,7 +1354,7 @@ Item {
     // following resume. Only "follow" (and karaoke, which always follows)
     // scrolls: "highlight" marks the line in place, and "off" does not track it.
     function scrollToCurrentLyric() {
-        if (!root.lyricsView || !root.lyricsFollowing) return
+        if (!root.lyricsSurfaceActive || !root.lyricsFollowing) return
         if (root.lyricsFollowPaused) return
         if (root.currentLyricLine < 0) return
         var item = lyricsRepeater.itemAt(root.currentLyricLine)
@@ -1325,7 +1399,7 @@ Item {
         root.lyricsLoading = false
         root.clearLyrics()
         root.resetLyricsScroll()
-        if (!root.lyricsView || rel === "") {
+        if (!root.lyricsSurfaceActive || rel === "") {
             root.stopLyricsRun()
             return
         }
@@ -1739,7 +1813,7 @@ Item {
         function onCurrentChanged() {
             root.reanchor()
             if (root.albumView) root.syncAlbumView()
-            if (root.lyricsView) {
+            if (root.lyricsSurfaceActive) {
                 var f = root.mpd && root.mpd.current ? root.mpd.current.file : ""
                 root.loadLyricsFor(f)
             }
@@ -1772,8 +1846,8 @@ Item {
         }
     }
 
-    onLyricsViewChanged: {
-        if (lyricsView) {
+    onLyricsSurfaceActiveChanged: {
+        if (root.lyricsSurfaceActive) {
             var f = root.mpd && root.mpd.current ? root.mpd.current.file : ""
             root.loadLyricsFor(f)
         } else {
@@ -1781,7 +1855,7 @@ Item {
             root.lyricsLines = []
             root.currentLyricLine = -1
             root.lyricsLoading = false
-            // No view, no reason for the helper to keep fetching. This also
+            // No surface, no reason for the helper to keep fetching. This also
             // drops a request queued behind it.
             root.stopLyricsRun()
             root.lyricsFollowPaused = false
@@ -1827,6 +1901,23 @@ Item {
         var h = Math.floor(minutes / 60)
         var m = minutes % 60
         return m === 0 ? h + " hr" : h + " hr " + m + " min"
+    }
+
+    // The caption under an album's name: artist, year and running time, with
+    // whichever of the three the library actually carries. Album view and the
+    // lyrics companion both read it, so the two surfaces name a record the same
+    // way.
+    function albumDetailText(album, artist) {
+        if (!album) return ""
+        var parts = []
+        if (artist && artist.name) parts.push(artist.name)
+        if (album.year) parts.push(String(album.year))
+        var tracks = album.tracks || []
+        var total = 0
+        for (var i = 0; i < tracks.length; i++) total += Number(tracks[i].duration) || 0
+        var running = root.formatAlbumDuration(total)
+        if (running !== "") parts.push(running)
+        return parts.join(" · ")
     }
 
     // "2024 - Little Weight", or the bare name for an album MPD has no Date tag
@@ -1937,22 +2028,33 @@ Item {
                 // Album view's own surface: a single centred column of titles,
                 // with the cover in the pane to its right. It is not a PaneRow
                 // with two panes hidden -- the browser's numbers, durations,
-                // heading and rules have no place here.
+                // heading and rules have no place here. The reading view borrows
+                // the same column, compact and pinned to the playing album, when
+                // Tracks beside lyrics is on; in that case it is a companion list
+                // rather than the surface.
                 AlbumView {
                     id: albumTrackView
-                    visible: root.albumView
+                    visible: root.albumView || root.lyricsTracksShown
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    width: Math.max(0, parent.width - root.coverPaneWidth)
+                    width: root.companionTracksShown
+                        ? root.companionTrackWidth
+                        : Math.max(0, parent.width - root.coverPaneWidth)
+                    compact: root.companionTracksShown
                     theme: theme
                     prefs: prefs
-                    model: root.trackList
-                    currentIndex: root.trackIndex
-                    albumTitle: root.albumViewTitle
-                    albumDetail: root.albumViewDetail
+                    model: root.albumView ? root.trackList : root.playingAlbumTracks
+                    currentIndex: root.albumView
+                        ? root.trackIndex : root.playingAlbumTrackIndex
+                    albumTitle: root.albumView
+                        ? root.albumViewTitle : root.playingAlbumTitle
+                    albumDetail: root.albumView
+                        ? root.albumViewDetail : root.playingAlbumDetail
                     showCaption: prefs.albumCaption
-                    emptyText: root.albumViewEmptyText
+                    emptyText: root.albumView ? root.albumViewEmptyText
+                        : (root.mpd && root.mpd.current && root.mpd.current.file
+                            ? "No tracks in this album" : "Nothing playing")
                     isCurrent: prefs.playingHighlight ? function (item) {
                         return root.mpd && root.mpd.current && item.file === root.mpd.current.file
                     } : null
@@ -1960,18 +2062,31 @@ Item {
                     playingColor: root.lyricsHighlightColor
                     // A click in album view is a play, not just a selection:
                     // this is a now-playing surface, so the first click should
-                    // start the track rather than leave it waiting for Enter.
+                    // start the track rather than leave it waiting for Enter. The
+                    // lyrics companion plays from the album it is showing, which
+                    // may not be the browser's selection.
                     onActivated: function (index) {
-                        root.selectTrack(index)
-                        root.activate()
+                        if (root.lyricsTracksShown) {
+                            root.playPlayingAlbumTrack(index)
+                        } else {
+                            root.selectTrack(index)
+                            root.activate()
+                        }
                     }
-                    onFolderRequested: function (index) { root.openFolder("tracks", index) }
+                    onFolderRequested: function (index) {
+                        if (root.lyricsTracksShown) root.openPlayingAlbumFolder(index)
+                        else root.openFolder("tracks", index)
+                    }
                 }
 
                 Item {
                     id: lyricsViewArea
-                    visible: root.lyricsView && !root.albumView
+                    // The reading view, or the lyrics sharing album view's
+                    // surface. Karaoke is a lyricsView, so it comes through here
+                    // too, with its own cover placement.
+                    visible: root.lyricsSurfaceActive
                     anchors.left: parent.left
+                    anchors.leftMargin: root.lyricsLeftInset
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
                     // With the cover hidden for this view the lyrics take the
@@ -1979,8 +2094,10 @@ Item {
                     // begins, as the browser does. Karaoke never uses the
                     // browser's side pane: its own cover sits beside the text,
                     // behind it, or nowhere, and the column below reserves the
-                    // room that placement needs.
-                    width: Math.max(0, parent.width - (root.lyricsSideCoverVisible ? root.coverPaneWidth : 0))
+                    // room that placement needs. When the track column shares the
+                    // surface, its width is given back here before the cover's.
+                    width: Math.max(0, parent.width - root.lyricsLeftInset
+                        - (root.lyricsSideCoverVisible ? root.coverPaneWidth : 0))
 
                     Rectangle {
                         anchors.fill: parent
@@ -2151,6 +2268,23 @@ Item {
                             }
                         }
                     }
+                }
+
+                // The boundary between the compact track column and the words.
+                // Album view has no rule beside its titles when they are the
+                // whole surface, but here two columns of different material
+                // share the width, so the same pane divider the browser uses
+                // marks where the titles end.
+                PaneDivider {
+                    x: root.companionTrackWidth - width
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: root.coverPaneRule
+                    thickness: root.coverPaneRule
+                    visible: root.companionTracksShown && root.coverPaneRule > 0
+                    ruleColor: theme
+                        ? Util.alpha(theme.foreground, theme.light ? 0.24 : 0.16)
+                        : Qt.rgba(1, 1, 1, 0.08)
                 }
 
                 // The artwork pane. A fourth column in the panel's own background,
@@ -2395,7 +2529,7 @@ Item {
             id: upNextBadge
             readonly property int tileSize: Math.round(64 * prefs.uiScale)
             readonly property int gutter: Math.round(20 * prefs.uiScale)
-            visible: root.albumView && prefs.upNextCover
+            visible: root.albumView && !root.albumLyricsShown && prefs.upNextCover
                 && root.upNextSubject !== null && upNextCover.showingArt
             width: tileSize
             height: upNextCaption.implicitHeight
@@ -2426,8 +2560,8 @@ Item {
                 subject: root.upNextSubject
                 uiScale: prefs.uiScale
                 pixelRatio: root.pixelRatio
-                active: window.visible && root.albumView && prefs.upNextCover
-                    && root.upNextSubject !== null
+                active: window.visible && root.albumView && !root.albumLyricsShown
+                    && prefs.upNextCover && root.upNextSubject !== null
                 coverBorder: prefs.coverBorder
                 coverBorderWidth: prefs.coverBorderWidth
                 rounded: prefs.coverRounded
@@ -3386,7 +3520,7 @@ Item {
                     root.lyricsSearching = false
                     // A finish can arrive after the view was closed; the run is
                     // over either way, but there is nothing to put on screen.
-                    if (root.lyricsView) {
+                    if (root.lyricsSurfaceActive) {
                         var data = null
                         try { data = JSON.parse(String(text || "")) } catch (e) { data = null }
                         // The helper echoes the file it answered for. A mismatch
@@ -3474,7 +3608,7 @@ Item {
         id: lyricsSyncTimer
         interval: 250
         repeat: true
-        running: root.lyricsView && root.lyricsMarking
+        running: root.lyricsSurfaceActive && root.lyricsMarking
                  && root.lyricsLines && root.lyricsLines.length > 0
         onTriggered: {
             var best = Lyrics.activeIndex(root.lyricsLines, root.elapsed, prefs.lyricsOffset)

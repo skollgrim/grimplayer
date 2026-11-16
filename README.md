@@ -21,10 +21,10 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **A strip that gives way** — on a narrow window the now-playing strip tightens its margins and shortens the volume track, then drops the track and keeps the speaker, so the title and the transport never squeeze each other.
 - **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing. In the tracks pane a number jumps to that track.
 - **Quiet track numbers** — the tracks pane writes `01.` or `01 -` before each title, and can hold the number back in the same muted ink as the durations.
-- **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line.
+- **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line. The playing album's titles can sit beside the words.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
-- **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. A small preview of the next album's cover sits above the bar. `Esc` returns to the browser.
-- **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, lyrics, themes, the music folder and optional features.
+- **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. A small preview of the next album's cover sits above the bar, and the playing lyrics can share the surface. `Esc` returns to the browser.
+- **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, the album view, lyrics, themes, the music folder and optional features.
 - **Vim motions (optional)** — `j` `k` `h` `l` `g` `G` alongside arrows; with them on, `Shift` + `h`/`l` seek.
 - **Key reference** (`?`) — quick overview of keys.
 
@@ -129,7 +129,7 @@ The Ctrl keys and the Alt cover and size keys say what they did: a mode change,
 a volume step or a new size flashes a one-line readout above the strip — or, in
 karaoke, in the margin under the words — and it fades after a moment. The strip's
 own buttons and slider are hidden in karaoke, so without it a shuffle or repeat
-change would be silent there. The readout has its own text size (Text & scale →
+change would be silent there. The readout has its own text size (Text →
 Transport readout), so it can be made easier to catch at a glance without
 touching the lists.
 
@@ -331,11 +331,29 @@ long a manual scroll holds before following resumes, the global sync offset,
 click-to-seek, and fetching. **Lyrics view** holds the reading view's own:
 alignment, text size (an offset from the theme, so it tracks the rest of the
 panel), whether the title and artist sit above the text, how following behaves,
-the width of the reading column, and whether the cover sits beside the lyrics.
-**Karaoke** holds karaoke's own text size, its track header, and the cover's
-placement — beside the lyrics, behind them as a low-opacity background, or
-nowhere — with the background opacity. Every default reproduces the views as
-they looked before the tabs existed.
+the width of the reading column, whether the cover sits beside the lyrics, and
+whether the playing album's titles sit beside them. **Karaoke** holds karaoke's
+own text size, its track header, and the cover's placement — beside the lyrics,
+behind them as a low-opacity background, or nowhere — with the background
+opacity. Every default reproduces the views as they looked before the tabs
+existed.
+
+**Album view** is its own tab, because those choices belong to the now-playing
+surface rather than to the lists or to either lyric view: its quiet caption, the
+playing lyrics beside its titles, and the small preview of the album that
+follows. Both shared surfaces use the same three columns — a compact track
+column, the words, and the cover pane — so turning either **Lyrics beside
+tracks** in Album view or **Tracks beside lyrics** in Lyrics view gives the same
+shape. Album view shows the record it is playing; the reading view's companion
+shows that same playing album, not whatever the browser's caret has wandered
+to. When the window is too narrow for both columns, album view keeps the tracks
+and the reading view keeps the words, rather than squeezing both.
+
+With **Tracks beside lyrics** on, `Alt` + `L` keeps the playing album's titles in
+a compact column to the left of the words, with the cover still in its pane.
+Clicking a title plays it at once, right-clicking opens its folder, and the
+column follows the playing track because it is drawn from the record MPD is
+playing rather than from the browser's caret.
 
 `Alt` + `K` turns the open player into karaoke: the lists and the now-playing
 strip are hidden, the text is set large and centred, and the current line is
@@ -377,16 +395,20 @@ plays it at once, rather than selecting it and waiting for `Enter`. Nothing
 playing leaves the current selection in place, so the view still has an album to
 show. The record is named in a quiet caption above the titles — album, artist,
 year and running time, read from the album's tags — and the `Album caption`
-setting turns that line off for a surface of titles alone. Hovering a title
-lights it exactly as the caret does, but the highlight follows a live pointer: a
-key press hides the cursor and takes the highlight with it, and moving the
-pointer again brings both back.
+setting under **Album view** turns that line off for a surface of titles alone.
+`Lyrics beside tracks` on the same tab puts the playing track's lyrics to the
+right of a compact track column, with the cover still in its pane; on a window
+too narrow for both, the titles keep the surface. Hovering a title lights it
+exactly as the caret does, but the highlight follows a live pointer: a key press
+hides the cursor and takes the highlight with it, and moving the pointer again
+brings both back.
 
 Above the now-playing bar, tucked into the lower-left corner, sits a small cover
 for the album that follows this one in the library, captioned **Up next**. It is
 a glance rather than a control: it takes no input, and it disappears when there
 is no next album, when shuffle or repeat is on (neither walks the library in
-tree order), and when **Up next cover** under **Artwork** is off.
+tree order), when **Up next cover** under **Album view** is off, and when the
+lyrics share the surface and would sit under it.
 
 The mouse works too: click a row in the browser to select it and move the caret
 into the next pane (playback still needs `Enter`; in album view a click plays the
@@ -424,7 +446,7 @@ with Nautilus, the desktop `FileManager1` service and `xdg-open` as fallbacks.
   stores means telling them the artist and album name — the same query iTunes and
   Deezer's own search boxes send — so this is on by default but can be turned off
   for a library that should stay offline.
-- **The music directory** is set under **List & playing** in the settings card.
+- **The music directory** is set under **Lists** in the settings card.
   On a first run it is taken from MPD's own `music_directory` (read with the
   `config` command after connecting), which is the folder every path MPD reports
   is relative to; a server that refuses `config` falls back to `XDG_MUSIC_DIR`,

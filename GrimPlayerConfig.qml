@@ -142,6 +142,11 @@ Item {
         // album view. Off leaves the surface to the songs alone.
         property bool albumCaption: true
 
+        // The playing track's lyrics beside the album's titles, sharing album
+        // view with the compact track column. Off leaves the surface to the
+        // record alone.
+        property bool albumLyrics: false
+
         // How the tracks pane writes each number before its title. "dot" is
         // "01. Title" and "dash" is "01 - Title"; both are zero-padded to two
         // digits so a column of tracks lines up.
@@ -281,6 +286,10 @@ Item {
         // width. "hide" affects the lyrics view's side pane only; the browser
         // and karaoke are untouched.
         property string lyricsCover: "show"
+        // Show the playing album's tracks beside the lyrics. Off leaves the
+        // reading view as words and cover alone; on a panel too narrow for both
+        // columns the words keep the width and the tracks step aside.
+        property bool lyricsTracks: false
 
         // ---- karaoke view ----
         //
@@ -407,7 +416,7 @@ Item {
                     "vimKeys", "rowSpacing", "typeaheadSearch", "typeaheadPlace",
                     "typeaheadScale", "rowSeparators",
                     "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "coverBorder", "coverPlaceholder",
-                    "coverBorderWidth", "coverRounded", "upNextCover", "albumCaption", "activeRowBorder", "repeatMode", "shuffleMode", "coverScale",
+                    "coverBorderWidth", "coverRounded", "upNextCover", "albumCaption", "albumLyrics", "activeRowBorder", "repeatMode", "shuffleMode", "coverScale",
                     "trackNumberFormat", "trackNumberMuted",
                     "coverTransition", "coverBandMode", "coverBandAlign", "coverPadding",
                     "coverBandMinPct",
@@ -417,7 +426,7 @@ Item {
                     "lyricsAlign", "lyricsFont", "lyricsInfo", "lyricsFollow",
                     "lyricsDim", "lyricsResume", "lyricsSpacing", "lyricsWidth",
                     "lyricsCover", "karaokeFont", "karaokeInfo", "karaokeCover", "karaokeCoverOpacity",
-                    "lyricsOffset", "lyricsClickSeek", "lyricsDownloads"]
+                    "lyricsOffset", "lyricsClickSeek", "lyricsDownloads", "lyricsTracks"]
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i]
             if (store[k] !== undefined) out[k] = store[k]
@@ -597,6 +606,7 @@ Item {
     readonly property int coverBorderWidth: store.coverBorderWidth
     readonly property bool upNextCover: store.upNextCover
     readonly property bool albumCaption: store.albumCaption
+    readonly property bool albumLyrics: store.albumLyrics
     readonly property string trackNumberFormat: store.trackNumberFormat
     readonly property bool trackNumberMuted: store.trackNumberMuted
     readonly property bool coverRounded: store.coverRounded
@@ -639,6 +649,7 @@ Item {
     readonly property int lyricsSpacing: store.lyricsSpacing
     readonly property string lyricsWidth: store.lyricsWidth
     readonly property string lyricsCover: store.lyricsCover
+    readonly property bool lyricsTracks: store.lyricsTracks
     readonly property int karaokeFont: store.karaokeFont
     readonly property string karaokeInfo: store.karaokeInfo
     readonly property string karaokeCover: store.karaokeCover
@@ -693,7 +704,7 @@ Item {
     // so switching the parent back on restores it exactly as it was, and reset()
     // still restores it too.
     readonly property var entries: [
-        // ---- List & playing ----
+        // ---- Lists ----
         {
             key: "musicDir",
             section: "list",
@@ -819,13 +830,6 @@ Item {
             options: [true, false],
         },
         {
-            key: "albumCaption",
-            section: "panes",
-            label: "Album caption",
-            hint: "Name the record above the titles in album view; off leaves just the songs",
-            options: [true, false],
-        },
-        {
             key: "trackNumberFormat",
             section: "panes",
             label: "Number format",
@@ -888,7 +892,7 @@ Item {
             format: root.deltaText
         },
 
-        // ---- Text & scale ----
+        // ---- Text ----
         {
             key: "uiScale",
             section: "text",
@@ -1001,14 +1005,6 @@ Item {
             options: [true, false],
         },
         {
-            key: "upNextCover",
-            section: "artwork",
-            label: "Up next cover",
-            hint: "In album view, preview the next album's art above the bar",
-            options: [true, false],
-        },
-
-        {
             key: "coverDecodeSize",
             section: "artwork",
             label: "Cover decode size",
@@ -1104,6 +1100,34 @@ Item {
             section: "artwork",
             label: "Adaptive colours",
             hint: "Follow the current album cover instead of the shell theme",
+            options: [true, false],
+        },
+
+        // ---- Album view ----
+        //
+        // The now-playing surface's own choices: what its caption says, whether
+        // the playing lyrics share it, and the preview of the album that follows.
+        // They are not browser panes or a second lyric view, so they get a tab of
+        // their own rather than sitting among the list and cover settings.
+        {
+            key: "albumCaption",
+            section: "album",
+            label: "Album caption",
+            hint: "Name the record above the titles in album view; off leaves just the songs",
+            options: [true, false],
+        },
+        {
+            key: "albumLyrics",
+            section: "album",
+            label: "Lyrics beside tracks",
+            hint: "Share album view with the playing track's lyrics; the cover keeps its own pane",
+            options: [true, false],
+        },
+        {
+            key: "upNextCover",
+            section: "album",
+            label: "Up next cover",
+            hint: "Preview the next album's art in the corner above the now-playing bar",
             options: [true, false],
         },
 
@@ -1208,6 +1232,13 @@ Item {
             label: "Cover beside lyrics",
             hint: "In the lyrics view, keep the artwork beside the lyrics or give the text the full width",
             options: ["show", "hide"],
+        },
+        {
+            key: "lyricsTracks",
+            section: "lyricsView",
+            label: "Tracks beside lyrics",
+            hint: "Show the playing album's titles beside the words; a narrow panel gives the lyrics the width instead",
+            options: [true, false],
         },
 
         // ---- Karaoke ----
@@ -1388,15 +1419,16 @@ Item {
 
     // The sections the card draws, in tab order, each a name and the tag its
     // entries carry. A section is one topic -- the lists and what plays them, the
-    // panes and their rules, the text and scale, the cover art, the lyric choices
-    // both surfaces share, the reading view's own, karaoke's own surface --
-    // rather than one kind of control, so a slider and a switch sit together
-    // wherever their subject says they should.
+    // panes and their rules, the text and scale, the cover art, the album view,
+    // the lyric choices both surfaces share, the reading view's own, karaoke's
+    // own surface -- rather than one kind of control, so a slider and a switch
+    // sit together wherever their subject says they should.
     readonly property var sections: [
-        { tag: "list", name: "List & playing" },
-        { tag: "panes", name: "Panes & layout" },
-        { tag: "text", name: "Text & scale" },
+        { tag: "list", name: "Lists" },
+        { tag: "panes", name: "Panes" },
+        { tag: "text", name: "Text" },
         { tag: "artwork", name: "Artwork" },
+        { tag: "album", name: "Album view" },
         { tag: "lyrics", name: "Lyrics" },
         { tag: "lyricsView", name: "Lyrics view" },
         { tag: "karaoke", name: "Karaoke" }

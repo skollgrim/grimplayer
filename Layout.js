@@ -104,6 +104,23 @@ function lyricsColumnWidth(layoutWidth, karaoke, setting) {
     return layoutWidth
 }
 
+// The width of the track column when lyrics share the surface with it. The
+// column takes about a third of the room beside the cover, held inside a band
+// that keeps a title readable without leaving the words a sliver. Zero is the
+// signal that the two columns cannot fit: album view then keeps the tracks and
+// lyrics view keeps the words, so the companion steps aside rather than both
+// being squeezed.
+function companionTrackWidth(options) {
+    var o = options || {}
+    var content = asNumber(o.contentWidth)
+    var ui = asNumber(o.uiScale) || 1
+    var min = Math.round(180 * ui)
+    var max = Math.round(360 * ui)
+    var room = content - asNumber(o.minLyricsWidth)
+    if (room < min) return 0
+    return Math.max(min, Math.min(max, Math.round(content * 0.34), room))
+}
+
 // Whether the artwork pane is showing. Auto hides it on a narrow window so the
 // three-pane layout stays usable, and keeps it while the screen's frame is
 // still unknown rather than flickering it away for the frame before the
@@ -237,6 +254,7 @@ if (typeof module !== "undefined" && module.exports) {
         floatingCoverSize: floatingCoverSize,
         karaokeCoverSize: karaokeCoverSize,
         lyricsColumnWidth: lyricsColumnWidth,
+        companionTrackWidth: companionTrackWidth,
         coverBandVisible: coverBandVisible,
         windowInset: windowInset,
         optionInt: optionInt,

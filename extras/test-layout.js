@@ -172,6 +172,40 @@ check("lyricsColumnWidth: the reading view narrows by its setting", () => {
     assert.equal(Layout.lyricsColumnWidth(900, false, undefined), 900)
 })
 
+// ---- tracks beside the lyrics ----
+
+const companion = (over) => Object.assign({
+    contentWidth: 900, minLyricsWidth: 240, uiScale: 1
+}, over)
+
+check("companionTrackWidth: about a third of the room beside the cover", () => {
+    assert.equal(Layout.companionTrackWidth(companion({})), 306)
+})
+
+check("companionTrackWidth: the band caps a very wide column", () => {
+    assert.equal(Layout.companionTrackWidth(companion({ contentWidth: 1500 })), 360)
+})
+
+check("companionTrackWidth: the readable floor holds on a tight panel", () => {
+    // share is 170, but the floor is 180 and the lyrics still keep 260.
+    assert.equal(Layout.companionTrackWidth(companion({ contentWidth: 500 })), 180)
+})
+
+check("companionTrackWidth: zero when the lyrics cannot keep their width", () => {
+    // room is 160, below the 180 floor: the companion steps aside.
+    assert.equal(Layout.companionTrackWidth(companion({ contentWidth: 400 })), 0)
+    assert.equal(Layout.companionTrackWidth(companion({ contentWidth: 0 })), 0)
+})
+
+check("companionTrackWidth: the band scales with the interface", () => {
+    assert.equal(Layout.companionTrackWidth(companion({
+        contentWidth: 800, minLyricsWidth: 360, uiScale: 1.5
+    })), 272)
+    assert.equal(Layout.companionTrackWidth(companion({
+        contentWidth: 400, minLyricsWidth: 360, uiScale: 1.5
+    })), 0)
+})
+
 // ---- auto-hide of the artwork pane ----
 
 const band = (over) => Object.assign({

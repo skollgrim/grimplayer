@@ -7,6 +7,11 @@ pragma ComponentBehavior: Bound
 // space beside the cover, the playing title is the one full-strength line, and
 // everything else is held back so the record reads at a glance.
 //
+// It is also the compact track column when lyrics share the surface. In that
+// mode it steps down a size, lines the titles up on the left and gives up the
+// wide caption measure, so it reads as a companion list beside the words rather
+// than as the main surface.
+//
 // It is a Flickable rather than a ListView because an album is short -- a few
 // dozen rows at most -- and the positioner makes it easy to centre the whole
 // column when it fits. The parent still owns the selection: currentIndex and
@@ -25,6 +30,11 @@ Item {
     property var prefs: null
     property var model: []
     property int currentIndex: 0
+
+    // Smaller type and rows, left-aligned titles, and the full width of the
+    // column as the measure. Used when the column shares the surface with the
+    // lyrics and is no longer the thing the eye lands on.
+    property bool compact: false
 
     // Injected by the panel. isCurrent is null when the playing highlight is
     // turned off, which leaves the list as plain titles.
@@ -70,18 +80,27 @@ Item {
 
     // Bigger than a browser row, but not karaoke-sized: this is read at a glance
     // while the record plays, not from across the room. The offset follows the
-    // same theme-plus-stored-delta rule as every other font in the panel.
-    readonly property int fontSize: Math.round((root.themeFont.subtitle
-        + (root.prefs ? root.prefs.fontSubtitle : 0)) * 1.9 * uiScale)
-    readonly property int rowHeight: Math.round(fontSize * 2.0)
-    readonly property int rowGap: Math.round(fontSize * 0.45)
+    // same theme-plus-stored-delta rule as every other font in the panel. The
+    // compact column steps down to body size and tightens its rows so it can sit
+    // beside a full reading column without crowding it.
+    readonly property int fontSize: root.compact
+        ? Math.round((root.themeFont.body
+            + (root.prefs ? root.prefs.fontBody : 0)) * 1.3 * uiScale)
+        : Math.round((root.themeFont.subtitle
+            + (root.prefs ? root.prefs.fontSubtitle : 0)) * 1.9 * uiScale)
+    readonly property int rowHeight: Math.round(fontSize * (root.compact ? 1.7 : 2.0))
+    readonly property int rowGap: Math.round(fontSize * (root.compact ? 0.35 : 0.45))
     readonly property int rowPitch: rowHeight + rowGap
-    readonly property int sideMargin: Math.round(24 * uiScale)
+    readonly property int sideMargin: Math.round((root.compact ? 14 : 24) * uiScale)
 
     // A single line of titles does not want to run the full width of a large
-    // window, so the text block is capped and centred inside the column.
-    readonly property int textWidth: Math.max(0, Math.min(
-        root.width - root.sideMargin * 2, Math.round(520 * root.uiScale)))
+    // window, so the text block is capped and centred inside the column. The
+    // compact column is the width it is given: its measure is the column itself,
+    // which is already narrow.
+    readonly property int textWidth: root.compact
+        ? Math.max(0, root.width - root.sideMargin * 2)
+        : Math.max(0, Math.min(
+            root.width - root.sideMargin * 2, Math.round(520 * root.uiScale)))
 
     // The playing row is the anchor; the caret is the row the user is about to
     // act on. Both are stronger than the rest, and the caret is the stronger of
@@ -134,7 +153,7 @@ Item {
     Column {
         id: caption
         anchors.top: parent.top
-        anchors.topMargin: Math.round(20 * root.uiScale)
+        anchors.topMargin: Math.round((root.compact ? 12 : 20) * root.uiScale)
         anchors.horizontalCenter: parent.horizontalCenter
         width: root.textWidth
         spacing: Math.round(2 * root.uiScale)
@@ -149,7 +168,7 @@ Item {
             font.pixelSize: Math.round((root.themeFont.bodySmall
                 + (root.prefs ? root.prefs.fontCaption : 0)) * root.uiScale)
             font.letterSpacing: 0.6
-            horizontalAlignment: Text.AlignHCenter
+            horizontalAlignment: root.compact ? Text.AlignLeft : Text.AlignHCenter
             elide: Text.ElideRight
         }
 
@@ -163,7 +182,7 @@ Item {
             font.pixelSize: Math.round((root.themeFont.caption
                 + (root.prefs ? root.prefs.fontCaption : 0)) * root.uiScale)
             font.letterSpacing: 0.6
-            horizontalAlignment: Text.AlignHCenter
+            horizontalAlignment: root.compact ? Text.AlignLeft : Text.AlignHCenter
             elide: Text.ElideRight
         }
     }
@@ -184,8 +203,9 @@ Item {
             id: column
             width: flick.width
             // Centred when the album fits; pinned to the top and scrolled when it
-            // does not.
-            y: Math.max(0, (flick.height - implicitHeight) / 2)
+            // does not. The compact column has no reason to float in the middle
+            // of its share, so it starts at the top like the prose beside it.
+            y: root.compact ? 0 : Math.max(0, (flick.height - implicitHeight) / 2)
             spacing: root.rowGap
 
             Repeater {
@@ -214,7 +234,7 @@ Item {
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.verticalCenter: parent.verticalCenter
                         width: root.textWidth
-                        horizontalAlignment: Text.AlignHCenter
+                        horizontalAlignment: root.compact ? Text.AlignLeft : Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         text: root.titleFor ? root.titleFor(row.modelData) : ""
                         color: row.playing ? root.playingColor : root.colForeground

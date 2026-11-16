@@ -393,10 +393,18 @@ Item {
                 font.letterSpacing: 0.6
             }
 
-            RowLayout {
+            // A Flow rather than a Row: the topics outgrew one row when album
+            // view got a tab of its own. A Row would shrink every pill below
+            // its label and let the text spill over its neighbours; wrapping
+            // keeps each pill at its natural width and puts the remainder on a
+            // second line, which is also what a large uiScale needs on a narrow
+            // panel.
+            Flow {
+                id: tabFlow
                 Layout.fillWidth: true
                 Layout.topMargin: Math.round(10 * root.uiScale)
                 Layout.bottomMargin: Math.round(10 * root.uiScale)
+                Layout.preferredHeight: childrenRect.height
                 spacing: Math.round(6 * root.uiScale)
 
                 Repeater {
@@ -405,8 +413,8 @@ Item {
                         id: tab
                         required property var modelData
                         required property int index
-                        Layout.preferredHeight: Math.round(28 * root.uiScale)
-                        Layout.preferredWidth: tabText.implicitWidth + Math.round(14 * root.uiScale)
+                        height: Math.round(28 * root.uiScale)
+                        width: tabText.implicitWidth + Math.round(14 * root.uiScale)
                         radius: Math.round(6 * root.uiScale)
                         color: tab.index === root.categoryIndex
                             ? Util.alpha(root.colAccent, 0.18)
