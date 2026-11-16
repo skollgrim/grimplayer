@@ -352,11 +352,11 @@ function derive(colors, fallback) {
     var bgL = greyLightness(light ? clamp(0.84 + (lum - 0.5) * 0.30, 0.84, 0.95)
                                   : clamp(0.06 + lum * 0.20, 0.06, 0.16))
     // On a light ground both steps sit darker than a bare "dark grey" would: the
-    // panel is a page of text on a near-white sheet, and at the old 0.18/0.42 the
-    // title and, especially, the muted times and icons read as a weak wash rather
-    // than as ink. Pulling them down -- foreground to 0.15, muted to 0.36 --
-    // restores the contrast that the theme's own light mode has, without going to
-    // hard black. On a dark ground they are already legible, so only a whisper of
+    // panel is a page of text on a near-white sheet, and at 0.18/0.42 the title
+    // and, especially, the muted times and icons read as a weak wash rather than
+    // as ink. Pulling them down -- foreground to 0.15, muted to 0.36 -- restores
+    // the contrast that the theme's own light mode has, without going to hard
+    // black. On a dark ground they are already legible, so only a whisper of
     // extra lift is added there.
     var fgL = greyLightness(light ? 0.15 : 0.90)
     var muL = greyLightness(light ? 0.36 : 0.57)

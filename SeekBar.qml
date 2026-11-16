@@ -2,8 +2,8 @@ pragma ComponentBehavior: Bound
 // The progress bar, as one control.
 //
 // Same reason as TransportRow and VolumeControl: the panel places the seek bar
-// in two different arrangements now (inline in the thin strip's column, and
-// stretched edge to edge under the cover band) and this is the one definition
+// in two different arrangements (inline in the thin strip's column, and
+// stretched edge to edge under the cover band), and this is the one definition
 // both use. It owns no state of its own -- it draws whatever progress it is
 // handed and reports the fraction a drag lands on -- so the panel keeps its
 // scrub-then-release model (one MPD command per drag instead of one per pixel)

@@ -379,11 +379,11 @@ Item {
     // pane is kept for a window no wider than half the screen -- the half-width
     // tile, the corner float.
     //
-    // Width alone decides it. Height was measured too once, but the panes are
+    // Width alone decides it. Height does not enter into it: the panes are
     // laid out across the width and the cover only needs a slice of the height
-    // it already shares with the lists, so a window tall enough to read was
-    // always tall enough for the pane; the second axis only gave a second way
-    // for the pane to disappear.
+    // it already shares with the lists, so a window tall enough to read is
+    // always tall enough for the pane, and a second axis would only give a
+    // second way for the pane to disappear.
     //
     // The share is measured against the screen minus the compositor's frame. A
     // maximised window is not the full screen width: Hyprland reserves the outer
@@ -445,16 +445,13 @@ Item {
     // The compositor's own frame arithmetic does not match the sum derived above
     // to the pixel: it rounds the gap and the border separately and per side, so a
     // maximised window measures a few pixels narrower than screenWidth minus twice
-    // the derived inset. On this machine (1536-logical screen, 3px gap, 3px border,
-    // scale 1.25) the derived inset is 5 and predicts a 1526-wide maximum, while
-    // Hyprland actually places the window at 1521 -- 9 in from the left and 6 from
-    // the right. Without a slack the top of the range would again be unreachable by
-    // that discrepancy, which is the exact fault the frame subtraction exists to
-    // fix. Six covers the measured five with a pixel to spare. It is a fixed number
-    // rather than a scaled one: the discrepancy comes from device-pixel rounding
-    // and does not grow with the panel's own UI scale. Six is far under any step
-    // the setting offers (5% of a 1536 screen is 77), so it cannot pull a smaller
-    // window up into the pane.
+    // the derived inset. Without a slack the top of the range would be
+    // unreachable by that discrepancy, which is the exact fault the frame
+    // subtraction exists to fix. Six covers the measured overshoot with a pixel to
+    // spare. It is a fixed number rather than a scaled one: the discrepancy comes
+    // from device-pixel rounding and does not grow with the panel's own UI scale.
+    // It is also far under the smallest step the setting offers, so it cannot pull
+    // a smaller window up into the pane.
     readonly property int coverBandSlack: 6
     readonly property bool coverBand: LayoutMath.coverBandVisible({
         mode: prefs.coverBandMode,

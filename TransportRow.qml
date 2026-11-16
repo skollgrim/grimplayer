@@ -1,11 +1,11 @@
 pragma ComponentBehavior: Bound
 // The five transport buttons, as one row.
 //
-// Lifted out of the panel so the two now-playing layouts can share a single
-// definition: the thin strip lays the panel out one way and the cover band
-// another, and the alternative was five buttons with their bindings duplicated in
-// both. The buttons read their engaged state straight from the service and call
-// its methods, so the row needs the service and nothing else wired in.
+// One definition shared by the two now-playing layouts: the thin strip lays the
+// panel out one way and the cover band another, and the alternative would be five
+// buttons with their bindings duplicated in both. The buttons read their engaged
+// state straight from the service and call its methods, so the row needs the
+// service and nothing else wired in.
 import QtQuick
 import QtQuick.Layouts
 

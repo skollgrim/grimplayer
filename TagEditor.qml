@@ -1332,9 +1332,9 @@ Item {
         width: Math.round(620 * root.uiScale)
         // Tall enough for the fields as they stand, and taller as "was" lines
         // appear; never taller than the room the panel gives it, so it stays on
-        // screen. 660 is the height the fields, match row and the larger cover
-        // preview need; the extra 18 is the path line under the title, which the
-        // fields never had to share with, and the file name row adds its own 34.
+        // screen. 694 is the height at rest -- the fields, the match row, the
+        // title with its path line, and the larger cover preview -- and each
+        // changed field adds one 18px "was" line.
         readonly property real maxCardHeight: Math.max(
             Math.round(320 * root.uiScale),
             root.height - Math.round(32 * root.uiScale))

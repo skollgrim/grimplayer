@@ -220,8 +220,8 @@ Item {
             clip: true
             model: root.model
             // The gap between rows the rowSpacing setting promises. It counts
-            // towards contentHeight the same way the old Column spacing did, so
-            // the scroll extent and the follow math are unchanged.
+            // towards contentHeight, so the scroll extent and the follow math
+            // step by rowPitch rather than by row height alone.
             spacing: root.rowGap
             boundsBehavior: ListView.StopAtBounds
             reuseItems: true
@@ -269,12 +269,12 @@ Item {
                 readonly property bool isHovered: rowArea.containsMouse
 
                 // The duration is drawn over the same stretch of row as the
-                // label, so a title long enough to reach it used to run straight
-                // under the time and the two read as one smeared line. The title
-                // gives up the sublabel's own width plus a gap, which is what
-                // makes it elide before the column instead of beneath it. Capped
-                // at just under half the row so an unusually long sublabel can
-                // never squeeze the title out of the pane entirely.
+                // label, so a title long enough to reach it would run straight
+                // under the time and the two would read as one smeared line. The
+                // title gives up the sublabel's own width plus a gap, which is
+                // what makes it elide before the column instead of beneath it.
+                // Capped at just under half the row so an unusually long sublabel
+                // can never squeeze the title out of the pane entirely.
                 readonly property real sublabelInset: sublabelText.text === "" ? 0
                     : Math.min(Math.ceil(sublabelText.implicitWidth)
                                + Math.round(8 * root.uiScale),
@@ -452,10 +452,9 @@ Item {
     // genuinely empty pane rather than an error. The message comes from the
     // parent, which knows which of those states applies.
     //
-    // Tested against model.length rather than a separate count property: it was
-    // always handed the model's own length, and as a separate int it defaulted to
-    // 0, so any caller that forgot it left the placeholder permanently on top of
-    // a populated list.
+    // Tested against model.length rather than a separate count property: a
+    // separate int defaults to 0, so any caller that forgets to set it leaves
+    // the placeholder permanently on top of a populated list.
     Text {
         anchors.centerIn: parent
         width: Math.max(0, parent.width - Math.round(32 * root.uiScale))

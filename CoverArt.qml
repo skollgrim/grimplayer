@@ -90,9 +90,9 @@ Item {
     // placement. Changing sourceSize makes Qt reload the picture, and a view
     // switch that moved the cover between placements (browser pane to karaoke,
     // say) blanked it for a frame or two while that happened. A stable bound
-    // means the move is a scale, not a reload. Zero keeps the old behaviour --
-    // decode at the current width/height -- which is right for a cover whose
-    // size never changes, such as the tag editor's preview or the up-next tile.
+    // means the move is a scale, not a reload. Zero means decode at the current
+    // width/height instead, which is right for a cover whose size never changes,
+    // such as the tag editor's preview or the up-next tile.
     property int decodeBoundWidth: 0
     property int decodeBoundHeight: 0
 

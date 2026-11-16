@@ -2,8 +2,8 @@ pragma ComponentBehavior: Bound
 // The volume glyph and its slider, as one control.
 //
 // Same reason as TransportRow: the panel places the playback controls in two
-// different arrangements now (the thin strip and the cover band) and this is the
-// one definition both use. It reports the level it came from when dragged off
+// different arrangements (the thin strip and the cover band), and this is the one
+// definition both use. It reports the level it came from when dragged off
 // zero -- the panel remembers that for its mute model -- and asks the panel to
 // handle the mute tap, since mute is modelled at the panel level (MPD has no mute
 // command).

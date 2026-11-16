@@ -367,7 +367,7 @@ Item {
         // having to elide, and no wider than the window allows: on a panel too
         // small for the full width this falls back to the panel width less its
         // margin rather than overflowing it. The tabs take turns in this width
-        // rather than sharing it, so the card no longer has to grow to fit every
+        // rather than sharing it, so the card never has to grow to fit every
         // topic at once.
         width: Math.min(Math.round(700 * root.uiScale),
                         parent.width - Math.round(16 * root.uiScale))

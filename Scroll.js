@@ -31,10 +31,11 @@ function rowScrollTarget(contentY, contentHeight, viewportHeight, pitch, rows) {
 // list. `banked` is the caller's running remainder; it is returned so the caller
 // can put it back.
 //
-// The sign follows the wheel: pixel deltas are positive downwards, so a positive
-// delta scrolls down, while a positive angle delta is a notch up, which is why
-// the angle branch answers with the opposite sign. Both are returned as rows
-// already directed, ready to hand to rowScrollTarget.
+// The sign follows Qt's wheel convention: a positive y delta means the wheel
+// turned up the list, so both branches answer with negative rows. A touchpad's
+// pixels are also banked, because they arrive in much finer steps than a mouse
+// notch. Both are returned as rows already directed, ready to hand to
+// rowScrollTarget.
 function wheelStep(pixelDelta, angleDelta, pitch, banked) {
     var carry = Number(banked) || 0
     var px = Number(pixelDelta) || 0

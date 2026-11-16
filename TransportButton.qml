@@ -121,15 +121,13 @@ Item {
         color: root.prominent ? root.colAccent
             : (hover.hovered ? Util.alpha(root.colForeground, 0.06) : "transparent")
         Behavior on color { ColorAnimation { duration: Style.duration(90) } }
-        // A resting control is dimmed, but only a little: at the old 0.55 the
-        // prev/next arrows and, on a light cover, the grey resting glyph all read
-        // as washed out rather than as controls waiting to be used. 0.66 keeps
+        // A resting control is dimmed, but only a little: lower weights wash the
+        // prev/next arrows and, on a light cover, the grey resting glyph out
+        // rather than leaving them as controls waiting to be used. 0.66 keeps
         // them clearly de-emphasised without losing them, and hover still steps up.
         opacity: root.active ? 1.0 : (hover.hovered ? 0.80 : 0.66)
         // NumberAnimation, not ColorAnimation: opacity is a number, and a
-        // ColorAnimation cannot interpolate one -- the behaviour snapped instead
-        // of easing. (GrimTheme's own Behaviours are on colours and stay
-        // ColorAnimations.)
+        // ColorAnimation cannot interpolate one.
         Behavior on opacity { NumberAnimation { duration: Style.duration(90) } }
 
         // No ring for the secondary toggles. shuffle and repeat read as on/off through

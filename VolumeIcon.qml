@@ -65,10 +65,8 @@ Item {
     // opacity when idle, so the glyph inherits that weight -- the speaker has no
     // such container and has to carry it itself. The two are deliberately the
     // same 0.66 so the speaker is neither the brightest nor the faintest thing in
-    // the row. (This was 0.55 while the circle was, and was left behind when the
-    // circle stepped up to 0.66, which made the speaker read as systematically
-    // dimmer than the buttons beside it.) Muted uses the muted token instead of
-    // the blend, but at the same weight so it does not jump out.
+    // the row. Muted uses the muted token instead of the blend, but at the same
+    // weight so it does not jump out.
     readonly property color strokeColor: Util.alpha(
         muted ? root.colMuted
               : (theme ? theme.mix(root.colForeground, root.colAccent, 0.55)
@@ -77,8 +75,8 @@ Item {
 
     // Every Shape draws into its own 24x24 box and the box is scaled to the Item,
     // rather than letting a Shape fill the Item and having PathSvg clip the
-    // 0..24 coordinates against a smaller box. That clipping is what cut the
-    // outer wave and the mute cross off at the previous 20px size.
+    // 0..24 coordinates against a smaller box, which cuts the outer wave and the
+    // mute cross off.
     //
     // No opacity dimming on the item itself: the weight lives in the stroke
     // colour above. The transport glyphs are drawn at full stroke colour and get

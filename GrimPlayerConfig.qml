@@ -454,7 +454,10 @@ Item {
     // the panel.
     function applyStored(obj) {
         if (!obj || typeof obj !== "object") return
-        // Migrate legacy coverBand boolean to coverBandMode
+        // A file written before the cover gained modes stored the band as a
+        // boolean. Keep that choice: true means the band and false means off,
+        // rather than letting the value fail the type check and fall back to the
+        // default.
         if (obj && typeof obj.coverBand === "boolean" && obj.coverBandMode === undefined) {
             obj.coverBandMode = obj.coverBand ? "on" : "off"
         }
@@ -678,9 +681,9 @@ Item {
     // table order is the order each section shows its rows. Sections are cut by
     // topic -- what part of the player the setting is about -- and not by the
     // kind of control it is, so a slider and a switch sit side by side wherever
-    // the subject they share says they should. Sorting by shape instead (as this
-    // table did before) put a list setting next to a font size and left every
-    // new entry needing to be told which tab it "was".
+    // the subject they share says they should. Sorting by shape instead would
+    // put a list setting next to a font size and leave every new entry needing
+    // to be told which tab it "was".
     //
     // An entry with `dependsOn` is greyed and non-navigable until its predicate
     // is true, rather than being hidden. Keeping the row in place means a hunt
@@ -745,10 +748,10 @@ Item {
             section: "list",
             label: "Seeker height",
             hint: "How thick the bar above the transport is drawn",
-            // Rungs up to 15: the bar is a thin strip by default, and the top of
-            // the old range (9) was where the useful settings started rather than
-            // ended. The bar's slot grows with it (see SeekBar), so a thicker bar
-            // takes more room rather than crowding the elapsed time above it.
+            // Rungs up to 15: the bar is a thin strip by default, and 9 is the
+            // bottom of the useful range rather than its top. The bar's slot
+            // grows with it (see SeekBar), so a thicker bar takes more room
+            // rather than crowding the elapsed time above it.
             options: [3, 5, 7, 9, 11, 13, 15],
             format: function (v) { return v + " px" }
         },
@@ -1060,8 +1063,8 @@ Item {
             section: "artwork",
             label: "Cover size",
             hint: "Height of the artwork as a share of the space above the now-playing bar; 100% fills it top to bottom",
-            // Even ten-step rungs, rather than the old fives low down and tens up
-            // top, so a nudge moves the cover the same amount wherever the knob is.
+            // Even ten-step rungs, low to high, so a nudge moves the cover the
+            // same amount wherever the knob is.
             options: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
             // The floating placement's resting size; the pane's 100% is applied by
             // the artwork-pane toggle above. This is what reset() lands on. It is
@@ -1377,10 +1380,10 @@ Item {
 
     // Every entry the card draws, in table order. A dependent whose parent is off
     // stays in the list, greyed, so a hunt for a setting always finds the row and
-    // the row can say what it is waiting
-    // on. It is not navigable and not editable in that state (see isActive, which
-    // the panel's movement and the card's clicks both check), but its stored
-    // value is untouched and reset() still restores it.
+    // the row can say what it is waiting on. It is not navigable and not editable
+    // in that state (see isActive, which the panel's movement and the card's
+    // clicks both check), but its stored value is untouched and reset() still
+    // restores it.
     readonly property var visibleEntries: entries
 
     // The sections the card draws, in tab order, each a name and the tag its
@@ -1405,10 +1408,9 @@ Item {
     // delegate's modelData hands back a copy, so comparing references never
     // matched and nothing ever read as selected -- while a plain integer does.
     //
-    // The index comes from the entry's own position rather than an indexOf scan:
-    // visibleEntries is the entries table itself now, so the row's index is the
-    // table index, and stamping it here is what lets the Repeater hand it back as
-    // a plain number.
+    // The index is looked up in visibleEntries rather than taken from the row's
+    // position in `list`: arranged() moves a dependent under its parent, so a
+    // tab's order is not the table's order, and the caret indexes the table.
     function indexed(list) {
         var out = []
         for (var i = 0; i < list.length; i++)

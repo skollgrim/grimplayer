@@ -3,11 +3,8 @@ pragma ComponentBehavior: Bound
 //
 // This is a row of three panes that differ only in data, label and activation:
 // everything else -- the styling block, the row rhythm, the fonts, the heading
-// underline -- is identical across all three. Held together here rather than in
-// the panel so that shared part is written once. In the panel it was a nine-line
-// block repeated verbatim three times, twenty-seven lines that had to be edited in
-// lockstep, and a fourth copy of the same Style.font expression appeared in the
-// now-playing strip.
+// underline -- is identical across all three, so it is written once here instead
+// of restated per pane.
 //
 // The divider geometry comes with it for the same reason: a rule's position is
 // only meaningful relative to the panes it divides, and the alignment that keeps
@@ -112,16 +109,16 @@ Item {
     // The quantum is the smallest whole number of logical pixels that lands on a
     // whole output pixel: for a rendering scale r, the smallest n with n*r
     // integral. At 1.25 that is 4 (4 * 1.25 = 5), and 4 is also the answer for
-    // every other quarter-step scale -- 1, 1.5, 1.75, 2 -- which is why a hardcoded
-    // 4 looked correct and was only ever correct by luck. A 1.3 display wants 10
-    // and a 4/3 one wants 3; handing either of them 4 puts the rules back off the
-    // grid and the mismatch comes straight back.
+    // every other quarter-step scale -- 1, 1.5, 1.75, 2 -- so a hardcoded 4 is
+    // right only by luck. A 1.3 display wants 10 and a 4/3 one wants 3; handing
+    // either of them 4 puts the rules back off the grid and the mismatch comes
+    // straight back.
     //
     // Read from the compositor the window is on (the panel passes it in), falling
-    // back to 4 when nothing reports a ratio, which is the quarter-step case the
-    // old constant assumed. The panel reads it from Hyprland rather than from the
-    // screen's devicePixelRatio, which reports 1 under fractional scaling and is
-    // therefore not the scale the rules are rasterised at.
+    // back to 4 when nothing reports a ratio, which is the quarter-step case. The
+    // panel reads it from Hyprland rather than from the screen's devicePixelRatio,
+    // which reports 1 under fractional scaling and is therefore not the scale the
+    // rules are rasterised at.
     // Pinning the first pane to the quantum puts the first rule's left edge on the
     // grid, and the second rule is placed from that same quantum, so both rules
     // start phase-aligned with the same width and measure identically at every
@@ -192,9 +189,9 @@ Item {
 
     // The shared pane, with the styling that would otherwise be copied into each
     // of the three. An inline component rather than three hand-written
-    // PaneColumns because that is exactly what it is for: a type used here that
-    // has no existence outside this file. Per-pane differences are set on each
-    // instance.
+    // PaneColumn blocks because that is exactly what it is for: a type used here
+    // that has no existence outside this file. Per-pane differences are set on
+    // each instance.
     component PaneSlot: PaneColumn {
     theme: root.theme
     Layout.fillHeight: true
