@@ -7,10 +7,13 @@ pragma ComponentBehavior: Bound
 // space beside the cover, the playing title is the one full-strength line, and
 // everything else is held back so the record reads at a glance.
 //
-// It is also the compact track column when lyrics share the surface. In that
-// mode it steps down a size, lines the titles up on the left and gives up the
-// wide caption measure, so it reads as a companion list beside the words rather
-// than as the main surface.
+// It is also the reading view's companion column when its lyrics keep the
+// album's titles beside them. In that mode it steps down a size, lines the
+// titles up on the left and gives up the wide caption measure, so it reads as a
+// companion list beside the words rather than as the main surface. In album
+// view the column keeps its own scale and vertical centring even when the
+// lyrics join it; the stored alignment decides whether the titles are centred
+// or drawn from the left margin.
 //
 // It is a Flickable rather than a ListView because an album is short -- a few
 // dozen rows at most -- and the positioner makes it easy to centre the whole
@@ -32,9 +35,17 @@ Item {
     property int currentIndex: 0
 
     // Smaller type and rows, left-aligned titles, and the full width of the
-    // column as the measure. Used when the column shares the surface with the
-    // lyrics and is no longer the thing the eye lands on.
+    // column as the measure. Used for the reading view's companion column,
+    // where the lyrics are the subject and this list sits beside them.
     property bool compact: false
+
+    // Where the titles and caption sit in album view. The reading view's
+    // companion is always left: there the words are the subject and this list
+    // is deliberately subdued, whatever the album's own alignment is.
+    property string align: "center"
+    readonly property bool alignLeft: root.compact || root.align === "left"
+    readonly property int textAlignment: root.alignLeft
+        ? Text.AlignLeft : Text.AlignHCenter
 
     // Injected by the panel. isCurrent is null when the playing highlight is
     // turned off, which leaves the list as plain titles.
@@ -101,6 +112,11 @@ Item {
         ? Math.max(0, root.width - root.sideMargin * 2)
         : Math.max(0, Math.min(
             root.width - root.sideMargin * 2, Math.round(520 * root.uiScale)))
+    // The block is centred by its anchor. Left alignment shifts it by however
+    // far that centring put its edge from the column's margin, so a left-aligned
+    // record starts at the same margin on a wide window as on a narrow one.
+    readonly property int textOffset: root.sideMargin
+        - (root.width - root.textWidth) / 2
 
     // The playing row is the anchor; the caret is the row the user is about to
     // act on. Both are stronger than the rest, and the caret is the stronger of
@@ -155,6 +171,7 @@ Item {
         anchors.top: parent.top
         anchors.topMargin: Math.round((root.compact ? 12 : 20) * root.uiScale)
         anchors.horizontalCenter: parent.horizontalCenter
+        anchors.horizontalCenterOffset: root.alignLeft ? root.textOffset : 0
         width: root.textWidth
         spacing: Math.round(2 * root.uiScale)
         visible: root.showCaption && (root.albumTitle !== "" || root.albumDetail !== "")
@@ -168,7 +185,7 @@ Item {
             font.pixelSize: Math.round((root.themeFont.bodySmall
                 + (root.prefs ? root.prefs.fontCaption : 0)) * root.uiScale)
             font.letterSpacing: 0.6
-            horizontalAlignment: root.compact ? Text.AlignLeft : Text.AlignHCenter
+            horizontalAlignment: root.textAlignment
             elide: Text.ElideRight
         }
 
@@ -182,7 +199,7 @@ Item {
             font.pixelSize: Math.round((root.themeFont.caption
                 + (root.prefs ? root.prefs.fontCaption : 0)) * root.uiScale)
             font.letterSpacing: 0.6
-            horizontalAlignment: root.compact ? Text.AlignLeft : Text.AlignHCenter
+            horizontalAlignment: root.textAlignment
             elide: Text.ElideRight
         }
     }
@@ -232,9 +249,10 @@ Item {
                     Text {
                         id: title
                         anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.horizontalCenterOffset: root.alignLeft ? root.textOffset : 0
                         anchors.verticalCenter: parent.verticalCenter
                         width: root.textWidth
-                        horizontalAlignment: root.compact ? Text.AlignLeft : Text.AlignHCenter
+                        horizontalAlignment: root.textAlignment
                         verticalAlignment: Text.AlignVCenter
                         text: root.titleFor ? root.titleFor(row.modelData) : ""
                         color: row.playing ? root.playingColor : root.colForeground

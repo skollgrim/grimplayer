@@ -1233,9 +1233,13 @@ Item {
     //
     // Karaoke overrides two of those settings: it always marks and follows the
     // current line (that is what karaoke means) and always centres the text.
+    // The lyrics sharing album view follow that surface's own alignment rather
+    // than the reading view's, so the two columns agree.
     readonly property bool lyricsMarking: root.karaokeView || prefs.lyricsFollow !== "off"
     readonly property bool lyricsFollowing: root.karaokeView || prefs.lyricsFollow === "follow"
-    readonly property int lyricsTextAlign: (root.karaokeView || prefs.lyricsAlign === "center")
+    readonly property int lyricsTextAlign: (root.karaokeView
+        || (root.albumLyricsShown ? prefs.albumAlign === "center"
+                                  : prefs.lyricsAlign === "center"))
         ? Text.AlignHCenter : Text.AlignLeft
     readonly property real lyricsDimOpacity: prefs.lyricsDim === "subtle" ? 0.85
         : (prefs.lyricsDim === "strong" ? 0.5 : 0.7)
@@ -2025,13 +2029,12 @@ Item {
                     onFolderRequested: function (pane, index) { root.openFolder(pane, index) }
                 }
 
-                // Album view's own surface: a single centred column of titles,
-                // with the cover in the pane to its right. It is not a PaneRow
-                // with two panes hidden -- the browser's numbers, durations,
-                // heading and rules have no place here. The reading view borrows
-                // the same column, compact and pinned to the playing album, when
-                // Tracks beside lyrics is on; in that case it is a companion list
-                // rather than the surface.
+                // The reading view borrows the same column, compact and
+                // pinned to the playing album, when Tracks beside lyrics is
+                // on; in that case it is a companion list rather than the
+                // surface. Album view keeps its own scale and centring even
+                // when the lyrics join it, so turning the lyrics on does not
+                // restyle the record.
                 AlbumView {
                     id: albumTrackView
                     visible: root.albumView || root.lyricsTracksShown
@@ -2041,7 +2044,8 @@ Item {
                     width: root.companionTracksShown
                         ? root.companionTrackWidth
                         : Math.max(0, parent.width - root.coverPaneWidth)
-                    compact: root.companionTracksShown
+                    compact: root.lyricsTracksShown
+                    align: prefs.albumAlign
                     theme: theme
                     prefs: prefs
                     model: root.albumView ? root.trackList : root.playingAlbumTracks

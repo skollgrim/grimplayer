@@ -339,15 +339,20 @@ opacity. Every default reproduces the views as they looked before the tabs
 existed.
 
 **Album view** is its own tab, because those choices belong to the now-playing
-surface rather than to the lists or to either lyric view: its quiet caption, the
-playing lyrics beside its titles, and the small preview of the album that
-follows. Both shared surfaces use the same three columns — a compact track
-column, the words, and the cover pane — so turning either **Lyrics beside
-tracks** in Album view or **Tracks beside lyrics** in Lyrics view gives the same
-shape. Album view shows the record it is playing; the reading view's companion
-shows that same playing album, not whatever the browser's caret has wandered
-to. When the window is too narrow for both columns, album view keeps the tracks
-and the reading view keeps the words, rather than squeezing both.
+surface rather than to the lists or to either lyric view: its quiet caption,
+the alignment of its titles and the lyrics sharing them, those lyrics
+themselves, and the small preview of the album that follows. Both shared
+surfaces use the same three columns — the tracks, the words, and the cover pane
+— so turning either **Lyrics beside tracks** in Album view or **Tracks beside
+lyrics** in Lyrics view gives the same arrangement. Album view's titles keep
+that surface's own scale and spacing when the lyrics join them, and **Alignment**
+on the same tab centres both the titles and the shared lyrics or draws both from
+the left margin. The reading view keeps its own alignment setting and its
+compact companion column, because there the words are the subject. Album view
+shows the record it is playing; the reading view's companion shows that same
+playing album, not whatever the browser's caret has wandered to. When the
+window is too narrow for both columns, album view keeps the tracks and the
+reading view keeps the words, rather than squeezing both.
 
 With **Tracks beside lyrics** on, `Alt` + `L` keeps the playing album's titles in
 a compact column to the left of the words, with the cover still in its pane.
@@ -396,9 +401,10 @@ playing leaves the current selection in place, so the view still has an album to
 show. The record is named in a quiet caption above the titles — album, artist,
 year and running time, read from the album's tags — and the `Album caption`
 setting under **Album view** turns that line off for a surface of titles alone.
-`Lyrics beside tracks` on the same tab puts the playing track's lyrics to the
-right of a compact track column, with the cover still in its pane; on a window
-too narrow for both, the titles keep the surface. Hovering a title lights it
+`Lyrics beside tracks` on the same tab puts the playing track's lyrics beside
+the titles, with the cover still in its pane; the titles keep their scale and
+spacing, and both columns follow the tab's `Alignment` setting. On a window too
+narrow for both, the titles keep the surface. Hovering a title lights it
 exactly as the caret does, but the highlight follows a live pointer: a key press
 hides the cursor and takes the highlight with it, and moving the pointer again
 brings both back.

@@ -142,6 +142,11 @@ Item {
         // album view. Off leaves the surface to the songs alone.
         property bool albumCaption: true
 
+        // Where album view's titles sit, and the lyrics sharing them with it.
+        // "center" is the surface's own look; "left" lines both columns up.
+        // The reading view keeps its own lyrics alignment (see lyricsAlign).
+        property string albumAlign: "center"
+
         // The playing track's lyrics beside the album's titles, sharing album
         // view with the compact track column. Off leaves the surface to the
         // record alone.
@@ -416,7 +421,7 @@ Item {
                     "vimKeys", "rowSpacing", "typeaheadSearch", "typeaheadPlace",
                     "typeaheadScale", "rowSeparators",
                     "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "coverBorder", "coverPlaceholder",
-                    "coverBorderWidth", "coverRounded", "upNextCover", "albumCaption", "albumLyrics", "activeRowBorder", "repeatMode", "shuffleMode", "coverScale",
+                    "coverBorderWidth", "coverRounded", "upNextCover", "albumCaption", "albumAlign", "albumLyrics", "activeRowBorder", "repeatMode", "shuffleMode", "coverScale",
                     "trackNumberFormat", "trackNumberMuted",
                     "coverTransition", "coverBandMode", "coverBandAlign", "coverPadding",
                     "coverBandMinPct",
@@ -606,6 +611,7 @@ Item {
     readonly property int coverBorderWidth: store.coverBorderWidth
     readonly property bool upNextCover: store.upNextCover
     readonly property bool albumCaption: store.albumCaption
+    readonly property string albumAlign: store.albumAlign
     readonly property bool albumLyrics: store.albumLyrics
     readonly property string trackNumberFormat: store.trackNumberFormat
     readonly property bool trackNumberMuted: store.trackNumberMuted
@@ -1105,16 +1111,24 @@ Item {
 
         // ---- Album view ----
         //
-        // The now-playing surface's own choices: what its caption says, whether
-        // the playing lyrics share it, and the preview of the album that follows.
-        // They are not browser panes or a second lyric view, so they get a tab of
-        // their own rather than sitting among the list and cover settings.
+        // The now-playing surface's own choices: what its caption says, where its
+        // titles and the lyrics sharing them sit, whether those lyrics share it,
+        // and the preview of the album that follows. They are not browser panes
+        // or a second lyric view, so they get a tab of their own rather than
+        // sitting among the list and cover settings.
         {
             key: "albumCaption",
             section: "album",
             label: "Album caption",
             hint: "Name the record above the titles in album view; off leaves just the songs",
             options: [true, false],
+        },
+        {
+            key: "albumAlign",
+            section: "album",
+            label: "Alignment",
+            hint: "In album view, align the titles and the lyrics sharing them left or centre them",
+            options: ["left", "center"],
         },
         {
             key: "albumLyrics",
