@@ -1134,7 +1134,7 @@ Item {
             key: "albumLyrics",
             section: "album",
             label: "Lyrics beside tracks",
-            hint: "Share album view with the playing track's lyrics; the cover keeps its own pane",
+            hint: "Share album view with the playing track's lyrics; the cover keeps its own pane. The words' size, spacing and follow behaviour come from the Lyrics and Lyrics view tabs",
             options: [true, false],
         },
         {
