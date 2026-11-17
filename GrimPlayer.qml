@@ -595,7 +595,7 @@ Item {
     readonly property int albumMinListWidth: Math.round(240 * prefs.uiScale)
     readonly property int albumCoverSize: LayoutMath.albumCoverSize(
         window.width, root.paneHeight, root.albumMinListWidth,
-        root.coverPad, prefs.uiScale)
+        root.coverPad, prefs.uiScale, prefs.stageCoverScale)
     readonly property bool coverPaneShown: root.coverBand || root.albumView
     readonly property int paneCoverSize: LayoutMath.paneCoverSize({
         shown: root.coverPaneShown,
@@ -660,7 +660,12 @@ Item {
     readonly property int karaokeMinTextWidth: Math.round(200 * prefs.uiScale)
     readonly property int karaokeCoverSize: LayoutMath.karaokeCoverSize(
         window.width, window.height, root.karaokeMargin,
-        root.karaokeCoverGap, root.karaokeMinTextWidth, prefs.uiScale)
+        root.karaokeCoverGap, root.karaokeMinTextWidth, prefs.uiScale,
+        prefs.stageCoverScale)
+    // The background cover is a centred wash; the same size setting scales it
+    // and keeps it centred in the reading area instead of pinning it top-left.
+    readonly property var karaokeBackgroundBox: LayoutMath.karaokeBackgroundCover(
+        window.width, window.height, prefs.stageCoverScale)
     // The largest size the main cover can take in any view, so both of its Image
     // layers decode once and are scaled between placements instead of reloaded.
     // A reload blanks the picture for a frame or two, so a view switch that
@@ -787,10 +792,10 @@ Item {
     // there is one, which is what keeps the two in step.
     readonly property var albumViewAlbum: albumIndex >= 0 && albumIndex < albumList.length
         ? albumList[albumIndex] : null
-    readonly property string albumViewTitle: root.albumViewAlbum
-        ? (root.albumViewAlbum.name || "") : ""
+    readonly property string albumViewTitle: root.albumTitleText(
+        root.albumViewAlbum, root.artistList[root.artistIndex], prefs.albumInfo)
     readonly property string albumViewDetail: root.albumDetailText(
-        root.albumViewAlbum, root.artistList[root.artistIndex])
+        root.albumViewAlbum, root.artistList[root.artistIndex], prefs.albumInfo)
 
     // The record that is playing, read from MPD's own location map rather than
     // from the browser's selection. The lyrics view's companion column shows
@@ -820,10 +825,10 @@ Item {
         if (!loc || root.playingAlbumTracks.length === 0) return -1
         return Math.max(0, Math.min(loc.track, root.playingAlbumTracks.length - 1))
     }
-    readonly property string playingAlbumTitle:
-        root.playingAlbum ? (root.playingAlbum.name || "") : ""
-    readonly property string playingAlbumDetail:
-        root.albumDetailText(root.playingAlbum, root.playingArtist)
+    readonly property string playingAlbumTitle: root.albumTitleText(
+        root.playingAlbum, root.playingArtist, prefs.albumInfo)
+    readonly property string playingAlbumDetail: root.albumDetailText(
+        root.playingAlbum, root.playingArtist, prefs.albumInfo)
     readonly property string albumViewEmptyText: {
         if (!root.mpd) return "Waiting for MPD…"
         if (!root.mpd.connected)
@@ -1231,16 +1236,17 @@ Item {
     // The lyrics view's own presentation, read straight from prefs so a change
     // in the settings card lands without reopening the view.
     //
-    // Karaoke overrides two of those settings: it always marks and follows the
-    // current line (that is what karaoke means) and always centres the text.
-    // The lyrics sharing album view follow that surface's own alignment rather
-    // than the reading view's, so the two columns agree.
+    // Karaoke still marks and follows the current line unconditionally -- that is
+    // what karaoke means -- but it no longer forces the words to the centre: it
+    // has its own alignment so a view read from across the room can be lined up
+    // without moving the reading view. The words share one alignment across the
+    // reading view and album view -- lyricsAlign -- so that choice follows them
+    // wherever they appear. The album's titles use trackAlign on the Album tab.
     readonly property bool lyricsMarking: root.karaokeView || prefs.lyricsFollow !== "off"
     readonly property bool lyricsFollowing: root.karaokeView || prefs.lyricsFollow === "follow"
-    readonly property int lyricsTextAlign: (root.karaokeView
-        || (root.albumLyricsShown ? prefs.albumAlign === "center"
-                                  : prefs.lyricsAlign === "center"))
-        ? Text.AlignHCenter : Text.AlignLeft
+    readonly property int lyricsTextAlign: root.karaokeView
+        ? (prefs.karaokeAlign === "left" ? Text.AlignLeft : Text.AlignHCenter)
+        : (prefs.lyricsAlign === "center" ? Text.AlignHCenter : Text.AlignLeft)
     readonly property real lyricsDimOpacity: prefs.lyricsDim === "subtle" ? 0.85
         : (prefs.lyricsDim === "strong" ? 0.5 : 0.7)
 
@@ -1507,10 +1513,10 @@ Item {
     // settingIndex is an index into prefs.visibleEntries -- the settings the card
     // is showing. Every entry is in that list now, greyed ones included, so the
     // index numbers every row on the card. Up/down walks the caret down the
-    // visible tab (stepping over greyed rows), left/right crosses to the
-    // neighbouring tab at the same height. The config owns that geometry, keyed
-    // on the bare index, so the panel and the card cannot disagree about where
-    // anything is.
+    // visible tab, stepping over greyed rows; left/right crosses to the
+    // neighbouring tab at the same height, also landing on the nearest live row.
+    // The config owns that geometry, keyed on the bare index, so the panel and the
+    // card cannot disagree about where anything is.
     //
     // The index is only good for as long as the list does not change shape. A
     // setting that reveals or hides its dependents rebuilds it, so the caret also
@@ -1532,10 +1538,12 @@ Item {
         settingsOpen = !settingsOpen
         if (settingsOpen) {
             helpOpen = false
-            settingIndex = 0
-            // Assigning 0 is a no-op when it is already 0, so the change handler
-            // above would not fire and a stale key from a previous summon would
-            // re-anchor the caret somewhere else. Seed it here as well.
+            var first = prefs.activeIndexAt(0, 0)
+            settingIndex = first >= 0 ? first : 0
+            // Assigning the first index is a no-op when it is already there, so
+            // the change handler above would not fire and a stale key from a
+            // previous summon would re-anchor the caret somewhere else. Seed it
+            // here as well.
             rememberSetting()
             settingsEditMode = false
         }
@@ -1551,10 +1559,10 @@ Item {
         }
     }
 
-    // Up/down walks the rows of the visible tab, wrapping at its ends. A greyed
-    // row is still a row: the caret can hold it, and Enter or a click simply
-    // refuses to change it, so stepping never skips over a block of settings and
-    // dead-ends on a row that looks like there is more below it.
+    // Up/down walks the live rows of the visible tab, wrapping at its ends. A
+    // greyed row still appears on the card so its dependency is visible, but the
+    // caret steps over it: stopping there would offer Enter on a row that cannot
+    // be changed and make a whole block of settings feel like a dead end.
     function moveSettingRows(delta) {
         if (!settingsOpen) return
         var step = delta < 0 ? -1 : 1
@@ -1562,19 +1570,22 @@ Item {
         if (!loader || !prefs.tabs) return
         var cat = loader.categoryIndex || 0
         var items = prefs.tabs[cat] ? prefs.tabs[cat].items : []
-        if (items.length === 0) return
+        var n = items.length
+        if (n === 0) return
         var idx = -1
-        for (var i = 0; i < items.length; i++) {
+        for (var i = 0; i < n; i++) {
             if (items[i].index === settingIndex) { idx = i; break }
         }
-        idx = idx < 0 ? 0 : (idx + step + items.length) % items.length
-        settingIndex = items[idx].index
+        idx = idx < 0 ? (step < 0 ? 0 : n - 1) : idx
+        var target = prefs.activeIndexNear(cat, idx, step)
+        if (target >= 0) settingIndex = target
         settingsEditMode = false
     }
 
     // Left/right cross the tabs, landing on the row the caret last held there
-    // (or the tab's first row on a first visit). The card derives its visible
-    // tab from the caret, so moving the caret is all that is needed.
+    // (or the tab's first row on a first visit). If that row has since gone
+    // inactive, the next live row down takes it; the card derives its visible tab
+    // from the caret, so moving the caret is all that is needed.
     function moveSettingTabs(delta) {
         if (!settingsOpen) return
         var tabs = prefs.tabs || []
@@ -1587,22 +1598,22 @@ Item {
         var items = tabs[c].items || []
         if (items.length > 0) {
             var row = loader ? (loader.tabRow[c] || 0) : 0
-            var target = prefs.indexAt(c, row)
+            var target = prefs.activeIndexAt(c, row)
             if (target >= 0) settingIndex = target
         }
         settingsEditMode = false
     }
 
-    // Every entry now stays in the card, so the list the caret indexes into is
-    // fixed for the life of the panel and the index cannot drift on its own. A
-    // dependent that goes inactive only greys: the row stays, the caret stays on
-    // it, and the row simply refuses to be edited, which is why nothing jumps.
+    // Every entry stays in the card, so the list the caret indexes into is fixed
+    // for the life of the panel and the index cannot drift on its own. A dependent
+    // that goes inactive only greys: the row stays, but it is never navigable, so
+    // a caret sitting on it steps to the nearest live row rather than being left
+    // on a switch that refuses to answer.
     //
-    // What is left to guard is the list itself changing length, which can only
-    // happen when the table is edited while the shell is running. The caret
-    // re-finds its row by key when that happens, and clamps to its previous index
-    // when the key is gone. settingIndexBefore is the index from before the
-    // change, since the handler runs once the list has already reshaped.
+    // The table itself only changes length when the table is edited while the
+    // shell is running. The caret re-finds its row by key then, and clamps to its
+    // previous index when the key is gone. settingIndexBefore is the index from
+    // before the change, since the handler runs once the list has reshaped.
     property int settingIndexBefore: 0
     Connections {
         target: prefs
@@ -1617,6 +1628,16 @@ Item {
             }
             root.settingIndex = Math.max(0,
                 Math.min(root.settingIndexBefore, prefs.visibleEntries.length - 1))
+        }
+        function onTabsChanged() {
+            var e = prefs.visibleEntries[root.settingIndex]
+            if (!e || prefs.isActive(e)) return
+            var target = prefs.activeIndexAt(prefs.tabOf(root.settingIndex),
+                                             prefs.rowOf(root.settingIndex))
+            if (target >= 0) {
+                root.settingIndex = target
+                root.settingsEditMode = false
+            }
         }
     }
 
@@ -1907,12 +1928,21 @@ Item {
         return m === 0 ? h + " hr" : h + " hr " + m + " min"
     }
 
-    // The caption under an album's name: artist, year and running time, with
-    // whichever of the three the library actually carries. Album view and the
-    // lyrics companion both read it, so the two surfaces name a record the same
-    // way.
-    function albumDetailText(album, artist) {
-        if (!album) return ""
+    // The first line above the titles. Album view and the lyrics companion both
+    // read it, so the two surfaces name a record the same way. "artist" puts the
+    // artist on that line on its own; every other mode uses the album's name.
+    function albumTitleText(album, artist, info) {
+        if (!album || info === "off") return ""
+        if (info === "artist") return artist && artist.name ? artist.name : ""
+        return album.name || ""
+    }
+
+    // The second line: what is left once the chosen info has been split between
+    // the two rows. "both" puts the artist under the album; "full" adds the year
+    // and running time that the library actually carries.
+    function albumDetailText(album, artist, info) {
+        if (!album || info === "off" || info === "title" || info === "artist") return ""
+        if (info === "both") return artist && artist.name ? artist.name : ""
         var parts = []
         if (artist && artist.name) parts.push(artist.name)
         if (album.year) parts.push(String(album.year))
@@ -2045,7 +2075,7 @@ Item {
                         ? root.companionTrackWidth
                         : Math.max(0, parent.width - root.coverPaneWidth)
                     compact: root.lyricsTracksShown
-                    align: prefs.albumAlign
+                    align: prefs.trackAlign
                     theme: theme
                     prefs: prefs
                     model: root.albumView ? root.trackList : root.playingAlbumTracks
@@ -2055,7 +2085,8 @@ Item {
                         ? root.albumViewTitle : root.playingAlbumTitle
                     albumDetail: root.albumView
                         ? root.albumViewDetail : root.playingAlbumDetail
-                    showCaption: prefs.albumCaption
+                    showCaption: prefs.albumInfo !== "off"
+                    captionStyle: prefs.albumInfoStyle
                     emptyText: root.albumView ? root.albumViewEmptyText
                         : (root.mpd && root.mpd.current && root.mpd.current.file
                             ? "No tracks in this album" : "Nothing playing")
@@ -2493,27 +2524,27 @@ Item {
             quantize: prefs.adaptiveColors
             transitionDuration: prefs.coverTransition
             opacity: root.karaokeCoverBackground ? prefs.karaokeCoverOpacity : 1.0
-            // A background cover fills the reading area; a side cover is the
+            // A background cover is the scaled, centred wash; a side cover is the
             // modest karaoke square; otherwise the browser's pane or floating
             // size applies.
-            width: root.karaokeCoverBackground ? parent.width
+            width: root.karaokeCoverBackground ? root.karaokeBackgroundBox.width
                 : (root.karaokeCoverSide ? root.karaokeCoverSize
                     : (root.coverPaneShown ? root.paneCoverSize : root.floatingCoverSize))
-            height: root.karaokeCoverBackground ? parent.height : width
+            height: root.karaokeCoverBackground ? root.karaokeBackgroundBox.height : width
             // In the artwork pane the cover keeps the padding setting's margin on
             // the right, flush when it is off; the pane is sized to match, so with
             // no margin the art runs flush to the left edge too and covers the pane
             // rule over its own height. Floating, it keeps its gutter. A karaoke
             // side cover sits in the column reserved on the right, vertically
-            // centred on the text; the background cover fills the area and is
-            // pushed behind the lyrics with a negative z.
-            x: root.karaokeCoverBackground ? 0
+            // centred on the text; the background cover is centred by its box
+            // and pushed behind the lyrics with a negative z.
+            x: root.karaokeCoverBackground ? root.karaokeBackgroundBox.x
                 : (root.karaokeCoverSide
                     ? parent.width - root.karaokeMargin - width
                     : (root.coverPaneShown
                         ? parent.width - root.coverPad - width
                         : parent.width - width - root.floatGutter))
-            y: root.karaokeCoverBackground ? 0
+            y: root.karaokeCoverBackground ? root.karaokeBackgroundBox.y
                 : (root.karaokeCoverSide
                     ? Math.round((parent.height - height) / 2)
                     : (root.coverPaneShown
@@ -2531,7 +2562,8 @@ Item {
         // shuffled or repeating.
         Item {
             id: upNextBadge
-            readonly property int tileSize: Math.round(64 * prefs.uiScale)
+            readonly property int tileSize: Math.round(
+                64 * prefs.uiScale * prefs.upNextCoverSize / 100)
             readonly property int gutter: Math.round(20 * prefs.uiScale)
             visible: root.albumView && !root.albumLyricsShown && prefs.upNextCover
                 && root.upNextSubject !== null && upNextCover.showingArt
@@ -3336,19 +3368,15 @@ Item {
         }
     }
 
-    // Alt+Shift+= / Alt+Shift+-: the artwork's size in the browser and lyrics
-    // view. Karaoke's cover is tied to the reading area rather than a stored
-    // share, so there is no separate number to turn; say what the current
-    // placement does instead of moving a setting nothing there reads.
+    // Alt+Shift+= / Alt+Shift+-: the artwork's size, applied to whichever view
+    // is showing. The browser and reading view read coverScale; album view and
+    // karaoke share stageCoverScale, which also scales karaoke's background
+    // wash. Two numbers, because those surfaces size their art differently, but
+    // one key that always moves the one the current view actually reads.
     function cycleCoverSize(delta) {
-        if (root.karaokeView) {
-            if (root.karaokeCoverBackground) {
-                root.showTransportNotice("Karaoke cover fills the view")
-            } else if (!root.karaokeCoverVisible) {
-                root.showTransportNotice("Karaoke cover is hidden")
-            } else {
-                root.showTransportNotice("Karaoke cover follows the view")
-            }
+        if (root.albumView || root.karaokeView) {
+            var s = root.cycleSetting("stageCoverScale", delta)
+            if (s) root.showTransportNotice("Cover size: " + root.settingText(s))
             return
         }
         var e = root.cycleSetting("coverScale", delta)

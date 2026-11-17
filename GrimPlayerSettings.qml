@@ -439,8 +439,14 @@ Item {
                                     ? root.tabs[tab.index].items : []
                                 if (items.length === 0) return
                                 var row = root.tabRow[tab.index] || 0
-                                var target = items[Math.max(0, Math.min(row, items.length - 1))]
-                                root.indexRequested(target.index)
+                                // A remembered row may have gone inactive while
+                                // we were away. Let the config find the nearest
+                                // live row rather than parking the caret on a
+                                // greyed one that refuses every editing key.
+                                var target = root.config
+                                    ? root.config.activeIndexAt(tab.index, row) : -1
+                                if (target < 0) return
+                                root.indexRequested(target)
                                 root.editModeRequested(false)
                             }
                         }

@@ -166,6 +166,39 @@ TestCase {
         verify(config.isActive(align))
     }
 
+    // Up/down must step over a greyed dependent in both directions, and once its
+    // parent is back on, the dependent is the very next row down.
+    function test_row_movement_skips_greyed_rows() {
+        var mode = entryFor("coverBandMode")
+        var align = entryFor("coverBandAlign")
+        var row = config.rowOf(config.visibleEntries.indexOf(align))
+        config.assign(mode, "off")
+        var next = config.activeIndexNear(3, row, 1)
+        var prev = config.activeIndexNear(3, row, -1)
+        verify(next >= 0 && config.isActive(config.visibleEntries[next]))
+        verify(prev >= 0 && config.isActive(config.visibleEntries[prev]))
+        config.assign(mode, "auto")
+        compare(config.activeIndexNear(3,
+            config.rowOf(config.visibleEntries.indexOf(mode)), 1),
+            config.visibleEntries.indexOf(align))
+    }
+
+    // A tab's remembered row can go grey while the caret is away. Crossing back
+    // must land on the next live row, never on the greyed one that refuses keys.
+    function test_crossing_tabs_skips_inactive_rows() {
+        var mode = entryFor("coverBandMode")
+        var align = entryFor("coverBandAlign")
+        var row = config.rowOf(config.visibleEntries.indexOf(align))
+        config.assign(mode, "off")
+        verify(!config.isActive(align))
+        var target = config.activeIndexAt(3, row)
+        verify(target >= 0, "the artwork tab should still have a live row")
+        verify(config.isActive(config.visibleEntries[target]),
+            "the caret landed on a greyed row")
+        config.assign(mode, "auto")
+        compare(config.activeIndexAt(3, row), config.visibleEntries.indexOf(align))
+    }
+
     // The one row that moves a second property, and the reason assign() has an
     // override: pinning the placement picks the artwork size that suits it.
     function test_pinning_the_cover_moves_the_artwork_size() {
@@ -189,6 +222,55 @@ TestCase {
         compare(config.seekThickness, 7)
         compare(config.rowSpacing, config.codeDefaults.rowSpacing)
         compare(config.coverBandMode, config.codeDefaults.coverBandMode)
+    }
+
+    // The old album-alignment key seeded the new track-alignment key, so a file
+    // written before the split keeps the title alignment it chose. An explicit
+    // trackAlign always wins over a stale albumAlign.
+    function test_the_old_album_alignment_migrates_to_track_alignment() {
+        config.reset()
+        compare(config.trackAlign, config.codeDefaults.trackAlign)
+        config.applyStored({ albumAlign: "left" })
+        compare(config.trackAlign, "left")
+        config.reset()
+        config.applyStored({ albumAlign: "left", trackAlign: "center" })
+        compare(config.trackAlign, "center")
+    }
+
+    // The album caption was a switch before it became a choice about which
+    // pieces of metadata to show. A file that chose on keeps the full caption;
+    // one that chose off still shows none. An explicit albumInfo wins.
+    function test_the_old_album_caption_migrates_to_album_info() {
+        config.reset()
+        compare(config.albumInfo, config.codeDefaults.albumInfo)
+        config.applyStored({ albumCaption: true })
+        compare(config.albumInfo, "full")
+        config.reset()
+        config.applyStored({ albumCaption: false })
+        compare(config.albumInfo, "off")
+        config.reset()
+        config.applyStored({ albumCaption: false, albumInfo: "artist" })
+        compare(config.albumInfo, "artist")
+    }
+
+    // Highlighting is the primary word setting, so it belongs with the rest of
+    // the words and is named for what it does; following is only a value of it.
+    function test_highlight_lives_with_the_words() {
+        var e = entryFor("lyricsFollow")
+        compare(e.section, "lyrics")
+        compare(e.label, "Highlight")
+        compare(e.options[0], "follow")
+        verify(config.textOf(e).indexOf("Highlight") === 0,
+            "the value should read as a kind of highlight")
+    }
+
+    // Karaoke lines the words up on its own setting, so the reading view's choice
+    // cannot move a view meant to be read from across the room.
+    function test_karaoke_has_its_own_alignment() {
+        var e = entryFor("karaokeAlign")
+        compare(e.section, "karaoke")
+        compare(config.codeDefaults.karaokeAlign, "center")
+        verify(e.options.indexOf("left") >= 0 && e.options.indexOf("center") >= 0)
     }
 
     // The music folder is the one free-text row. Its value survives a load only

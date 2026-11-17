@@ -30,11 +30,14 @@ function heroCover(paneHeight, scalePct, uiScale) {
 
 // Album view borrows the artwork pane even when the browser folds the cover
 // back to a floating corner. There it is a square beside one centred column of
-// titles, so it is capped at half the window width rather than 60%.
-function albumCoverSize(windowWidth, paneHeight, minListWidth, coverPad, uiScale) {
+// titles, so it is capped at half the window width rather than 60%. The optional
+// scale is the album/karaoke cover-size setting: 100 leaves the natural fit
+// alone, lower shares hold the art back. The readability floor is not scaled.
+function albumCoverSize(windowWidth, paneHeight, minListWidth, coverPad, uiScale, scalePct) {
     var room = asNumber(windowWidth) - asNumber(minListWidth) - asNumber(coverPad) * 2
-    return Math.max(Math.round(48 * uiScale),
-        Math.min(asNumber(paneHeight), Math.round(asNumber(windowWidth) * 0.50), room))
+    var fit = Math.min(asNumber(paneHeight), Math.round(asNumber(windowWidth) * 0.50), room)
+    var pct = scalePct === undefined ? 100 : asNumber(scalePct)
+    return Math.max(Math.round(48 * uiScale), Math.round(fit * pct / 100))
 }
 
 // The square the cover is drawn at in its pane, or 0 when no pane is showing.
@@ -87,12 +90,30 @@ function floatingCoverSize(hero, windowWidth, paneHeight, gutter, uiScale) {
 }
 
 // Karaoke's cover beside the lyrics: as tall as the reading area, capped at the
-// same 60% the pane uses and by the readable text column that has to remain.
-function karaokeCoverSize(windowWidth, windowHeight, margin, gap, minTextWidth, uiScale) {
-    return Math.max(Math.round(48 * uiScale),
-        Math.min(asNumber(windowHeight) - margin * 2,
-            Math.round(asNumber(windowWidth) * 0.60),
-            asNumber(windowWidth) - margin * 2 - gap - minTextWidth))
+// same 60% the pane uses and by the readable text column that has to remain. The
+// same cover-size setting scales it; 100 is the natural fit and the floor holds.
+function karaokeCoverSize(windowWidth, windowHeight, margin, gap, minTextWidth, uiScale, scalePct) {
+    var fit = Math.min(asNumber(windowHeight) - margin * 2,
+        Math.round(asNumber(windowWidth) * 0.60),
+        asNumber(windowWidth) - margin * 2 - gap - minTextWidth)
+    var pct = scalePct === undefined ? 100 : asNumber(scalePct)
+    return Math.max(Math.round(48 * uiScale), Math.round(fit * pct / 100))
+}
+
+// Karaoke's background cover: a wash behind the words that fills the reading
+// area. The cover-size setting scales it in both dimensions and keeps it
+// centred, so a smaller share pulls it in from every edge rather than leaving
+// it stuck to the top-left corner. Returns both the box and its centred offset.
+function karaokeBackgroundCover(parentWidth, parentHeight, scalePct) {
+    var pct = scalePct === undefined ? 100 : asNumber(scalePct)
+    var w = Math.round(asNumber(parentWidth) * pct / 100)
+    var h = Math.round(asNumber(parentHeight) * pct / 100)
+    return {
+        width: w,
+        height: h,
+        x: Math.round((asNumber(parentWidth) - w) / 2),
+        y: Math.round((asNumber(parentHeight) - h) / 2)
+    }
 }
 
 // The measure of the lyric column. Karaoke always takes the full layout width;
@@ -253,6 +274,7 @@ if (typeof module !== "undefined" && module.exports) {
         coverBandY: coverBandY,
         floatingCoverSize: floatingCoverSize,
         karaokeCoverSize: karaokeCoverSize,
+        karaokeBackgroundCover: karaokeBackgroundCover,
         lyricsColumnWidth: lyricsColumnWidth,
         companionTrackWidth: companionTrackWidth,
         coverBandVisible: coverBandVisible,

@@ -21,7 +21,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **A strip that gives way** — on a narrow window the now-playing strip tightens its margins and shortens the volume track, then drops the track and keeps the speaker, so the title and the transport never squeeze each other.
 - **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing. In the tracks pane a number jumps to that track.
 - **Quiet track numbers** — the tracks pane writes `01.` or `01 -` before each title, and can hold the number back in the same muted ink as the durations.
-- **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight and follow the playing line. The playing album's titles can sit beside the words.
+- **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight the playing line, and can follow it with the view. The playing album's titles can sit beside the words.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
 - **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. A small preview of the next album's cover sits above the bar, and the playing lyrics can share the surface. `Esc` returns to the browser.
 - **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, the album view, lyrics, themes, the music folder and optional features.
@@ -116,7 +116,7 @@ then a one-liner around whichever of the three you prefer.
 | `Alt` + `C` | Cycle the cover for the current view |
 | `Alt` + `O` | Karaoke background opacity |
 | `Alt` + `=` / `-` | Text size for the current view |
-| `Alt` + `Shift` + `=` / `-` | Cover size in the browser and lyrics view |
+| `Alt` + `Shift` + `=` / `-` | Cover size in the current view |
 | Right-click a row | Open the folder behind it, or its file selected in the file manager |
 | `?` | Key reference |
 
@@ -319,36 +319,40 @@ what it finds back to that cache. Turning **Fetch lyrics** off under the
 socket.
 
 Synced lyrics (`.lrc`, or the `syncedLyrics` field lrclib returns) carry a time on
-each line. The current line is marked and, under the default **Follow along**
-setting, kept in the middle of the view as playback moves; the lines around it
-fade so the reading line stands out. A manual scroll pauses following for the
-configured wait rather than fighting the wheel. Plain lyrics still display, just
-without a time to mark or seek to; clicking a timed line seeks to it.
+each line. **Highlight** marks the current line; its default value also keeps
+that line in the middle of the view as playback moves, while **Highlight only**
+marks it without scrolling. The lines around it fade so the reading line stands
+out. A manual scroll pauses following for the configured wait rather than
+fighting the wheel. Plain lyrics still display, just without a time to mark or
+seek to; clicking a timed line seeks to it.
 
-The lyric settings are split across three tabs. **Lyrics** holds the choices both
-surfaces share: line spacing, how far the lines around the current one dim, how
-long a manual scroll holds before following resumes, the global sync offset,
-click-to-seek, and fetching. **Lyrics view** holds the reading view's own:
-alignment, text size (an offset from the theme, so it tracks the rest of the
-panel), whether the title and artist sit above the text, how following behaves,
-the width of the reading column, whether the cover sits beside the lyrics, and
-whether the playing album's titles sit beside them. **Karaoke** holds karaoke's
-own text size, its track header, and the cover's placement — beside the lyrics,
-behind them as a low-opacity background, or nowhere — with the background
-opacity. Every default reproduces the views as they looked before the tabs
-existed.
+The lyric settings are split across three tabs. **Lyrics** leads with
+**Highlight** — marking the current line is the point, and scrolling to it is a
+secondary value of that setting — then holds the words' alignment, text size (an
+offset from the theme, so it tracks the rest of the panel), the width of the
+reading column, whether the title and artist sit above the text, and the choices
+both surfaces share: line spacing, how far the lines around the current one dim,
+how long a manual scroll holds before following resumes, the global sync offset,
+click-to-seek, and fetching. **Lyrics view** holds only the reading view's own
+choices now: whether the cover sits beside the lyrics and whether the playing
+album's titles sit beside them. **Karaoke** holds karaoke's own text size, its
+track header, and the cover's placement — beside the lyrics, behind them as a
+low-opacity background, or nowhere — with the background opacity. Every default
+reproduces the views as they looked before the tabs existed.
 
 **Album view** is its own tab, because those choices belong to the now-playing
-surface rather than to the lists or to either lyric view: its quiet caption,
-the alignment of its titles and the lyrics sharing them, those lyrics
-themselves, and the small preview of the album that follows. Both shared
+surface rather than to the lists or to either lyric view: what its caption says
+and how it looks, the alignment of its titles and the lyrics sharing them, those
+lyrics themselves, and the small preview of the album that follows. Both shared
 surfaces use the same three columns — the tracks, the words, and the cover pane
 — so turning either **Lyrics beside tracks** in Album view or **Tracks beside
 lyrics** in Lyrics view gives the same arrangement. Album view's titles keep
-that surface's own scale and spacing when the lyrics join them, and **Alignment**
-on the same tab centres both the titles and the shared lyrics or draws both from
-the left margin. The reading view keeps its own alignment setting and its
-compact companion column, because there the words are the subject. Album view
+that surface's own scale and spacing when the lyrics join them. **Track
+alignment** on that tab centres the titles or draws them from the left margin,
+while one **Alignment** setting under Lyrics moves the words wherever they
+appear — in album view and the reading view alike (karaoke has its own setting) — so
+the titles and the words can be lined up independently. The reading view keeps
+its compact companion column, because there the words are the subject. Album view
 shows the record it is playing; the reading view's companion shows that same
 playing album, not whatever the browser's caret has wandered to. When the
 window is too narrow for both columns, album view keeps the tracks and the
@@ -372,8 +376,8 @@ and **Hidden** leaves the text centred on its own. It is a view of the same
 window, toggled exactly like `Alt` + `L` — press it again to go back to the
 browser, or press `Alt` + `L` to step straight to the reading view. The shared
 reading settings still apply where they make sense — spacing, dimming, resume,
-offset, click-to-seek — but karaoke has its own text size, track header and
-cover, and alignment and following are fixed by karaoke itself. `Esc` or `Q`
+offset, click-to-seek — but karaoke has its own text size, alignment, track
+header and cover, and it always follows the current line. `Esc` or `Q`
 also returns to the browser. The view is remembered: closing and reopening the
 player comes back to karaoke, as it does to the lyrics and album views.
 
@@ -398,13 +402,20 @@ cover-pane margin, position and border settings apply as they do in the browser.
 `Alt` + `K` switches straight to the lyrics or karaoke view. Clicking a title
 plays it at once, rather than selecting it and waiting for `Enter`. Nothing
 playing leaves the current selection in place, so the view still has an album to
-show. The record is named in a quiet caption above the titles — album, artist,
-year and running time, read from the album's tags — and the `Album caption`
-setting under **Album view** turns that line off for a surface of titles alone.
-`Lyrics beside tracks` on the same tab puts the playing track's lyrics beside
+show. The record can be named above the titles: `Album info` under **Album view**
+cycles through nothing, the album, the artist, both, or both with the year and
+running time read from the album's tags. `Caption style` changes how that line is
+drawn — the quiet dotted sleeve label it opens with, a slightly larger label, or
+a small heavy heading — without changing what it says. `Lyrics beside tracks` on
+the same tab puts the playing track's lyrics beside
 the titles, with the cover still in its pane; the titles keep their scale and
-spacing, and both columns follow the tab's `Alignment` setting. On a window too
-narrow for both, the titles keep the surface. Hovering a title lights it
+spacing, follow the tab's `Track alignment`, and the shared words follow the
+one `Alignment` setting under Lyrics, so the two columns can be lined up
+independently. On a window too narrow for both, the titles keep the surface.
+`Alt` + `Shift` + `=` / `-` resizes the cover in whichever view is showing: the
+browser and reading view use the artwork-pane **Cover size**, while album view
+and karaoke share **Album & karaoke cover size**, which also scales karaoke's
+background wash. Hovering a title lights it
 exactly as the caret does, but the highlight follows a live pointer: a key press
 hides the cursor and takes the highlight with it, and moving the pointer again
 brings both back.
@@ -414,7 +425,8 @@ for the album that follows this one in the library, captioned **Up next**. It is
 a glance rather than a control: it takes no input, and it disappears when there
 is no next album, when shuffle or repeat is on (neither walks the library in
 tree order), when **Up next cover** under **Album view** is off, and when the
-lyrics share the surface and would sit under it.
+lyrics share the surface and would sit under it. **Up next cover size** on the
+same tab runs from 100% (the smallest tile) through 150% (the default) to 200%.
 
 The mouse works too: click a row in the browser to select it and move the caret
 into the next pane (playback still needs `Enter`; in album view a click plays the

@@ -60,6 +60,18 @@ check("albumCoverSize: a cramped window still gets the floor", () => {
     assert.equal(Layout.albumCoverSize(300, 700, 240, 20, 1.5), 72)
 })
 
+check("albumCoverSize: the scale holds the art back from the natural fit", () => {
+    // natural fit 600: 50% is 300, 25% is 150; an omitted scale still means 100%
+    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1), 600)
+    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 50), 300)
+    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 25), 150)
+})
+
+check("albumCoverSize: scaling never drops below the readability floor", () => {
+    // fit 600, 5% is 30, floored at 48
+    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 5), 48)
+})
+
 // ---- the pane's square ----
 
 const pane = (over) => Object.assign({
@@ -156,6 +168,36 @@ check("karaokeCoverSize: the reading height binds on a short panel", () => {
 check("karaokeCoverSize: never below the scaled floor", () => {
     assert.equal(Layout.karaokeCoverSize(756, 100, 40, 10, 200, 1), 48)
     assert.equal(Layout.karaokeCoverSize(756, 100, 40, 10, 200, 2), 96)
+})
+
+check("karaokeCoverSize: the scale holds the art back from the natural fit", () => {
+    // natural fit 454: 50% is 227; an omitted scale still means 100%
+    assert.equal(Layout.karaokeCoverSize(756, 826, 40, 10, 200, 1), 454)
+    assert.equal(Layout.karaokeCoverSize(756, 826, 40, 10, 200, 1, 50), 227)
+})
+
+check("karaokeBackgroundCover: 100% fills the parent", () => {
+    assert.deepEqual(Layout.karaokeBackgroundCover(1000, 800), {
+        width: 1000, height: 800, x: 0, y: 0
+    })
+    assert.deepEqual(Layout.karaokeBackgroundCover(1000, 800, 100), {
+        width: 1000, height: 800, x: 0, y: 0
+    })
+})
+
+check("karaokeBackgroundCover: a smaller share stays centred", () => {
+    assert.deepEqual(Layout.karaokeBackgroundCover(1000, 800, 50), {
+        width: 500, height: 400, x: 250, y: 200
+    })
+    assert.deepEqual(Layout.karaokeBackgroundCover(1000, 800, 25), {
+        width: 250, height: 200, x: 375, y: 300
+    })
+})
+
+check("karaokeBackgroundCover: odd sizes round without leaving the centre", () => {
+    assert.deepEqual(Layout.karaokeBackgroundCover(1001, 801, 50), {
+        width: 501, height: 401, x: 250, y: 200
+    })
 })
 
 // ---- lyric measure ----

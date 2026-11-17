@@ -103,7 +103,7 @@ Item {
                 { keys: "Alt + C", action: "Cycle the cover for the current view" },
                 { keys: "Alt + O", action: "Karaoke background opacity" },
                 { keys: "Alt + =  -", action: "Text size for the current view" },
-                { keys: "Alt + Shift + =  -", action: "Cover size in the browser and lyrics view" }
+                { keys: "Alt + Shift + =  -", action: "Cover size in the current view" }
             ]
         },
         {

@@ -61,6 +61,13 @@ Item {
     // Whether that caption is drawn. Album view can be left to the songs alone,
     // so this is a stored preference rather than a fixed part of the surface.
     property bool showCaption: true
+    // How the caption is drawn, separately from what it says. "quiet" is the
+    // small muted sleeve label the view opened with; "label" lifts the type a
+    // step, and "heading" gives it a heavier, small-title treatment.
+    property string captionStyle: "quiet"
+    readonly property bool captionLabel: root.captionStyle !== "quiet"
+    readonly property bool captionHeading: root.captionStyle === "heading"
+    readonly property int captionFontOffset: root.prefs ? root.prefs.fontCaption : 0
 
     // Shown when the column has no rows. The panel supplies the reason -- still
     // connecting, loading, or an album with no tracks -- so the empty surface
@@ -161,11 +168,11 @@ Item {
         if (root.visible) Qt.callLater(function () { root.followCurrent(false) })
     }
 
-    // The record's identity, as a quiet caption above the titles. Album view is
-    // about the songs, so this is a sleeve label rather than a heading: small,
-    // muted, tracked like the panel's other captions, and elided rather than
-    // wrapped when the column is narrow. The panel supplies the parts; this file
-    // does not need to know how an album is described.
+    // The record's identity above the titles. The panel supplies the words; this
+    // file only draws them, elided rather than wrapped when the column is narrow.
+    // By default it is a sleeve label -- small, muted and tracked like the panel's
+    // other captions -- but the look is a stored choice, so "heading" can read as
+    // a small title without changing what it says.
     Column {
         id: caption
         anchors.top: parent.top
@@ -173,7 +180,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.horizontalCenterOffset: root.alignLeft ? root.textOffset : 0
         width: root.textWidth
-        spacing: Math.round(2 * root.uiScale)
+        spacing: Math.round((root.captionHeading ? 4 : 2) * root.uiScale)
         visible: root.showCaption && (root.albumTitle !== "" || root.albumDetail !== "")
 
         Text {
@@ -183,8 +190,11 @@ Item {
             color: root.colMuted
             font.family: root.themeFont.family
             font.pixelSize: Math.round((root.themeFont.bodySmall
-                + (root.prefs ? root.prefs.fontCaption : 0)) * root.uiScale)
-            font.letterSpacing: 0.6
+                + (root.captionHeading ? 4 : root.captionLabel ? 2 : 0)
+                + root.captionFontOffset) * root.uiScale)
+            font.weight: root.captionHeading ? Font.DemiBold
+                : root.captionLabel ? Font.Medium : Font.Normal
+            font.letterSpacing: root.captionHeading ? 0.2 : root.captionLabel ? 0.4 : 0.6
             horizontalAlignment: root.textAlignment
             elide: Text.ElideRight
         }
@@ -194,11 +204,13 @@ Item {
             visible: text !== ""
             text: root.albumDetail
             color: root.colMuted
-            opacity: 0.75
+            opacity: root.captionHeading ? 0.9 : root.captionLabel ? 0.85 : 0.75
             font.family: root.themeFont.family
             font.pixelSize: Math.round((root.themeFont.caption
-                + (root.prefs ? root.prefs.fontCaption : 0)) * root.uiScale)
-            font.letterSpacing: 0.6
+                + (root.captionHeading ? 3 : root.captionLabel ? 1 : 0)
+                + root.captionFontOffset) * root.uiScale)
+            font.weight: root.captionHeading ? Font.Medium : Font.Normal
+            font.letterSpacing: root.captionHeading ? 0.2 : root.captionLabel ? 0.4 : 0.6
             horizontalAlignment: root.textAlignment
             elide: Text.ElideRight
         }
