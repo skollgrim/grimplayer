@@ -335,7 +335,7 @@ both surfaces share: line spacing, how far the lines around the current one dim,
 how long a manual scroll holds before following resumes, the global sync offset,
 click-to-seek, and fetching. **Lyrics view** holds only the reading view's own
 choices now: whether the cover sits beside the lyrics and whether the playing
-album's titles sit beside them. **Karaoke** holds karaoke's own text size, its
+album's titles sit beside them. **Karaoke view** holds karaoke's own text size, its
 track header, and the cover's placement — beside the lyrics, behind them as a
 low-opacity background, or nowhere — with the background opacity. Every default
 reproduces the views as they looked before the tabs existed.

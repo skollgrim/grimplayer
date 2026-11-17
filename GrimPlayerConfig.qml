@@ -1225,7 +1225,7 @@ Item {
         // Karaoke has its own size, alignment and track header;
         // everything here applies wherever the words appear, including when they
         // share album view. The reading view's view-only rows sit under Lyrics
-        // view, and karaoke's under Karaoke.
+        // view, and karaoke's under Karaoke view.
         {
             key: "lyricsFollow",
             section: "lyrics",
@@ -1336,7 +1336,7 @@ Item {
             options: [true, false],
         },
 
-        // ---- Karaoke ----
+        // ---- Karaoke view ----
         //
         // Karaoke is its own surface: larger text read from a distance, its own
         // alignment and track header, and a cover that can share the view, sit
@@ -1531,10 +1531,10 @@ Item {
         { tag: "panes", name: "Panes" },
         { tag: "text", name: "Text" },
         { tag: "artwork", name: "Artwork" },
-        { tag: "album", name: "Album view" },
         { tag: "lyrics", name: "Lyrics" },
+        { tag: "album", name: "Album view" },
         { tag: "lyricsView", name: "Lyrics view" },
-        { tag: "karaoke", name: "Karaoke" }
+        { tag: "karaoke", name: "Karaoke view" }
     ]
 
     // Each row carries its entry, that entry's index into the table, and whether
