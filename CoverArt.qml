@@ -190,6 +190,11 @@ Item {
     // moment.
     property bool foundArt: false
 
+    // Bumped on every probe. A fetch or a deferred image assignment from an
+    // abandoned probe can name the same album as the current one, so checking
+    // the directory alone would let it overwrite a cover that arrived later.
+    property int probeGeneration: 0
+
     // Whether the candidate walk has given up: every name has been tried, or
     // there was none to try. Set where the walk runs off its end (see the Image's
     // onStatusChanged) and, for an empty list, at once by probe().
@@ -312,11 +317,19 @@ Item {
         }
         entries.sort(function (a, b) { return a.t - b.t })
         var current = root.currentAlbumDir()
+        // An extraction or a store fetch may still write into one of these cache
+        // paths after the rm below is planned. Evicting it now would delete the
+        // picture moments after it landed, so leave those entries for the next
+        // pass.
+        var busy = {}
+        if (root.extractingDir) busy[root.extractingDir] = true
+        if (root.queuedDir) busy[root.queuedDir] = true
+        if (root.onlineState === "fetch" && root.onlineDir) busy[root.onlineDir] = true
         var files = []
         var toRemove = entries.length - root.maxCachedCovers
         for (var i = 0; i < entries.length && toRemove > 0; i++) {
             var e = entries[i]
-            if (e.dir === current) continue
+            if (e.dir === current || busy[e.dir] === true) continue
             files.push(root.cacheDir + "/" + Covers.fileName(e.dir))
             files.push(root.cacheDir + "/" + Covers.onlineFileName(e.dir))
             delete root.coverAccess[e.dir]
@@ -434,11 +447,13 @@ Item {
         // the value it already holds does not re-evaluate it. Clearing it first is
         // what makes the next assignment a change the Image reacts to.
         root.imageSource = ""
-        // Same re-check as showOnline: the deferred assignment must not resurrect
-        // this album's cache if the selection has moved on in the meantime, or the
-        // new album's cover would flash the old one for a tick.
+        // Same re-check as showOnline, with the probe generation as well as the
+        // directory: a forced re-probe of this album replaces the picture, and
+        // the old assignment must not put it back a tick later.
+        var generation = root.probeGeneration
         Qt.callLater(function () {
-            if (dir === root.loadedDir) root.imageSource = target
+            if (generation === root.probeGeneration && dir === root.loadedDir)
+                root.imageSource = target
         })
     }
 
@@ -644,6 +659,10 @@ Item {
         root.onlineState = "fetch"
         var artist = currentTag("Artist") || currentTag("AlbumArtist")
         var year = String(currentTag("Date") || "").slice(0, 4)
+        // The fetch outlives this probe; a cover edit can re-probe the same
+        // directory while it runs. The answer is only usable while both still
+        // belong together.
+        var generation = root.probeGeneration
         root.mpd.fetchAlbumCover({
             artist: artist,
             album: album,
@@ -653,7 +672,14 @@ Item {
         }, function (result) {
             // `dir` is the local captured above, not root.onlineDir: by the time
             // the helper answers the user may have moved to another album, and
-            // the answer still belongs to the album that asked.
+            // the answer still belongs to the album that asked. A re-probe of
+            // this same album invalidates it too -- a user-set embedded cover
+            // may already be on screen, and a store's guess must not replace it.
+            if (generation !== root.probeGeneration || root.foundArt) {
+                root.resetOnline()
+                root.runQueuedOnline()
+                return
+            }
             var ok = result && result.status === "ok"
                 && result.cover && result.cover !== ""
             if (!ok) {
@@ -690,9 +716,11 @@ Item {
     // same tick cannot be overwritten by a cover that is no longer current.
     function showOnline(dir) {
         var target = Covers.fileUrl(root.onlineCover(dir))
+        var generation = root.probeGeneration
         root.imageSource = ""
         Qt.callLater(function () {
-            if (root.onlineState === "show" && root.onlineDir === dir)
+            if (generation === root.probeGeneration
+                    && root.onlineState === "show" && root.onlineDir === dir)
                 root.imageSource = target
         })
     }
@@ -978,6 +1006,10 @@ Item {
     }
 
     function probe(force) {
+        // Invalidate every deferred answer from the walk being replaced. A cover
+        // edit re-probes the very same directory, which `loadedDir` cannot tell
+        // apart from the probe that is still in flight.
+        root.probeGeneration++
         // A change mid-fade abandons the fade: the incoming layer is about to be
         // pointed at a different album, and letting the old fade finish would
         // promote a cover that is no longer the one being shown.
@@ -1021,8 +1053,10 @@ Item {
         // to force the Image to re-stat the file.
         if (first !== "" && String(art.source) === first) {
             root.imageSource = ""
+            var generation = root.probeGeneration
             Qt.callLater(function () {
-                if (root.loadedDir === dir) root.imageSource = first
+                if (generation === root.probeGeneration && root.loadedDir === dir)
+                    root.imageSource = first
             })
             return
         }

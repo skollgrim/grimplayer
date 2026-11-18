@@ -75,7 +75,12 @@ Item {
         } else if (bottom > y + flick.height) {
             // Round up rather than to nearest: rounding down would push the
             // bottom of the caret row back out of the viewport by up to a row.
-            y = Math.ceil((bottom - flick.height) / pitch) * pitch
+            // A pane shorter than one row keeps its raw height, though, so
+            // there is no row grid to snap to -- rounding there would scroll
+            // the caret row clean out of view.
+            y = flick.height < pitch
+                ? bottom - flick.height
+                : Math.ceil((bottom - flick.height) / pitch) * pitch
         }
         flick.contentY = Math.max(0, Math.min(y, maxY))
     }

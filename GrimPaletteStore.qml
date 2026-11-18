@@ -5,8 +5,8 @@ pragma ComponentBehavior: Bound
 // derived data rather than a preference, so it lives here instead of in
 // GrimPlayerConfig. The map is keyed by the cover URL the Image actually
 // resolved -- a sidecar cover, an extracted one and a downloaded one are
-// distinct entries -- and an entry carries the time it was last quantized only
-// so the map can be bounded; it is not an expiry.
+// distinct entries -- and an entry carries the time it was last used only so
+// the map can be bounded; it is not an expiry.
 //
 // Only the four cover-derived tokens are stored. `urgent` is semantic and read
 // live from the theme, so it has no business in a palette cache.
@@ -35,11 +35,25 @@ Item {
     // than raced against it; a save into a missing directory is lost silently.
     property bool stateDirReady: false
 
+    // A hit is a use. Without this a cover that comes back on every restart
+    // keeps its old quantization time and falls out of a full cache while
+    // one-offs quantized later survive, so the next visit has to derive it
+    // again. The write is debounced like every other cache change.
+    function touch(source) {
+        var key = source ? String(source) : ""
+        var entry = root.cache[key]
+        if (!entry || !entry.palette) return
+        entry.at = Date.now()
+        saveSoon()
+    }
+
     function get(source) {
         var key = source ? String(source) : ""
         if (!key) return null
         var entry = root.cache[key]
-        return entry && entry.palette ? entry.palette : null
+        if (!entry || !entry.palette) return null
+        root.touch(key)
+        return entry.palette
     }
 
     function has(source) {
@@ -61,9 +75,10 @@ Item {
         return out
     }
 
-    // Drop the oldest entries until the map is within the limit. Recency is the
-    // entry's own timestamp, which is when its cover was last quantized, so a
-    // cover played on every restart stays while a one-off falls out.
+    // Drop the least recently used entries until the map is within the limit.
+    // Recency is the entry's own timestamp, refreshed on every hit as well as
+    // on derivation, so a cover played on every restart stays while a one-off
+    // falls out.
     function trim(map) {
         var keys = []
         for (var k in map) {

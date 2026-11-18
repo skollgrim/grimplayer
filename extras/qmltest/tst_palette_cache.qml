@@ -188,6 +188,20 @@ TestCase {
         verify(trimmed["file:///cover-59.jpg"] !== undefined)
     }
 
+    function test_a_hit_refreshes_recency_before_trimming() {
+        var entries = {}
+        for (var i = 1; i <= 48; i++)
+            entries["file:///cover-" + i + ".jpg"] = { "at": i, "palette": paletteA }
+        palettes.load(JSON.stringify({ "version": 2, "entries": entries }))
+        // cover-1 is the oldest, but reading it makes it the newest use.
+        verify(palettes.has("file:///cover-1.jpg"))
+        palettes.put("file:///new.jpg", paletteB)
+        compare(Object.keys(palettes.cache).length, 48)
+        verify(palettes.has("file:///cover-1.jpg"), "the replayed cover survives")
+        verify(palettes.cache["file:///cover-2.jpg"] === undefined,
+            "the next oldest is evicted instead")
+    }
+
     // ---- theme delegation ---------------------------------------------------
 
     function test_theme_reads_the_cache_through_the_store() {

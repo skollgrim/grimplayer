@@ -110,6 +110,11 @@ Item {
     property var trackLocations: ({})
 
     property int reconnectDelay: 1500
+    // Each socket's greeting proves that socket usable. The backoff resets only
+    // when both have greeted in this cycle: a failing event socket must not keep
+    // a healthy command socket being torn down every 1.5s.
+    property bool cmdGreeted: false
+    property bool evGreeted: false
 
     // ---- commands ----
 
@@ -123,7 +128,7 @@ Item {
             if (onDone) onDone([], "not connected")
             return
         }
-        root.pending.push({ lines: [], onDone: onDone })
+        root.pending.push({ command: command, lines: [], onDone: onDone })
         cmdLoader.item.write(command + "\n")
         cmdLoader.item.flush()
     }
@@ -136,7 +141,7 @@ Item {
             if (onDone) onDone([], "not connected")
             return
         }
-        root.pending.push({ lines: [], onDone: onDone })
+        root.pending.push({ command: "command_list_begin", lines: [], onDone: onDone })
         cmdLoader.item.write("command_list_begin\n" + commands.join("\n") + "\ncommand_list_end\n")
         cmdLoader.item.flush()
     }
@@ -148,6 +153,7 @@ Item {
         // pending-FIFO handling would treat it as the answer to a command.
         if (t.indexOf("OK MPD ") === 0) {
             root.serverVersion = t.substring(7).trim()
+            root.cmdGreeted = true
             if (!root.everConnected) {
                 root.everConnected = true
                 root.bootstrap()
@@ -165,7 +171,7 @@ Item {
             var bad = root.pending.shift()
             // A null message means MPD declined for a reason that is not a fault,
             // so the command counts as handled and nothing is raised.
-            if (bad && bad.onDone) bad.onDone(bad.lines, root.ackMessage(t))
+            if (bad && bad.onDone) bad.onDone(bad.lines, root.ackMessage(t, bad.command))
             return
         }
         // Lines belong to the OLDEST outstanding command, not the newest.
@@ -186,11 +192,12 @@ Item {
     // a sentence. Showing the line as it stands puts protocol punctuation in the
     // middle of the panel's one error banner, so only the sentence is kept.
     //
-    // Code 50 (ACK_ERROR_NO_EXIST) is not an error at all here: it is what
-    // previous/next return at the ends of the queue, which is a no-op rather than
-    // a failure, so it is reported to the caller as a handled command and never
-    // reaches the banner.
-    function ackMessage(line) {
+    // Code 50 (ACK_ERROR_NO_EXIST) is a no-op only for previous/next at the ends
+    // of the queue. For anything else -- a seekid against a stale Id, say -- the
+    // command really failed, and swallowing it would leave the caller believing
+    // it landed. The command travels with the pending entry so the distinction
+    // can be made here.
+    function ackMessage(line, command) {
         var body = String(line).substring(4).trim()
         var open = body.indexOf("{")
         var close = body.indexOf("}", open + 1)
@@ -202,7 +209,7 @@ Item {
         var at = body.indexOf("@")
         var code = at > 0 ? body.substring(1, at) : ""
         var message = body.substring(close + 1).trim()
-        if (code === "50") return null
+        if (code === "50" && (command === "previous" || command === "next")) return null
         return message === "" ? body : message
     }
 
@@ -221,6 +228,10 @@ Item {
         if (t === "") return
 
         if (t.indexOf("OK MPD ") === 0) {
+            root.evGreeted = true
+            // The command socket may have greeted first, so bootstrap had no way
+            // to know both were up yet.
+            if (root.cmdGreeted) root.reconnectDelay = 1500
             root.armIdle()
             return
         }
@@ -357,10 +368,10 @@ Item {
         root.clearError()
         root.connected = true
         // A connection that answers is the signal that the backoff has done its
-        // job. Without resetting it here the delay only ever ratchets upwards,
-        // so a handful of unrelated blips early in the session leave the panel
-        // sitting disconnected for 30s at a time for the rest of it.
-        root.reconnectDelay = 1500
+        // job -- but only once both sockets have greeted this cycle. Without
+        // resetting it at all the delay only ratchets upwards; resetting on the
+        // command socket alone keeps it at 1.5s when the event socket is broken.
+        if (root.evGreeted) root.reconnectDelay = 1500
         // A reconnect starts a fresh exchange. Anything left outstanding when
         // the socket dropped is never going to be answered, so the in-flight
         // guard and the pending FIFO have to be cleared here: left set, the
@@ -797,6 +808,10 @@ Item {
         var countries = {}
         for (var f = 0; f < files.length; f++) {
             var file = files[f]
+            // A Save that landed while the reader ran has already put the fresh
+            // value in the cache. The dump describes the pre-edit file, so it
+            // must not paint back over what was just written.
+            if (map[file] !== undefined) continue
             var text = byIndex[f] ? byIndex[f].join("\n") : ""
             map[file] = root.parseComment(text, file)
             var dir = root.albumDirOf(file)
@@ -1207,9 +1222,12 @@ Item {
             try { parsed = JSON.parse(text) } catch (e) { parsed = null }
             if (exitCode !== 0 || !parsed || typeof parsed !== "object") {
                 root.finishCoverFetch({ status: "error", message: "Cover fetch failed" })
-                return
-            }
-            root.finishCoverFetch(parsed)
+            } else root.finishCoverFetch(parsed)
+            // On a timeout the job was already finished and the deferred advance
+            // may have run while this Process still read as busy. This is the
+            // point where the slot is known to be free; a second attempt finds
+            // a running Process and does nothing.
+            Qt.callLater(root.runNextCoverFetch)
         }
     }
 
@@ -1339,7 +1357,12 @@ Item {
 
     property var coverQueue: []
     property var coverResult: null
-    property var coverOnDone: null
+    // Whole cover writes, queued like tag writes: Escape is allowed mid-write
+    // and the editor can be reopened, so a second Save must wait behind the
+    // first instead of replacing its remaining commands and stranding its
+    // callback on "Writing...".
+    property var coverRequestQueue: []
+    property var coverCurrent: null
 
     // action is "set" (with an image path) or "remove".
     function applyCover(entries, action, image, onDone) {
@@ -1388,14 +1411,28 @@ Item {
             }
         }
 
-        root.coverResult = { changed: queue.length > 0, failed: 0, skipped: skipped, dirs: dirs }
-        root.coverOnDone = typeof onDone === "function" ? onDone : null
-        // Remembered here, not in finishCover, so the panel reads the action that
-        // goes with the albums in `dirs` even if another edit arrives first.
-        root.lastCoverAction = write ? "set" : (action === "remove" ? "remove" : "")
-        root.lastCoverDirs = dirs
-        if (queue.length === 0) { root.finishCover(); return }
-        root.coverQueue = queue
+        root.coverRequestQueue.push({
+            queue: queue,
+            result: { changed: queue.length > 0, failed: 0, skipped: skipped, dirs: dirs },
+            action: write ? "set" : (action === "remove" ? "remove" : ""),
+            dirs: dirs,
+            onDone: typeof onDone === "function" ? onDone : null
+        })
+        root.runNextCoverRequest()
+    }
+
+    function runNextCoverRequest() {
+        if (root.coverCurrent !== null || root.coverRequestQueue.length === 0) return
+        var req = root.coverRequestQueue.shift()
+        root.coverCurrent = req
+        root.coverQueue = req.queue
+        root.coverResult = req.result
+        // Remembered when the request starts, not in finishCover, so the panel
+        // reads the action that goes with the albums in `dirs` even if another
+        // edit arrives while this one is still running.
+        root.lastCoverAction = req.action
+        root.lastCoverDirs = req.dirs
+        if (root.coverQueue.length === 0) { root.finishCover(); return }
         root.runNextCover()
     }
 
@@ -1416,9 +1453,10 @@ Item {
             root.send("update")
             root.coversChanged()
         }
-        var cb = root.coverOnDone
-        root.coverOnDone = null
-        if (cb) cb(result)
+        var req = root.coverCurrent
+        root.coverCurrent = null
+        if (req && req.onDone) req.onDone(result)
+        Qt.callLater(root.runNextCoverRequest)
     }
 
     Process {
@@ -1447,7 +1485,10 @@ Item {
     // silently claimed.
     property var renameQueue: []
     property var renameResult: null
-    property var renameOnDone: null
+    // Same reason as the cover and tag queues: a reopened editor can issue a
+    // second rename before the first batch of `mv` commands has finished.
+    property var renameRequestQueue: []
+    property var renameCurrent: null
 
     // entries: [{ file: <MPD path>, name: <new basename> }]. A name that tries
     // to leave its folder is refused here, not passed to mv.
@@ -1467,9 +1508,20 @@ Item {
             if (cut <= 0) { skipped++; continue }
             queue.push({ from: from, to: from.substring(0, cut + 1) + name })
         }
-        root.renameResult = { moved: 0, skipped: skipped, failed: 0 }
-        root.renameOnDone = typeof onDone === "function" ? onDone : null
-        root.renameQueue = queue
+        root.renameRequestQueue.push({
+            queue: queue,
+            result: { moved: 0, skipped: skipped, failed: 0 },
+            onDone: typeof onDone === "function" ? onDone : null
+        })
+        root.runNextRenameRequest()
+    }
+
+    function runNextRenameRequest() {
+        if (root.renameCurrent !== null || root.renameRequestQueue.length === 0) return
+        var req = root.renameRequestQueue.shift()
+        root.renameCurrent = req
+        root.renameQueue = req.queue
+        root.renameResult = req.result
         root.runNextRename()
     }
 
@@ -1485,9 +1537,10 @@ Item {
         // A move is a delete and an add as far as MPD is concerned; without this
         // the old path would linger in the tree beside the new one.
         if (result.moved > 0) root.send("update")
-        var cb = root.renameOnDone
-        root.renameOnDone = null
-        if (cb) cb(result)
+        var req = root.renameCurrent
+        root.renameCurrent = null
+        if (req && req.onDone) req.onDone(result)
+        Qt.callLater(root.runNextRenameRequest)
     }
 
     Process {
@@ -2496,6 +2549,8 @@ Item {
             evLoader.active = false
             root.connected = false
             root.everConnected = false
+            root.cmdGreeted = false
+            root.evGreeted = false
             root.libraryLoaded = false
             root.pending = []
             root.changed = []

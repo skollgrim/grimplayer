@@ -22,6 +22,7 @@ Item {
     signal scrolled(int rows)
 
     WheelHandler {
+        id: wheelHandler
         objectName: "wheelHandler"
         // TouchPad is listed explicitly: without it Qt drops wheel events whose
         // source is synthesized rather than a physical mouse, which also drops
@@ -41,4 +42,9 @@ Item {
             event.accepted = true
         }
     }
+
+    // The bank is in pixels, so a remainder measured against one row pitch
+    // would be worth a different number of rows after a UI-scale or spacing
+    // change. Drop it rather than turning a small gesture into a jump.
+    onRowPitchChanged: wheelHandler.banked = 0
 }
