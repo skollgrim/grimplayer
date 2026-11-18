@@ -1,18 +1,16 @@
 pragma ComponentBehavior: Bound
 // The settings card, modal over the browser.
 //
-// The settings are cut into tabs by topic, each a single list under its own
-// heading: the list and what plays it, the panes and their rules, the text and
-// its scale, the cover art, the lyrics view, and karaoke's own surface. A tab is
-// one subject rather than one kind of control, so a slider and a switch sit
-// together in a tab where the thing they share says they should, and a setting
-// is always in the same place every time the card opens.
+// The settings are cut into tabs by topic: Lists, Panes, Text, Artwork, Lyrics,
+// Album view, Lyrics view and Karaoke view. A tab is one subject rather than one
+// kind of control, so a slider and a switch sit together where their subject says
+// they should, and a setting is always in the same place every time the card
+// opens.
 //
 // A setting that waits on another is drawn greyed rather than hidden, and is
 // indented beneath the row it waits on, so the row above is why it is greyed and
 // the block of rows reads as one setting's details. Keeping the row in place
-// means a hunt for it always finds it, and a row that greys while the caret is on
-// it does not move the thing under the caret.
+// means a hunt for it always finds it; the caret never rests on a greyed row.
 //
 // Within a cell the label sits on the left and a fixed-width control block on the
 // right, so every value in a tab lines up on the same vertical edge. That fixed
@@ -170,14 +168,13 @@ Item {
                 anchors.fill: parent
                 radius: row.radius
                 color: Util.alpha(root.colForeground, 0.04)
-                opacity: (!row.selected && rowMouse.containsMouse) ? 1 : 0
+                opacity: (row.active && !row.selected && rowMouse.containsMouse) ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: Style.duration(90) } }
             }
 
             // A greyed dependent stays visible but reads as switched off: the
             // whole row fades, and the value ink stops being the accent it is on a
-            // live row. The caret fill is left alone so a row that greys while the
-            // caret is already on it does not change under the eye.
+            // live row. It is drawn for discovery only; the caret skips it.
             opacity: active ? 1.0 : 0.4
 
             // Keep the caret's row on screen as it moves, and once more when the
@@ -204,17 +201,17 @@ Item {
                 id: rowMouse
                 anchors.fill: parent
                 hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
+                cursorShape: row.active ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: {
+                    // A greyed row is drawn only so its dependency is discoverable.
+                    // It never takes the caret and never edits a value nothing on
+                    // screen reads; the row above it says what it waits on.
+                    if (!row.active) return
                     // Clicking elsewhere just parks the caret.
                     if (root.index !== row.visIndex) {
                         root.caretAt(row.visIndex)
                         return
                     }
-                    // A greyed row does nothing but hold the caret: its value has
-                    // no effect until the setting it waits on is on, and the card
-                    // says so right there on the row.
-                    if (!row.active) return
                     // Clicking the row you are already on does what Enter does: a
                     // plain switch flips, a slider or a text row opens for
                     // editing (and clicking it again accepts the edit).
@@ -240,11 +237,10 @@ Item {
                 // the filled row and the bar down its edge already carry the
                 // selection.
                 //
-                // A greyed dependent carries no note of its own: it is indented
-                // under the setting it waits on, so the row above is the note. When
-                // active but not selected, a child label reads a touch quieter than
-                // a top-level row so the parent-child link is clearer without adding
-                // extra chrome.
+                // A greyed dependent carries no note of its own: the indented row
+                // above is the only explanation. When active but not selected, a
+                // child label reads a touch quieter than a top-level row so the
+                // parent-child link is clearer without adding extra chrome.
                 Text {
                     Layout.fillWidth: true
                     text: row.entryData.label
@@ -305,8 +301,7 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             function pick(mx) {
-                                // A greyed row's track is drawn but inert; the only
-                                // thing a click may do is park the caret on it.
+                                // A greyed row's track is inert: clicks do nothing.
                                 if (!row.active) return
                                 if (row.opts.length === 0) return
                                 var f = Math.max(0, Math.min(1, mx / width))

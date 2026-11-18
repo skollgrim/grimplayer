@@ -22,7 +22,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing. In the tracks pane a number jumps to that track.
 - **Quiet track numbers** — the tracks pane writes `01.` or `01 -` before each title, and can hold the number back in the same muted ink as the durations.
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight the playing line, and can follow it with the view. The playing album's titles can sit beside the words.
-- **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large centred text, the current line bold, everything else out of the way.
+- **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large text, centred by default but configurable under **Karaoke view**, the current line bold, everything else out of the way.
 - **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. A small preview of the next album's cover sits above the bar, and the playing lyrics can share the surface. `Esc` returns to the browser.
 - **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, the album view, lyrics, themes, the music folder and optional features.
 - **Vim motions (optional)** — `j` `k` `h` `l` `g` `G` alongside arrows; with them on, `Shift` + `h`/`l` seek.
@@ -150,12 +150,11 @@ resets everything, `?` switches to the key reference, `Esc` steps back out and `
 closes. The visible tab follows the caret, and each tab remembers the row you
 left it on.
 
-The card is cut into tabs by topic — the list and what plays it, the panes and
-their rules, the text and its scale, the cover art, the lyric choices both
-surfaces share, the reading view's own, and karaoke's own surface — so a slider
-and a switch sit together where their subject says they should, and a setting is
-always in the same place. A setting that only matters while another is on — a
-cover border's width, the artwork pane's position — stays on the card but is
+The card is cut into tabs by topic — Lists, Panes, Text, Artwork, Lyrics,
+Album view, Lyrics view and Karaoke view — so a slider and a switch sit together
+where their subject says they should, and a setting is always in the same place.
+A setting that only matters while another is on — a cover border's width, the
+artwork pane's position — stays on the card but is
 greyed, sitting directly beneath the setting it waits on, so the row above is why
 it is greyed and you never edit a value nothing reads. Its value is kept for when
 the parent comes back.
@@ -310,9 +309,10 @@ Some things to know:
 ### Lyrics
 
 `Alt` + `L` covers the panes area with the lyrics for the playing track. Nothing
-is fetched while the view is closed, and nothing is fetched for a track whose
-lyrics are already on disk: the player reads embedded lyrics, a `.lrc` or `.txt`
-beside the track, and the shared `~/.lyrics` cache first, and only then starts the
+is fetched while no lyric surface is open — lyrics view, karaoke, or album view
+sharing lyrics — and nothing is fetched for a track whose lyrics are already on
+disk: the player reads embedded lyrics, a `.lrc` or `.txt` beside the track, and
+the shared `~/.lyrics` cache first, and only then starts the
 bundled `fetch_lyrics.py` — which asks [lrclib](https://lrclib.net/) and writes
 what it finds back to that cache. Turning **Fetch lyrics** off under the
 **Lyrics** tab keeps even that last step local-only, so the view never opens a
@@ -335,10 +335,10 @@ both surfaces share: line spacing, how far the lines around the current one dim,
 how long a manual scroll holds before following resumes, the global sync offset,
 click-to-seek, and fetching. **Lyrics view** holds only the reading view's own
 choices now: whether the cover sits beside the lyrics and whether the playing
-album's titles sit beside them. **Karaoke view** holds karaoke's own text size, its
-track header, and the cover's placement — beside the lyrics, behind them as a
-low-opacity background, or nowhere — with the background opacity. Every default
-reproduces the views as they looked before the tabs existed.
+album's titles sit beside them. **Karaoke view** holds karaoke's own text size and
+alignment, its track header, and the cover's placement — beside the lyrics, behind
+them as a low-opacity background, or nowhere — with the background opacity. Every
+default reproduces the views as they looked before the tabs existed.
 
 **Album view** is its own tab, because those choices belong to the now-playing
 surface rather than to the lists or to either lyric view: what its caption says
@@ -365,9 +365,9 @@ column follows the playing track because it is drawn from the record MPD is
 playing rather than from the browser's caret.
 
 `Alt` + `K` turns the open player into karaoke: the lists and the now-playing
-strip are hidden, the text is set large and centred, and the current line is
-always marked and followed. The track header sits above the scrolling words and
-stays put as they move; **Track info** chooses whether it shows the track, the
+strip are hidden, the text is set large (centred by default, with its own
+alignment setting), and the current line is always marked and followed. The track
+header sits above the scrolling words and stays put as they move; **Track info** chooses whether it shows the track, the
 track and artist, those plus the album, or nothing. The **Cover** setting puts a
 full-size cover to the right of the lyrics, matching the artwork pane at full
 size, which shifts the text left into the room that leaves; in **Background** it

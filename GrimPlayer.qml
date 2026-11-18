@@ -757,13 +757,9 @@ Item {
     // the browser keeps its state underneath but stops answering keys, so j/k
     // cannot walk a list that is behind a dialog.
     property bool settingsOpen: false
+    // An index into the fixed prefs.visibleEntries list; greying a dependent does
+    // not renumber anything after it.
     property int settingIndex: 0
-    // The key of the setting under the caret. The caret is an index into
-    // prefs.visibleEntries, but that list is a filtered view: switching a setting
-    // can hide or reveal its dependents and renumber everything after it. Keeping
-    // the key alongside the index lets the caret re-anchor to the same setting when
-    // the list changes, instead of sliding onto whichever row moved into its slot.
-    property string settingKey: ""
     property bool settingsEditMode: false
     property bool helpOpen: false
 
@@ -1124,8 +1120,9 @@ Item {
     //
     // One helper process answers the whole question for a track: embedded
     // lyrics, a .lrc/.txt beside the file, the ~/.lyrics cache, or a download
-    // into that cache. It only runs while the view is open, so toggling Alt+L
-    // is what fetches -- nothing downloads for tracks nobody is looking at.
+    // into that cache. It only runs while a lyric surface is open -- the reading
+    // view, karaoke, or album view sharing lyrics -- so nothing downloads for
+    // tracks nobody is looking at.
     // Lyrics already on disk are read here first, so the helper is only started
     // for a track whose lyrics have to be extracted or fetched.
     readonly property string lyricsMusicDir: {
@@ -1518,33 +1515,15 @@ Item {
     // The config owns that geometry, keyed on the bare index, so the panel and the
     // card cannot disagree about where anything is.
     //
-    // The index is only good for as long as the list does not change shape. A
-    // setting that reveals or hides its dependents rebuilds it, so the caret also
-    // remembers the setting's key and re-anchors to it whenever the list changes
-    // (see onVisibleEntriesChanged). The index follows the setting; it is not
-    // allowed to lead it onto a different row.
-    function rememberSetting() {
-        var e = prefs.visibleEntries[settingIndex]
-        settingKey = e ? e.key : ""
-        // The index at the last caret move. onVisibleEntriesChanged fires after
-        // the list has already reshaped, so this is the stale index it needs to
-        // fall back on when the key itself has gone (see the handler below).
-        settingIndexBefore = settingIndex
-    }
-
-    onSettingIndexChanged: rememberSetting()
-
+    // The table is fixed while the shell runs, so that index stays meaningful for
+    // the life of the panel. A dependent going grey does not renumber it; the
+    // prefs connection below only steps the caret off a row that just went quiet.
     function toggleSettings() {
         settingsOpen = !settingsOpen
         if (settingsOpen) {
             helpOpen = false
             var first = prefs.activeIndexAt(0, 0)
             settingIndex = first >= 0 ? first : 0
-            // Assigning the first index is a no-op when it is already there, so
-            // the change handler above would not fire and a stale key from a
-            // previous summon would re-anchor the caret somewhere else. Seed it
-            // here as well.
-            rememberSetting()
             settingsEditMode = false
         }
     }
@@ -1605,30 +1584,12 @@ Item {
     }
 
     // Every entry stays in the card, so the list the caret indexes into is fixed
-    // for the life of the panel and the index cannot drift on its own. A dependent
-    // that goes inactive only greys: the row stays, but it is never navigable, so
-    // a caret sitting on it steps to the nearest live row rather than being left
-    // on a switch that refuses to answer.
-    //
-    // The table itself only changes length when the table is edited while the
-    // shell is running. The caret re-finds its row by key then, and clamps to its
-    // previous index when the key is gone. settingIndexBefore is the index from
-    // before the change, since the handler runs once the list has reshaped.
-    property int settingIndexBefore: 0
+    // for the life of the panel. A dependent going inactive only greys: the row
+    // stays, but it is never navigable, so a caret sitting on it steps to the
+    // nearest live row rather than being left on a switch that refuses to answer.
+    // The tab list re-evaluates when a dependency flips, which is what fires this.
     Connections {
         target: prefs
-        function onVisibleEntriesChanged() {
-            if (root.settingKey !== "") {
-                for (var i = 0; i < prefs.visibleEntries.length; i++) {
-                    if (prefs.visibleEntries[i].key === root.settingKey) {
-                        root.settingIndex = i
-                        return
-                    }
-                }
-            }
-            root.settingIndex = Math.max(0,
-                Math.min(root.settingIndexBefore, prefs.visibleEntries.length - 1))
-        }
         function onTabsChanged() {
             var e = prefs.visibleEntries[root.settingIndex]
             if (!e || prefs.isActive(e)) return
@@ -2257,9 +2218,10 @@ Item {
                                         horizontalAlignment: root.lyricsTextAlign
                                         color: (root.lyricsMarking && root.currentLyricLine === index)
                                             ? root.lyricsHighlightColor : theme.foreground
-                                        // Only the follow modes mark a line and fade
-                                        // the rest; "off" leaves the whole text at
-                                        // full strength, since nothing is current.
+                                        // Marking modes -- follow, highlight and
+                                        // karaoke -- colour the current line and
+                                        // fade the rest; "off" leaves the text
+                                        // uniform, since nothing is current.
                                         opacity: (!root.lyricsMarking
                                                   || root.currentLyricLine === index)
                                             ? 1.0 : root.lyricsDimOpacity
@@ -2929,9 +2891,9 @@ Item {
                     var count = prefs.visibleEntries.length
                     var entry = count > 0 ? prefs.visibleEntries[Math.max(0, Math.min(root.settingIndex, count - 1))] : null
                     // A greyed row answers to none of the editing keys: it has no
-                    // track to open and nothing to toggle. It can still hold the
-                    // caret -- the row is on the card -- so the shape test is
-                    // gated on active rather than the row being refused outright.
+                    // track to open and nothing to toggle. It is never under the
+                    // caret now, but the shape test stays gated on active so a
+                    // stale edit mode cannot open a slider on a parked row.
                     var editable = entry && prefs.isActive(entry)
                     var isNumeric = editable && prefs.isSlider(entry)
                     var isText = editable && prefs.isText(entry)
@@ -3027,11 +2989,18 @@ Item {
                         if (root.settingsEditMode) {
                             root.changeSetting(shift ? -1 : 1)
                         } else {
-                            // The first and last settings in the card. With the
-                            // card cut into tabs there is no single end tab to
-                            // ask for, so the ends are the ends of the flat
-                            // visible list.
-                            if (count > 0) root.settingIndex = shift ? count - 1 : 0
+                            // The first and last live settings in the card. With
+                            // the card cut into tabs there is no single end tab
+                            // to ask for, so the ends are the ends of the flat
+                            // visible list -- but a greyed dependent is drawn
+                            // without being navigable, so it cannot be an end.
+                            var first = -1, last = -1
+                            for (var gi = 0; gi < count; gi++) {
+                                if (!prefs.isActive(prefs.visibleEntries[gi])) continue
+                                if (first < 0) first = gi
+                                last = gi
+                            }
+                            if (first >= 0) root.settingIndex = shift ? last : first
                             root.settingsEditMode = false
                         }
                         break

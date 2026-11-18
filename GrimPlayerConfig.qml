@@ -279,12 +279,11 @@ Item {
         // rows' values. Every default here reproduces the views as they looked
         // before these settings existed.
         //
-        // Some choices are shared by both surfaces -- spacing, dimming, resume,
-        // offset, click-to-seek and fetching -- and some belong to one surface
-        // only. The reading view's own size, alignment, track block, follow
-        // behaviour, measure and cover are separate from karaoke's. Marking the
-        // current line is the point; whether the view also scrolls to it is a
-        // secondary choice (lyricsFollow) that lives here with the words.
+        // Marking the current line is the point, and it lives here with the words:
+        // lyricsFollow chooses whether the view also scrolls to it, and karaoke
+        // marks and follows unconditionally. The two surfaces keep separate size,
+        // alignment, track header and cover values -- karaoke's below, the reading
+        // view's later in the file.
         property string lyricsAlign: "left"
         // A lyrics-only offset from the theme, like the other font sizes. It
         // starts at the body text's own +2 so the view opens exactly as it did.
@@ -340,6 +339,11 @@ Item {
         // How strongly the background cover shows through. Only read in the
         // "background" mode; a side cover is drawn at full strength.
         property real karaokeCoverOpacity: 0.2
+
+        // ---- shared lyric behaviour ----
+        //
+        // These apply to the words wherever they are drawn: the reading view,
+        // karaoke, and album view when it shares the playing track's lyrics.
         // How long a manual scroll suspends following before the view returns
         // to the playing line. Zero never resumes: the reader keeps the view
         // where they put it until the track changes or the view is reopened.
@@ -1513,19 +1517,19 @@ Item {
     }
 
     // Every entry the card draws, in table order. A dependent whose parent is off
-    // stays in the list, greyed, so a hunt for a setting always finds the row and
-    // the row can say what it is waiting on. It is not navigable and not editable
-    // in that state (see isActive, which the panel's movement and the card's
-    // clicks both check), but its stored value is untouched and reset() still
-    // restores it.
+    // stays in the list, greyed under the row it waits on, so a hunt for a setting
+    // always finds it and the indent is the explanation. It is not navigable and
+    // not editable in that state (see isActive, which the panel's movement and
+    // the card's clicks both check), but its stored value is untouched and
+    // reset() still restores it.
     readonly property var visibleEntries: entries
 
     // The sections the card draws, in tab order, each a name and the tag its
     // entries carry. A section is one topic -- the lists and what plays them, the
-    // panes and their rules, the text and scale, the cover art, the album view,
-    // the lyric choices both surfaces share, the reading view's own, karaoke's
-    // own surface -- rather than one kind of control, so a slider and a switch
-    // sit together wherever their subject says they should.
+    // panes and their rules, the text and scale, the cover art, the lyric choices
+    // both surfaces share, the album view, the reading view's own, karaoke's own
+    // surface -- rather than one kind of control, so a slider and a switch sit
+    // together wherever their subject says they should.
     readonly property var sections: [
         { tag: "list", name: "Lists" },
         { tag: "panes", name: "Panes" },
@@ -1599,7 +1603,7 @@ Item {
     // The entries behind each section, worked out once and read by the card, the
     // navigation and the caret's tab lookup alike. Filtering the table once per
     // section on every read would be a pass over every entry each time the caret
-    // moves a row, for a list that only changes when a dependent flips.
+    // moves a row, for a table that is fixed while the shell runs.
     readonly property var sectionLists: {
         var out = {}
         for (var i = 0; i < sections.length; i++) out[sections[i].tag] = []
@@ -1638,16 +1642,6 @@ Item {
         if (!e) return 0
         var list = tabEntries(tabOf(index))
         return Math.max(0, list.indexOf(e))
-    }
-
-    // The visibleEntries index at a tab and row. A row past the end clamps to
-    // the tab's last entry -- so stepping sideways into a shorter tab lands on
-    // its bottom rather than stalling -- and an empty tab answers -1.
-    function indexAt(tab, row) {
-        var list = tabEntries(tab)
-        if (list.length === 0) return -1
-        var r = Math.max(0, Math.min(row, list.length - 1))
-        return visibleEntries.indexOf(list[r])
     }
 
     // The next live row from `row` in a tab, in either direction, wrapping at the
@@ -1694,7 +1688,7 @@ Item {
     // the setting it waits on, so changing it from the card would edit something
     // with no effect and no way to see that it is doing anything.
     function cycle(entry, delta) {
-        if (!isActive(entry)) return
+        if (!entry || !isActive(entry)) return
         var options = entry.options || []
         // A free-text row has nothing to cycle; the card opens its editor.
         if (options.length === 0) return
