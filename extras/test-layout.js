@@ -200,6 +200,15 @@ check("karaokeBackgroundCover: odd sizes round without leaving the centre", () =
     })
 })
 
+check("karaokeBackgroundCover: an unusable share never makes a negative box", () => {
+    for (const pct of [-50, "nope", null]) {
+        const box = Layout.karaokeBackgroundCover(1000, 800, pct)
+        assert.ok(box.width >= 0 && box.height >= 0,
+            "scale " + pct + " gave a negative box")
+    }
+    assert.equal(Layout.karaokeBackgroundCover(1000, 800, 0).width, 0)
+})
+
 // ---- lyric measure ----
 
 check("lyricsColumnWidth: karaoke ignores the text-width setting", () => {
@@ -309,6 +318,11 @@ check("optionInt: negative and unusable answers become zero", () => {
     assert.equal(Layout.optionInt("null"), 0)
     assert.equal(Layout.optionInt("{}"), 0)
     assert.equal(Layout.optionInt("not json"), 0)
+})
+
+check("optionInt: an unusable CSS answer falls back to the int", () => {
+    assert.equal(Layout.optionInt('{"css": "-2px", "int": 4}'), 4)
+    assert.equal(Layout.optionInt('{"css": "auto", "int": 6}'), 6)
 })
 
 check("gapsOutHorizontal: one number is every side", () => {

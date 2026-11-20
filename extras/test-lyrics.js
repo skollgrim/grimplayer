@@ -60,6 +60,15 @@ check("parse: metadata-only lines vanish", () => {
         lines([[-1, "real"]]))
 })
 
+check("parse: an LRC offset shifts timestamps without printing the tag", () => {
+    assert.deepEqual(Lyrics.parse("[offset:+500]\n[00:10.00] early\n[00:12.00] later"),
+        lines([[9.5, "early"], [11.5, "later"]]))
+    assert.deepEqual(Lyrics.parse("[offset:-500]\n[00:10.00] late"),
+        lines([[10.5, "late"]]))
+    assert.deepEqual(Lyrics.parse("[offset:+2000]\n[00:01.00] clamped"),
+        lines([[0, "clamped"]]))
+})
+
 check("parse: a bracket heading in a plain file survives", () => {
     assert.deepEqual(Lyrics.parse("[Chorus]\nsing"), lines([[-1, "[Chorus]"], [-1, "sing"]]))
 })
@@ -118,6 +127,12 @@ check("activeIndex: a positive offset delays the highlight", () => {
 
 check("activeIndex: a negative offset advances it", () => {
     assert.equal(Lyrics.activeIndex(timed, 9, -1000), 1)
+})
+
+check("activeIndex: an LRC offset moves the line with the music", () => {
+    const shifted = Lyrics.parse("[offset:+500]\n[00:10.00] early")
+    assert.equal(Lyrics.activeIndex(shifted, 9.2), -1)
+    assert.equal(Lyrics.activeIndex(shifted, 9.5), 0)
 })
 
 check("activeIndex: plain lines never become the active one", () => {

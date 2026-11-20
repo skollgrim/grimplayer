@@ -22,7 +22,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Keyboard style** — choose what letter keys do: `Find` jumps to a matching row as you type (the default), `Vim` uses `j/k/h/l/g/G` to navigate, and `Off` leaves letters inert while arrows still work. During a find, `Space` adds a word to the search instead of toggling playback; the readout is centred horizontally on the tracks pane and can sit above the now-playing strip (where transport changes appear) or in the middle of the list area, at a size of your choosing. In the tracks pane a number jumps to that track.
 - **Quiet track numbers** — the tracks pane writes `01.` or `01 -` before each title, and can hold the number back in the same muted ink as the durations.
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight the playing line, and can follow it with the view. The playing album's titles can sit beside the words.
-- **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large text, centred by default but configurable under **Karaoke view**, the current line bold, everything else out of the way.
+- **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large text, centred by default but configurable under **Karaoke view**, the current line bold while marking is on, everything else out of the way.
 - **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. A small preview of the next album's cover sits above the bar, and the playing lyrics can share the surface. `Esc` returns to the browser.
 - **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, the album view, lyrics, themes, the music folder and optional features.
 - **Vim motions (optional)** — pick `Vim` as the Keyboard style and `j` `k` `h` `l` `g` `G` navigate alongside arrows; `Shift` + `h`/`l` seek.
@@ -152,7 +152,7 @@ closes. The visible tab follows the caret, and each tab remembers the row you
 left it on.
 
 The card is cut into tabs by topic — General (library folder, keys, UI scale,
-adaptive colours and fetching), Now playing (the strip), Artwork, Lyrics,
+card opacity, adaptive colours and fetching), Now playing (the strip), Artwork, Lyrics,
 Library view (the three-pane browser and its row type), Album view, Karaoke view
 and Lyrics view — so a slider and a switch sit together
 where their subject says they should, and a setting is always in the same place.
@@ -369,7 +369,9 @@ playing rather than from the browser's caret.
 
 `Alt` + `K` turns the open player into karaoke: the lists and the now-playing
 strip are hidden, the text is set large (centred by default, with its own
-alignment setting), and the current line is always marked and followed. The track
+alignment setting), and the current line is marked by default — **Highlight** under
+**Karaoke view** chooses whether it is followed, marked in place, or not marked at
+all. The track
 header sits above the scrolling words and stays put as they move; **Track info** chooses whether it shows the track, the
 track and artist, those plus the album, or nothing. The **Cover** setting puts a
 full-size cover to the right of the lyrics, matching the artwork pane at full
@@ -380,7 +382,7 @@ window, toggled exactly like `Alt` + `L` — press it again to go back to the
 browser, or press `Alt` + `L` to step straight to the reading view. The shared
 reading settings still apply where they make sense — spacing, dimming, resume,
 offset, click-to-seek — but karaoke has its own text size, alignment, track
-header and cover, and it always follows the current line. `Esc` or `Q`
+header, cover and Highlight choice. `Esc` or `Q`
 also returns to the browser. The view is remembered: closing and reopening the
 player comes back to karaoke, as it does to the lyrics and album views.
 

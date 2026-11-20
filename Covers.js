@@ -24,7 +24,7 @@
 // slashes and characters the filesystem treats specially.
 //
 // Math.imul is not an optimisation, it is the only correct option here. The
-// naive `h * 16777619` multiplies a 32-bit value by a 24-bit one and lands
+// naive `h * 16777619` multiplies a 32-bit value by a 25-bit one and lands
 // around 2^56, which is past Number.MAX_SAFE_INTEGER, so the double silently
 // drops low bits and two different albums can land on the same name. imul does
 // the multiply in 32-bit space where it cannot.
@@ -71,19 +71,20 @@ function albumDir(rel) {
     var m = /\.cue\/track\d+$/i.exec(f)
     if (m) f = f.substring(0, m.index + 4)
     var i = f.lastIndexOf("/")
-    return i > 0 ? f.substring(0, i) : "."
+    return i >= 0 ? (f.substring(0, i) || "/") : "."
 }
 
 // A file:// URL for an arbitrary local path. Concatenating "file://" onto the
 // path is wrong for a name containing a space, '#', '?' or '%': the loader
 // reads those as separators or escapes and the image silently fails to load,
 // which then looks exactly like "the album has no cover". Encoding each segment
-// separately leaves the slashes alone. The first element is the empty string
-// before a leading slash on an absolute path, so it is left untouched.
+// separately leaves the slashes alone. An absolute path's first element is the
+// empty string before the leading slash, which encodes to itself, so relative
+// paths are covered too.
 function fileUrl(path) {
     if (!path) return ""
     var parts = String(path).split("/")
-    for (var i = 1; i < parts.length; i++) parts[i] = encodeURIComponent(parts[i])
+    for (var i = 0; i < parts.length; i++) parts[i] = encodeURIComponent(parts[i])
     return "file://" + parts.join("/")
 }
 
@@ -96,4 +97,14 @@ function pathFromUrl(url) {
     u = u.substring(7)
     try { u = decodeURIComponent(u) } catch (e) {}
     return u
+}
+
+// The guarded export keeps the file a plain QML script while letting Node test
+// the naming and URL rules -- the hash especially, since the reader and writer
+// have to agree on it without ever calling each other.
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+        stem: stem, fileName: fileName, onlineFileName: onlineFileName,
+        albumDir: albumDir, fileUrl: fileUrl, pathFromUrl: pathFromUrl
+    }
 }

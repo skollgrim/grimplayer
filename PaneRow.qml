@@ -202,7 +202,6 @@ Item {
     playingMarker: root.playingMarker
     uiScale: root.prefs ? root.prefs.uiScale : 1
     borderWidth: root.prefs ? root.prefs.borderWidth : 1
-    activeRowBorder: root.prefs ? root.prefs.activeRowBorder : false
     fontSizeHeading: root.fontSizeHeading
     fontSizeRow: root.fontSizeRow
     fontSizeSublabel: root.fontSizeSublabel

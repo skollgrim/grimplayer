@@ -143,6 +143,9 @@ Item {
     // monitor name would serve the old figures for the rest of the session.
     property var frameCache: ({})
     property int frameCacheTtl: 30000
+    // Bumped on every read (and again when the watchdog expires one) so a late
+    // answer from an old run is ignored instead of counting toward a new one.
+    property int frameRunId: 0
 
     function computeFrameCacheKey() {
         var mon = root.activeScreen ? (root.activeScreen.name || "") : ""
@@ -169,12 +172,21 @@ Item {
         // not restart it anyway, so the "re-read" would only corrupt the count.
         if (root.frameReading) return
 
+        // Invalidate any callbacks still in flight from the last run, whether it
+        // finished normally or the watchdog had to close it out. A cache hit
+        // starts a new generation too, so an old monitor answer cannot overwrite
+        // the width just restored from the cache.
+        root.frameRunId += 1
         var key = root.computeFrameCacheKey()
         var cached = root.frameCache[key]
         if (cached && cached.physicalScreenWidth > 0
                 && Date.now() - cached.readAt < root.frameCacheTtl) {
             root.frameGap = cached.frameGap
             root.frameBorder = cached.frameBorder
+            // The inset needs all three figures. Restoring only the gaps and
+            // border leaves the previous monitor's width paired with this one's
+            // compositor answers, which mis-scales the cover-band threshold.
+            root.physicalScreenWidth = cached.physicalScreenWidth
             root.frameRead = true
             return
         }
@@ -188,6 +200,9 @@ Item {
         root.frameParts = 0
         root.frameFailed = false
         root.frameAnswered = ({})
+        gapReader.runId = root.frameRunId
+        borderReader.runId = root.frameRunId
+        monitorReader.runId = root.frameRunId
         gapReader.running = true
         borderReader.running = true
         monitorReader.running = true
@@ -202,7 +217,10 @@ Item {
     // reader is the one that counts. Without the per-reader guard the count would
     // run to six and the run would never arm. Guarding by name rather than by a
     // shared counter keeps the count honest however the two events interleave.
-    function framePartArrived(name) {
+    // The run id also drops answers that arrive after the watchdog closed their
+    // generation out; otherwise a hung hyprctl could poison the next run.
+    function framePartArrived(name, runId) {
+        if (runId !== root.frameRunId) return
         if (root.frameAnswered[name]) return
         root.frameAnswered[name] = true
         root.frameParts += 1
@@ -236,6 +254,14 @@ Item {
         root.frameAnswered = ({})
         root.frameParts = 3
         root.frameReading = false
+        // Invalidate the generation before stopping the readers: their exit
+        // callbacks then report the new id and are ignored. Terminating them
+        // matters too -- a live Process cannot be restarted by setting running,
+        // so a hung hyprctl would otherwise answer the next run by accident.
+        root.frameRunId += 1
+        gapReader.running = false
+        borderReader.running = false
+        monitorReader.running = false
     }
 
     property string lastPaletteDir: ""
@@ -284,17 +310,19 @@ Item {
         // which is the maximised-window fault the frame subtraction exists to
         // fix. Harmless when auto was already the mode and the values are fresh.
         function onCoverBandModeChanged() { root.readFrame() }
-        // Turning following back on should pick up the playing line at once
-        // rather than leave a paused reader waiting for the next scroll.
+        // Turning a surface's following back on should pick up the playing line
+        // at once rather than leave that reader waiting for the next scroll.
+        // Clear only its own pause, and only scroll when that surface is on
+        // screen -- changing the reading view's setting must not yank karaoke.
         function onLyricsFollowChanged() {
             if (prefs.lyricsFollow !== "follow") return
             root.lyricsFollowPaused = false
-            root.scrollToCurrentLyric()
+            if (!root.karaokeView) root.scrollToCurrentLyric()
         }
         function onKaraokeFollowChanged() {
             if (prefs.karaokeFollow !== "follow") return
-            root.lyricsFollowPaused = false
-            root.scrollToCurrentLyric()
+            root.karaokeFollowPaused = false
+            if (root.karaokeView) root.scrollToCurrentLyric()
         }
         // A new library root has to reach the service immediately: the next
         // tag save, artwork extraction or lyrics lookup must not still use the
@@ -475,12 +503,15 @@ Item {
     // threshold by a few pixels, and every open is when it is about to matter.
     Process {
         id: gapReader
+        // Stamped by readFrame so late answers can be matched to their run.
+        property int runId: 0
         command: ["hyprctl", "-j", "getoption", "general:gaps_out"]
         stdout: StdioCollector {
             waitForEnd: true
             onStreamFinished: {
+                if (gapReader.runId !== root.frameRunId) return
                 root.frameGap = LayoutMath.gapsOutHorizontal(text)
-                root.framePartArrived("gap")
+                root.framePartArrived("gap", gapReader.runId)
             }
         }
         // A process that starts but exits before its collector reports -- a
@@ -488,32 +519,36 @@ Item {
         // report for a reader counts (see framePartArrived). The handler takes no
         // arguments deliberately: onExited carries an exit code, and a parameter
         // here would shadow the reader name this is reporting for.
-        onExited: function () { root.framePartArrived("gap") }
+        onExited: function () { root.framePartArrived("gap", gapReader.runId) }
     }
     Process {
         id: borderReader
+        property int runId: 0
         command: ["hyprctl", "-j", "getoption", "general:border_size"]
         stdout: StdioCollector {
             waitForEnd: true
             onStreamFinished: {
+                if (borderReader.runId !== root.frameRunId) return
                 root.frameBorder = LayoutMath.optionInt(text)
-                root.framePartArrived("border")
+                root.framePartArrived("border", borderReader.runId)
             }
         }
-        onExited: function () { root.framePartArrived("border") }
+        onExited: function () { root.framePartArrived("border", borderReader.runId) }
     }
     Process {
         id: monitorReader
+        property int runId: 0
         command: ["hyprctl", "-j", "monitors"]
         stdout: StdioCollector {
             waitForEnd: true
             onStreamFinished: {
+                if (monitorReader.runId !== root.frameRunId) return
                 root.physicalScreenWidth =
                     LayoutMath.monitorWidthFor(text, root.activeScreen ? root.activeScreen.name : "")
-                root.framePartArrived("monitor")
+                root.framePartArrived("monitor", monitorReader.runId)
             }
         }
-        onExited: function () { root.framePartArrived("monitor") }
+        onExited: function () { root.framePartArrived("monitor", monitorReader.runId) }
     }
 
     // The divider scale, kept apart from the frame run above for two reasons: it
@@ -740,8 +775,13 @@ Item {
     // the text instead of flashing "Looking for lyrics…" first.
     property bool lyricsSearching: false
     // Follow the current line until the reader scrolls away. A manual scroll
-    // pauses following for a few seconds rather than fighting the wheel.
+    // pauses following for a few seconds rather than fighting the wheel. The two
+    // surfaces have separate highlight settings now, so each keeps its own pause
+    // too; switching views must not carry one surface's manual scroll to the other.
     property bool lyricsFollowPaused: false
+    property bool karaokeFollowPaused: false
+    readonly property bool activeFollowPaused: root.karaokeView
+        ? root.karaokeFollowPaused : root.lyricsFollowPaused
     // Karaoke presentation: the lyrics view with the browser's chrome gone and
     // the text set large. Alt+K toggles it in the open player, the way Alt+L
     // toggles the lyrics view; Esc leaves it for the browser.
@@ -1235,8 +1275,12 @@ Item {
     function resetLyricsScroll() {
         lyricsScrollAnim.stop()
         lyricsFlick.contentY = 0
+        // A new track is a new reading on both surfaces; neither should inherit
+        // a pause the reader set on the previous one.
         root.lyricsFollowPaused = false
+        root.karaokeFollowPaused = false
         lyricsFollowTimer.stop()
+        karaokeFollowTimer.stop()
     }
 
     // The lyrics view's own presentation, read straight from prefs so a change
@@ -1356,15 +1400,23 @@ Item {
         + (root.karaokeView ? prefs.karaokeFont : prefs.lyricsFont))
         * (root.karaokeView ? 1.9 : 1) * prefs.uiScale)
 
-    // A manual scroll suspends following. With "Never" it stays suspended until
-    // the track changes or the view is reopened; otherwise the timer brings the
-    // view back to the playing line after the configured wait.
+    // A manual scroll suspends following on the surface being read. With "Never"
+    // it stays suspended until the track changes or that view is reopened;
+    // otherwise the timer brings the view back after the configured wait.
     function pauseLyricsFollow() {
-        // Only following has an automatic scroll to suppress.
+        // Only following has an automatic scroll to suppress. Each surface's
+        // wait owns its own timer, so switching views cannot cut the other one's
+        // pause short or restart the wrong countdown.
         if (!root.lyricsFollowing) return
-        root.lyricsFollowPaused = true
-        if (prefs.lyricsResume > 0) lyricsFollowTimer.restart()
-        else lyricsFollowTimer.stop()
+        if (root.karaokeView) {
+            root.karaokeFollowPaused = true
+            if (prefs.lyricsResume > 0) karaokeFollowTimer.restart()
+            else karaokeFollowTimer.stop()
+        } else {
+            root.lyricsFollowPaused = true
+            if (prefs.lyricsResume > 0) lyricsFollowTimer.restart()
+            else lyricsFollowTimer.stop()
+        }
     }
 
     // Keep the highlighted line in the middle of the view. Called when the
@@ -1373,7 +1425,7 @@ Item {
     // "highlight" marks the line in place, and "off" does not track it.
     function scrollToCurrentLyric() {
         if (!root.lyricsSurfaceActive || !root.lyricsFollowing) return
-        if (root.lyricsFollowPaused) return
+        if (root.activeFollowPaused) return
         if (root.currentLyricLine < 0) return
         var item = lyricsRepeater.itemAt(root.currentLyricLine)
         if (!item) return
@@ -1855,8 +1907,12 @@ Item {
             // No surface, no reason for the helper to keep fetching. This also
             // drops a request queued behind it.
             root.stopLyricsRun()
+            // Closing the last lyric surface drops both pauses: there is no
+            // scroll position worth preserving once the text is gone.
             root.lyricsFollowPaused = false
+            root.karaokeFollowPaused = false
             lyricsFollowTimer.stop()
+            karaokeFollowTimer.stop()
             lyricsScrollAnim.stop()
         }
     }
@@ -1868,7 +1924,9 @@ Item {
     // first current-line update does it.
     onKaraokeViewChanged: {
         if (!root.karaokeView) return
-        root.lyricsFollowPaused = false
+        // Reopening karaoke clears only its own pause; the reading view's manual
+        // position is still there when the reader switches back.
+        root.karaokeFollowPaused = false
         root.scrollToCurrentLyric()
     }
 
@@ -2193,7 +2251,9 @@ Item {
                                 root.pauseLyricsFollow()
                             }
                             onMovementEnded: {
-                                if (prefs.lyricsResume > 0) lyricsFollowTimer.restart()
+                                if (prefs.lyricsResume <= 0) return
+                                if (root.karaokeView) karaokeFollowTimer.restart()
+                                else lyricsFollowTimer.restart()
                             }
 
                             // The wheel moves contentY without a drag, so it
@@ -2202,7 +2262,7 @@ Item {
                             // reader taking over, and pauses following the same
                             // way a drag does.
                             onContentYChanged: {
-                                if (lyricsScrollAnim.running || root.lyricsFollowPaused) return
+                                if (lyricsScrollAnim.running || root.activeFollowPaused) return
                                 root.pauseLyricsFollow()
                             }
 
@@ -2641,12 +2701,15 @@ Item {
             width: typeaheadReadout.implicitWidth + Math.round(20 * prefs.uiScale)
             height: typeaheadReadout.implicitHeight + Math.round(12 * prefs.uiScale)
             // Stay as close to the tracks pane's centre as the floating cover
-            // allows: clamp the right edge to the cover's left, never past the
-            // pane's own left margin. Reading paneRow's geometry keeps the binding
-            // live when the lists region resizes; with no browser on screen the
-            // old window centre is the only sensible place left.
+            // allows: clamp the right edge to the cover's left, and never let the
+            // left edge cross the pane's own margin. The lower bound is a right
+            // edge too -- it includes the readout's width before the final
+            // subtraction -- so a tall floating cover cannot push the box partly
+            // outside the pane. Reading paneRow's geometry keeps the binding live
+            // when the lists region resizes; with no browser on screen the old
+            // window centre is the only sensible place left.
             x: paneRow.visible
-                ? Math.round(Math.max(tracksLeft + gutter,
+                ? Math.round(Math.max(tracksLeft + gutter + width,
                     Math.min(tracksCenter + width / 2, coverGuard)) - width)
                 : Math.round((parent.width - width) / 2)
             y: centered ? Math.round((paneArea - height) / 2) : bandY - noticeLift
@@ -3628,14 +3691,25 @@ Item {
 
     // How long a manual scroll suspends following before the view returns to
     // the line that is playing. "Never" (0) leaves the reader where they put
-    // the text until the track changes or the view is reopened.
+    // the text until the track changes or the view is reopened. Each surface has
+    // its own countdown: a pause on the reading view should not be cut short by
+    // scrolling karaoke, nor should its expiry yank karaoke back to the line.
     Timer {
         id: lyricsFollowTimer
         interval: prefs.lyricsResume
         repeat: false
         onTriggered: {
             root.lyricsFollowPaused = false
-            root.scrollToCurrentLyric()
+            if (!root.karaokeView) root.scrollToCurrentLyric()
+        }
+    }
+    Timer {
+        id: karaokeFollowTimer
+        interval: prefs.lyricsResume
+        repeat: false
+        onTriggered: {
+            root.karaokeFollowPaused = false
+            if (root.karaokeView) root.scrollToCurrentLyric()
         }
     }
 

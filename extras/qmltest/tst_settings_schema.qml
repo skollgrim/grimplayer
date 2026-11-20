@@ -125,8 +125,8 @@ TestCase {
 
         var homes = {
             musicDir: "general", keyboardStyle: "general", findPlace: "general",
-            findScale: "general", uiScale: "general", adaptiveColors: "general",
-            fetchCovers: "general", lyricsDownloads: "general",
+            findScale: "general", uiScale: "general", settingsOpacity: "general",
+            adaptiveColors: "general", fetchCovers: "general", lyricsDownloads: "general",
             wrapAround: "library", playingMarker: "library",
             fontSubtitle: "library", albumYears: "library",
             seekThickness: "nowPlaying", iconSize: "nowPlaying", fontTitle: "nowPlaying",
@@ -141,6 +141,19 @@ TestCase {
             verify(e !== null, "the row " + key + " is missing")
             compare(e.section, homes[key], key + " drifted out of its tab")
         }
+    }
+
+    // The card used to be opaque with no way to soften it over the panel. It
+    // still starts that way, and a stored percentage has to survive validation.
+    function test_settings_opacity_starts_opaque_and_round_trips() {
+        var e = entryFor("settingsOpacity")
+        compare(e.label, "Settings opacity")
+        compare(config.codeDefaults.settingsOpacity, 1.0)
+        compare(config.settingsOpacity, 1.0)
+        config.applyStored({ settingsOpacity: 0.7 })
+        compare(config.settingsOpacity, 0.7)
+        config.applyStored({ settingsOpacity: "nope" })
+        compare(config.settingsOpacity, 0.7, "an invalid value should be ignored")
     }
 
     function test_reset_restores_the_captured_defaults() {
@@ -377,6 +390,17 @@ TestCase {
         compare(k.options[0], "follow")
         verify(config.textOf(k).indexOf("Highlight") === 0,
             "the value should read as a kind of highlight")
+
+        // Both open marking the line as they always did, and each stored value
+        // survives validation on its own. An invalid value is ignored rather
+        // than silently turning either surface's highlight off.
+        compare(config.codeDefaults.lyricsFollow, "follow")
+        compare(config.codeDefaults.karaokeFollow, "follow")
+        config.applyStored({ lyricsFollow: "off", karaokeFollow: "highlight" })
+        compare(config.lyricsFollow, "off")
+        compare(config.karaokeFollow, "highlight")
+        config.applyStored({ karaokeFollow: "bogus" })
+        compare(config.karaokeFollow, "highlight")
     }
 
     // Karaoke lines the words up on its own setting, so the reading view's choice

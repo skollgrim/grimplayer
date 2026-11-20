@@ -81,10 +81,13 @@ check("an empty, still-probing cover holds rather than flashing the theme", () =
         "file:///new.jpg", null).action, Sync.HOLD)
 })
 
-check("a missing resolved source never matches quantizer colours from a cover", () => {
+check("an unresolved source keeps empty quantizer colours (legacy match)", () => {
     assert.equal(Sync.pick(state({ paletteSource: "" }), "", null).action, Sync.APPLY,
         "empty to empty is still a match, which is how the panel behaved before")
-    assert.equal(Sync.pick(state(), "", null).action, Sync.HOLD)
+    assert.equal(Sync.pick(state(), "", null).action, Sync.HOLD,
+        "colours from a resolved cover must not be applied to an unresolved source")
+    assert.equal(Sync.pick(state({ paletteSource: "file:///old.jpg" }), "", null).action,
+        Sync.HOLD)
 })
 
 check("cache hits and resets are mutually exclusive and ordered", () => {

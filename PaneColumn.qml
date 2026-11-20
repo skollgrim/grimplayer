@@ -139,9 +139,6 @@ Item {
     // Thickness of the heading underline.
     property int borderWidth: 1
 
-    // Thicker frame around the row the caret sits on.
-    property bool activeRowBorder: false
-
     // Row pitch, used for scrolling: height plus the gap that follows it. The
     // gap is a real Column spacing, so it counts towards the scrollable extent
     // and the follow math has to step by this rather than by the bare row height.
@@ -255,15 +252,6 @@ Item {
 
                 width: flick.width
                 height: root.rowHeight
-
-                // The caret row gets a thicker frame when the preference is
-                // on, so the selection reads even when the row fill is
-                // scrolled partly off or sitting next to a playing tint.
-                // Only the focused pane frames it: every pane has a selected
-                // row, and framing all three at once reads as noise.
-                readonly property bool framed: root.activeRowBorder && root.active && index === root.currentIndex
-                border.width: framed ? Math.max(2, Math.round(2 * root.uiScale)) : 0
-                border.color: root.colAccent
 
                 // The track MPD is actually playing. Matching on the file is
                 // what keeps this honest: browsing any other album has no row

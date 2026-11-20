@@ -176,9 +176,6 @@ Item {
         // to corner.
         property bool coverRounded: true
 
-        // Thicker frame around the row the caret is on.
-        property bool activeRowBorder: false
-
         // Which repeat mode the panel is in: 0 off, 1 repeat album, 2 repeat song.
         // Stored here rather than read back from MPD because album repeat is a loop
         // this player performs itself: MPD's repeat is a plain boolean over the
@@ -253,6 +250,10 @@ Item {
         // The range runs 50% to 150%: far enough down to matter on a 4K screen,
         // far enough up to matter on a laptop.
         property real uiScale: 1.0
+
+        // How solid the settings card is over the panel. One keeps the opaque
+        // card it has always had; lower values let the dimmed player show through.
+        property real settingsOpacity: 1.0
 
         // Icons
         property int iconSize: 16
@@ -460,11 +461,11 @@ Item {
                     "coverBorderWidth", "coverRounded", "upNextCover", "upNextCoverSize",
                     "albumInfo", "albumInfoStyle", "albumFont", "albumTrackSpacing",
                     "trackAlign", "albumLyrics",
-                    "activeRowBorder", "repeatMode", "shuffleMode", "coverScale", "stageCoverScale",
+                    "repeatMode", "shuffleMode", "coverScale", "stageCoverScale",
                     "trackNumberFormat", "trackNumberMuted",
                     "coverTransition", "coverBandMode", "coverBandAlign", "coverPadding",
                     "coverBandMinPct",
-                    "uiScale", "iconSize",
+                    "uiScale", "settingsOpacity", "iconSize",
                     "fontTitle", "fontSubtitle", "fontBody", "fontBodySmall",
                     "fontCaption", "noticeScale", "coverDecodeSize",
                     "lyricsAlign", "lyricsFont", "lyricsInfo", "lyricsFollow",
@@ -687,7 +688,6 @@ Item {
     readonly property string trackNumberFormat: store.trackNumberFormat
     readonly property bool trackNumberMuted: store.trackNumberMuted
     readonly property bool coverRounded: store.coverRounded
-    readonly property bool activeRowBorder: store.activeRowBorder
     readonly property int repeatMode: store.repeatMode
     readonly property int shuffleMode: store.shuffleMode
 
@@ -711,6 +711,7 @@ Item {
     readonly property bool coverPadding: store.coverPadding
     readonly property int coverBandMinPct: store.coverBandMinPct
     readonly property real uiScale: store.uiScale
+    readonly property real settingsOpacity: store.settingsOpacity
     readonly property int iconSize: store.iconSize
     readonly property int fontTitle: store.fontTitle
     readonly property int fontSubtitle: store.fontSubtitle
@@ -786,10 +787,10 @@ Item {
     readonly property var entries: [
         // ---- General ----
         // Player-wide choices: where the library lives, what the letter keys do,
-        // and what the player brings in from outside -- colours sampled from the
-        // playing sleeve and metadata fetched when a file has none on disk. They
-        // stay out of the view tabs because they change the instrument rather
-        // than one surface on it.
+        // how the settings card sits over the panel, and what the player brings
+        // in from outside -- colours sampled from the playing sleeve and metadata
+        // fetched when a file has none on disk. They stay out of the view tabs
+        // because they change the instrument rather than one surface on it.
         {
             key: "musicDir",
             section: "general",
@@ -845,6 +846,14 @@ Item {
             hint: "Scales rows, spacing, fonts, icons and cover art together",
             options: [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5],
             format: function (v) { return (v * 100).toFixed(0) + "%" }
+        },
+        {
+            key: "settingsOpacity",
+            section: "general",
+            label: "Settings opacity",
+            hint: "How solid the settings card is; lower values let the player show through",
+            options: [0.6, 0.7, 0.8, 0.9, 1.0],
+            format: function (v) { return Math.round(v * 100) + "%" }
         },
         {
             key: "adaptiveColors",
@@ -966,13 +975,6 @@ Item {
             options: [true, false]
         },
         {
-            key: "activeRowBorder",
-            section: "library",
-            label: "Caret frame",
-            hint: "Draw a heavier frame around the caret row in the focused pane",
-            options: [true, false],
-        },
-        {
             key: "trackNumberFormat",
             section: "library",
             label: "Number format",
@@ -1032,7 +1034,7 @@ Item {
             key: "fontBody",
             section: "nowPlaying",
             label: "Artist & time",
-            hint: "Artist and the elapsed/total time, as an offset from the theme",
+            hint: "Artist, elapsed/total time, and the compact companion titles, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
             format: root.deltaText
         },

@@ -371,6 +371,9 @@ Item {
         height: Math.min(Math.round(700 * root.uiScale), parent.height - Math.round(32 * root.uiScale))
         radius: Math.round(12 * root.uiScale)
         color: root.colBackground
+        // The scrim still dims the panel behind the card; this only decides how
+        // much of that dimmed panel shows through the card itself.
+        opacity: root.config ? root.config.settingsOpacity : 1
         border.width: 1
         border.color: Util.alpha(root.colForeground, 0.10)
 

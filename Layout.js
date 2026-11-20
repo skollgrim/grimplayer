@@ -105,7 +105,9 @@ function karaokeCoverSize(windowWidth, windowHeight, margin, gap, minTextWidth, 
 // centred, so a smaller share pulls it in from every edge rather than leaving
 // it stuck to the top-left corner. Returns both the box and its centred offset.
 function karaokeBackgroundCover(parentWidth, parentHeight, scalePct) {
-    var pct = scalePct === undefined ? 100 : asNumber(scalePct)
+    // A corrupt stored size must never produce a negative item box; zero is the
+    // same "no wash" answer the other scaled helpers fall back to.
+    var pct = Math.max(0, scalePct === undefined ? 100 : asNumber(scalePct))
     var w = Math.round(asNumber(parentWidth) * pct / 100)
     var h = Math.round(asNumber(parentHeight) * pct / 100)
     return {
@@ -175,13 +177,15 @@ function windowInset(gap, border, logicalWidth, physicalWidth) {
 
 // The single integer an option carries. border_size is a plain int, so it is
 // read from `int`; a value given as CSS would still parse through the same
-// path, which is why both keys are tried rather than assuming one shape.
+// path, which is why both keys are tried rather than assuming one shape. An
+// unusable CSS answer falls through to the int instead of zeroing the inset.
 function optionInt(raw) {
     try {
         var json = JSON.parse(raw || "{}")
         var css = String(json.css || "")
         var parts = css.match(/-?\d+(?:\.\d+)?/g) || []
-        var n = parts.length > 0 ? Number(parts[0]) : Number(json.int)
+        var n = parts.length > 0 ? Number(parts[0]) : NaN
+        if (!isFinite(n) || n < 0) n = Number(json.int)
         return isFinite(n) && n >= 0 ? Math.round(n) : 0
     } catch (e) {
         return 0

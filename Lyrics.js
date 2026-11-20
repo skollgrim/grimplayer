@@ -12,8 +12,17 @@ function asText(value) {
 // time order; plain lines follow in file order with time -1. The panel renders
 // the list in order and highlights the entry the playback clock has reached.
 function parse(text) {
-    var lines = asText(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
+    var source = asText(text)
+    var lines = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
     var out = []
+    // LRC's global offset is a timing directive, not just metadata: positive
+    // means the words run early, so every timestamp moves back by that much. The
+    // user's own sync offset is applied separately by activeIndex() at playback.
+    var offsetRe = /\[offset:\s*([+-]?\d+)\s*\]/gi
+    var offsetMatch
+    var shift = 0
+    while ((offsetMatch = offsetRe.exec(source)) !== null)
+        shift = (parseInt(offsetMatch[1], 10) || 0) / 1000
     // [mm:ss.xx], and the [mm:ss:xx] spelling some writers emit. A third
     // fraction digit means milliseconds rather than hundredths.
     var re = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g
@@ -44,7 +53,8 @@ function parse(text) {
         var content = l.replace(/\[[^\]]*\]/g, "").trim()
         if (content === "") continue
         for (var ti = 0; ti < times.length; ti++) {
-            out.push({ time: times[ti], text: content, order: out.length })
+            var time = Math.max(0, times[ti] - shift)
+            out.push({ time: time, text: content, order: out.length })
         }
     }
     // `order` breaks ties: a plain file has no times at all, and every repeated
