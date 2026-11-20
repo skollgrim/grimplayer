@@ -992,9 +992,10 @@ Item {
     // scoped to the active pane, which is where the caret is, and it never
     // steals a keystroke that a switch case above already claimed.
     //
-    // Whitespace is dropped from both the buffer and the names: space is the
-    // play/pause key, so a multi-word title could otherwise never be typed past
-    // its first word ("The Twilight Sad" could only be reached as "the").
+    // Whitespace is ignored when matching, though the readout shows it as
+    // typed: a space inside a find continues the search instead of toggling
+    // playback, so a multi-word title is reachable past its first word
+    // ("The Twilight Sad" can be typed as "the t" or "thetwilight").
     //
     // In the tracks pane a numeric buffer is tried as a track number first, so
     // "12" reaches track 12 without having to type the title. A title that
@@ -1073,15 +1074,18 @@ Item {
     }
 
     function handleTypeahead(ch) {
-        if (!prefs.typeaheadSearch) return
+        if (prefs.keyboardStyle !== "find") return
         typeaheadBuffer = (typeaheadBuffer + ch).toLowerCase()
         typeaheadTimer.restart()
+        // The readout shows the buffer as typed, so a space stays visible;
+        // matching ignores it, so "the t" still finds "The Twilight Sad".
+        var key = root.typeaheadKey(typeaheadBuffer)
         var which = pane === "artists" ? "artists" : pane === "albums" ? "albums" : "tracks"
         var list = pane === "artists" ? artistList : pane === "albums" ? albumList : trackList
         // A number in the tracks pane is a jump to that track, before the title
         // search gets a chance to interpret it as the start of a name.
         if (pane === "tracks") {
-            var byNumber = root.trackIndexByNumber(typeaheadBuffer)
+            var byNumber = root.trackIndexByNumber(key)
             if (byNumber >= 0) {
                 trackIndex = byNumber
                 return
@@ -1103,7 +1107,7 @@ Item {
                 else if (pane === "albums") nameIdx = root.typeaheadKey(item.name)
                 else nameIdx = root.typeaheadKey(item.title || item.file || "")
             }
-            if (nameIdx.indexOf(typeaheadBuffer) === 0) {
+            if (nameIdx.indexOf(key) === 0) {
                 if (pane === "artists") selectArtist(i, false)
                 else if (pane === "albums") selectAlbum(i, false)
                 else trackIndex = i
@@ -2008,11 +2012,11 @@ Item {
                     trackNumberMuted: prefs.trackNumberMuted
                     trackLabel: function (item) { return item.title || "Untitled" }
                     trackSublabel: function (item) { return root.formatTime(item.duration) }
-                    playingMarkerSides: prefs.playingMarkerSides
+                    playingMarker: prefs.playingMarker
                     trackArtGutter: root.trackArtGutter
-                    isCurrent: prefs.playingHighlight ? function (item) {
+                    isCurrent: function (item) {
                         return root.mpd && root.mpd.current && item.file === root.mpd.current.file
-                    } : null
+                    }
 
                     onArtistActivated: function (index) { root.selectArtist(index, true) }
                     onAlbumActivated: function (index) { root.selectAlbum(index, true) }
@@ -2051,9 +2055,9 @@ Item {
                     emptyText: root.albumView ? root.albumViewEmptyText
                         : (root.mpd && root.mpd.current && root.mpd.current.file
                             ? "No tracks in this album" : "Nothing playing")
-                    isCurrent: prefs.playingHighlight ? function (item) {
+                    isCurrent: function (item) {
                         return root.mpd && root.mpd.current && item.file === root.mpd.current.file
-                    } : null
+                    }
                     titleFor: function (item) { return item.title || "Untitled" }
                     playingColor: root.lyricsHighlightColor
                     // A click in album view is a play, not just a selection:
@@ -2577,17 +2581,20 @@ Item {
         // are buffered and gone the moment the buffer ages out, so it always
         // matches what the next typed letter will search for.
         //
-        // Two homes, both centred horizontally on the window. "bottom" puts it in
-        // the band just above the now-playing strip -- the same spot, at the same
-        // height, as the Ctrl transport readout, so a typed jump and a mode change
-        // are the same piece of furniture. "center" floats it in the middle of the
-        // whole window, the one spot the eye lands on without hunting. It is
-        // centred on the window rather than tucked in a pane because the buffer is
-        // about the session, not about whichever pane the caret happens to be in.
+        // Two homes, both centred horizontally on the tracks pane: that is where
+        // a find is happening, so the letters land under the eye that is already
+        // reading that pane. "bottom" puts them in the band just above the
+        // now-playing strip, at the same height as the Ctrl transport readout;
+        // "center" floats them in the middle of the list area above the strip.
+        // A floating cover owns the lower-right of that same pane, so the readout
+        // slides left only as far as it must to clear it; with the cover in its
+        // own pane there is nothing to avoid and it stays dead centre. In album
+        // and lyrics view the browser is hidden, so it falls back to the window
+        // centre instead of pointing at a pane that is not there.
         //
-        // Both placements measure against the window, not the lists region: this
-        // item is a sibling of the panes, so parent is the whole surface. The
-        // vertical positions subtract the strip because the readout belongs to the
+        // The vertical positions measure against the window, not the lists
+        // region: this item is a sibling of the panes, so parent is the whole
+        // surface. They subtract the strip because the readout belongs to the
         // list area above it, not to the footer.
         //
         // Position is set with x/y rather than by swapping anchors between the two
@@ -2598,7 +2605,7 @@ Item {
         // flipped. A plain x/y binding has no anchor state to get stuck in.
         Rectangle {
             id: typeaheadReadoutBox
-            readonly property bool centered: prefs.typeaheadPlace === "center"
+            readonly property bool centered: prefs.findPlace === "center"
             readonly property int gutter: Math.round(12 * prefs.uiScale)
             // Center: dead middle of the pane area above the strip, so the readout
             // never rides down into the footer whatever the strip's thickness.
@@ -2614,10 +2621,27 @@ Item {
             // through the fade instead of dropping out from under the readout.
             readonly property int noticeLift: transportNoticeBox.visible
                 ? transportNoticeBox.height + Math.round(6 * prefs.uiScale) : 0
+            // The floating cover sits in the tracks pane's lower-right corner,
+            // exactly where a bottom readout lands, and a tall one reaches the
+            // centred readout too. In its own pane it is out of the way, so the
+            // guard is only armed while it floats over the lists.
+            readonly property int coverGuard: cover.visible && !root.coverPaneShown
+                ? cover.x - Math.round(8 * prefs.uiScale) : parent.width
+            readonly property int tracksLeft: paneRow.x + paneRow.artistsWidth + paneRow.albumsWidth
+            readonly property int tracksCenter: paneRow.x
+                + (paneRow.width + paneRow.artistsWidth + paneRow.albumsWidth) / 2
             visible: root.typeaheadBuffer.length > 0
             width: typeaheadReadout.implicitWidth + Math.round(20 * prefs.uiScale)
             height: typeaheadReadout.implicitHeight + Math.round(12 * prefs.uiScale)
-            x: Math.round((parent.width - width) / 2)
+            // Stay as close to the tracks pane's centre as the floating cover
+            // allows: clamp the right edge to the cover's left, never past the
+            // pane's own left margin. Reading paneRow's geometry keeps the binding
+            // live when the lists region resizes; with no browser on screen the
+            // old window centre is the only sensible place left.
+            x: paneRow.visible
+                ? Math.round(Math.max(tracksLeft + gutter,
+                    Math.min(tracksCenter + width / 2, coverGuard)) - width)
+                : Math.round((parent.width - width) / 2)
             y: centered ? Math.round((paneArea - height) / 2) : bandY - noticeLift
             radius: Math.round(6 * prefs.uiScale)
             // Themed like the rest of the panel: a low foreground wash rather
@@ -2638,7 +2662,7 @@ Item {
                 // away from the caret. The size setting is an offset on top, so the
                 // centred placement can be pushed larger without touching the
                 // panel's other type.
-                font.pixelSize: Math.round((root.themeFont.subtitle + prefs.typeaheadScale) * prefs.uiScale)
+                font.pixelSize: Math.round((root.themeFont.subtitle + prefs.findScale) * prefs.uiScale)
                 font.family: root.themeFont.family
             }
         }
@@ -3103,13 +3127,13 @@ Item {
                 }
 
                 // Shift+arrows seek. h and l are the vim spelling of the same
-                // two arrows, so with Vim keys on their shifted forms seek the
-                // same way rather than changing pane.
+                // two arrows, so in Vim style their shifted forms seek the same
+                // way rather than changing pane.
                 if (shift && (event.key === Qt.Key_Left
-                        || (prefs.vimKeys && event.key === Qt.Key_H))) {
+                        || (prefs.keyboardStyle === "vim" && event.key === Qt.Key_H))) {
                     root.seekBy(-5)
                 } else if (shift && (event.key === Qt.Key_Right
-                        || (prefs.vimKeys && event.key === Qt.Key_L))) {
+                        || (prefs.keyboardStyle === "vim" && event.key === Qt.Key_L))) {
                     root.seekBy(5)
                 } else {
                 // Arrows mirror the hjkl bindings, so both schemes navigate the
@@ -3125,19 +3149,27 @@ Item {
                     root.shiftPane(1); break
                 case Qt.Key_Left:
                     root.shiftPane(-1); break
-                // The vim letters only act as navigation while vimKeys is on.
-                // With it off they are ordinary text, so they fall through to
-                // the typeahead check below instead of being swallowed here.
-                case Qt.Key_J: if (prefs.vimKeys) root.move(1); else handled = false; break
-                case Qt.Key_K: if (prefs.vimKeys) root.move(-1); else handled = false; break
-                case Qt.Key_L: if (prefs.vimKeys) root.shiftPane(1); else handled = false; break
-                case Qt.Key_H: if (prefs.vimKeys) root.shiftPane(-1); else handled = false; break
-                case Qt.Key_G: if (prefs.vimKeys) root.moveToEnd(shift); else handled = false; break
+                // The vim letters only act as navigation in Vim style. In the
+                // other styles they are ordinary text, so they fall through to
+                // the find check below instead of being swallowed here.
+                case Qt.Key_J: if (prefs.keyboardStyle === "vim") root.move(1); else handled = false; break
+                case Qt.Key_K: if (prefs.keyboardStyle === "vim") root.move(-1); else handled = false; break
+                case Qt.Key_L: if (prefs.keyboardStyle === "vim") root.shiftPane(1); else handled = false; break
+                case Qt.Key_H: if (prefs.keyboardStyle === "vim") root.shiftPane(-1); else handled = false; break
+                case Qt.Key_G: if (prefs.keyboardStyle === "vim") root.moveToEnd(shift); else handled = false; break
                 case Qt.Key_Return:
                 case Qt.Key_Enter:
                     root.activate(); break
                 case Qt.Key_Space:
-                    root.mpd && root.mpd.togglePlay(); break
+                    // A space inside an active find is part of the search, not
+                    // a transport command: otherwise a multi-word title could
+                    // never be typed past its first word. With no find under
+                    // way, space keeps its usual play/pause meaning.
+                    if (prefs.keyboardStyle === "find" && root.typeaheadBuffer.length > 0)
+                        root.handleTypeahead(" ")
+                    else
+                        root.mpd && root.mpd.togglePlay()
+                    break
                 case Qt.Key_Question:
                     // ? (Shift+/) opens the key reference. Alt+? never gets
                     // here: it is swallowed by the modifier guard above.
@@ -3147,10 +3179,10 @@ Item {
                     handled = false
                 }
 
-                // Typeahead is the fallback for any printable key no command
-                // above claimed: it jumps the caret to the first row starting
-                // with what has been typed. handleTypeahead checks the
-                // typeaheadSearch preference itself.
+                // Find is the fallback for any printable key no command above
+                // claimed: it jumps the caret to the first row starting with
+                // what has been typed. handleTypeahead checks keyboardStyle
+                // itself.
                 if (!handled && event.text && event.text.length === 1
                         && /^[A-Za-z0-9æøåÆØÅ-]$/.test(event.text)) {
                     root.handleTypeahead(event.text)
@@ -3322,8 +3354,9 @@ Item {
     }
 
     // Alt+= / Alt+-: the text size of the view on screen -- karaoke's own offset
-    // there, the reading view's in lyrics, the whole panel's scale in the
-    // browser. This is the one size key that always does something visible.
+    // there, the reading view's in lyrics, the titles' in album view, and the
+    // whole panel's scale in the browser. This is the one size key that always
+    // does something visible.
     function cycleTextSize(delta) {
         if (root.karaokeView) {
             var k = root.cycleSetting("karaokeFont", delta)
@@ -3331,6 +3364,9 @@ Item {
         } else if (root.lyricsView) {
             var l = root.cycleSetting("lyricsFont", delta)
             if (l) root.showTransportNotice("Lyrics text: " + root.settingText(l))
+        } else if (root.albumView) {
+            var a = root.cycleSetting("albumFont", delta)
+            if (a) root.showTransportNotice("Album titles: " + root.settingText(a))
         } else {
             var u = root.cycleSetting("uiScale", delta)
             if (u) root.showTransportNotice("UI scale: " + root.settingText(u))

@@ -19,13 +19,13 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Cover pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Pane above` tunes the window size floor the pane is kept to.
 - **Adaptive colours** — optionally matches the panel's colors to the playing album.
 - **A strip that gives way** — on a narrow window the now-playing strip tightens its margins and shortens the volume track, then drops the track and keeps the speaker, so the title and the transport never squeeze each other.
-- **Type-to-find** — jump to matching rows by typing, with the readout placed above the now-playing strip (where transport changes appear) or centred in the middle of the window, at a size of your choosing. In the tracks pane a number jumps to that track.
+- **Keyboard style** — choose what letter keys do: `Find` jumps to a matching row as you type (the default), `Vim` uses `j/k/h/l/g/G` to navigate, and `Off` leaves letters inert while arrows still work. During a find, `Space` adds a word to the search instead of toggling playback; the readout is centred horizontally on the tracks pane and can sit above the now-playing strip (where transport changes appear) or in the middle of the list area, at a size of your choosing. In the tracks pane a number jumps to that track.
 - **Quiet track numbers** — the tracks pane writes `01.` or `01 -` before each title, and can hold the number back in the same muted ink as the durations.
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight the playing line, and can follow it with the view. The playing album's titles can sit beside the words.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large text, centred by default but configurable under **Karaoke view**, the current line bold, everything else out of the way.
 - **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. A small preview of the next album's cover sits above the bar, and the playing lyrics can share the surface. `Esc` returns to the browser.
 - **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, the album view, lyrics, themes, the music folder and optional features.
-- **Vim motions (optional)** — `j` `k` `h` `l` `g` `G` alongside arrows; with them on, `Shift` + `h`/`l` seek.
+- **Vim motions (optional)** — pick `Vim` as the Keyboard style and `j` `k` `h` `l` `g` `G` navigate alongside arrows; `Shift` + `h`/`l` seek.
 - **Key reference** (`?`) — quick overview of keys.
 
 ## Optional features
@@ -95,7 +95,8 @@ then a one-liner around whichever of the three you prefer.
 | --- | --- |
 | `↑` `↓` | Change row |
 | `←` `→` | Change pane |
-| any letter, digit or `-` | Typeahead; a number jumps to that track in the tracks pane |
+| any letter, digit or `-` | Type-to-find; a number jumps to that track in the tracks pane *(Keyboard style: Find)* |
+| `Space` during a find | Continue the search with a space instead of playing / pausing |
 | `Enter` | Play the artist, album or track under the caret |
 | `Space` | Play / pause |
 | `Ctrl` + `←` `→` | Previous / next track |
@@ -104,10 +105,10 @@ then a one-liner around whichever of the three you prefer.
 | `Ctrl` + `S` | Shuffle: off → album → artist → library |
 | `Ctrl` + `R` | Repeat: off → album → song |
 | `Shift` + `←` `→` | Seek ∓ 5 s |
-| `j` `k` | Change row *(Vim keys on)* |
-| `h` `l` | Change pane *(Vim keys on)* |
-| `Shift` + `h` `l` | Seek ∓ 5 s *(Vim keys on)* |
-| `g` / `G` | First / last row *(Vim keys on)* |
+| `j` `k` | Change row *(Keyboard style: Vim)* |
+| `h` `l` | Change pane *(Keyboard style: Vim)* |
+| `Shift` + `h` `l` | Seek ∓ 5 s *(Keyboard style: Vim)* |
+| `g` / `G` | First / last row *(Keyboard style: Vim)* |
 | `Alt` + `S` | Settings card |
 | `Alt` + `T` | Tag editor |
 | `Alt` + `L` | Lyrics view (toggle) |
@@ -129,7 +130,7 @@ The Ctrl keys and the Alt cover and size keys say what they did: a mode change,
 a volume step or a new size flashes a one-line readout above the strip — or, in
 karaoke, in the margin under the words — and it fades after a moment. The strip's
 own buttons and slider are hidden in karaoke, so without it a shuffle or repeat
-change would be silent there. The readout has its own text size (Text →
+change would be silent there. The readout has its own text size (Now playing →
 Transport readout), so it can be made easier to catch at a glance without
 touching the lists.
 
@@ -150,8 +151,10 @@ resets everything, `?` switches to the key reference, `Esc` steps back out and `
 closes. The visible tab follows the caret, and each tab remembers the row you
 left it on.
 
-The card is cut into tabs by topic — Lists, Panes, Text, Artwork, Lyrics,
-Album view, Lyrics view and Karaoke view — so a slider and a switch sit together
+The card is cut into tabs by topic — General (library folder, keys and UI scale),
+Now playing (the strip), Artwork, Lyrics, Library view (the three-pane browser and
+its row type), Album view, Lyrics view and Karaoke view — so a slider and a
+switch sit together
 where their subject says they should, and a setting is always in the same place.
 A setting that only matters while another is on — a cover border's width, the
 artwork pane's position — stays on the card but is
@@ -406,8 +409,11 @@ show. The record can be named above the titles: `Album info` under **Album view*
 cycles through nothing, the album, the artist, both, or both with the year and
 running time read from the album's tags. `Caption style` changes how that line is
 drawn — the quiet dotted sleeve label it opens with, a slightly larger label, or
-a small heavy heading — without changing what it says. `Lyrics beside tracks` on
-the same tab puts the playing track's lyrics beside
+a small heavy heading — without changing what it says. The same tab's
+`Track title size` and `Track spacing` set the type size and the gap between
+titles for album view alone, so the browser's `Rows` no longer changes them;
+`Alt` + `=` / `-` nudges the title size while this view is showing.
+`Lyrics beside tracks` on the same tab puts the playing track's lyrics beside
 the titles, with the cover still in its pane; the titles keep their scale and
 spacing, follow the tab's `Track alignment`, and the shared words follow the
 one `Alignment` setting under Lyrics, so the two columns can be lined up
@@ -464,7 +470,7 @@ with Nautilus, the desktop `FileManager1` service and `xdg-open` as fallbacks.
   stores means telling them the artist and album name — the same query iTunes and
   Deezer's own search boxes send — so this is on by default but can be turned off
   for a library that should stay offline.
-- **The music directory** is set under **Lists** in the settings card.
+- **The music directory** is set under **General** in the settings card.
   On a first run it is taken from MPD's own `music_directory` (read with the
   `config` command after connecting), which is the folder every path MPD reports
   is relative to; a server that refuses `config` falls back to `XDG_MUSIC_DIR`,
@@ -473,8 +479,8 @@ with Nautilus, the desktop `FileManager1` service and `xdg-open` as fallbacks.
   later hint. `~` expands to your home folder and a relative path is
   refused, so a typo cannot point tag saves or artwork at a folder that is not
   the library.
-- **Typeahead accepts ASCII letters and digits plus `æøåÆØÅ` and `-`.** Widen the
-  regex at the bottom of the key handler in `GrimPlayer.qml` for other scripts.
+- **Type-to-find accepts ASCII letters and digits plus `æøåÆØÅ` and `-`.** Widen
+  the regex at the bottom of the key handler in `GrimPlayer.qml` for other scripts.
 - **Album repeat is client-side**, so there is a fraction of a second of silence
   at the album boundary.
 - **No stored playlists and no queue view**, by design: the queue is the

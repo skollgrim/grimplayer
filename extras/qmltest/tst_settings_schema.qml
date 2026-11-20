@@ -108,6 +108,36 @@ TestCase {
         }
     }
 
+    // The tabs promise a home for every setting. Pin both the order and the
+    // rows whose place is easiest to drift: the folder and keys in General, the
+    // strip in Now playing, the browser in Library view, the shared captions in
+    // Album view.
+    function test_tabs_group_settings_by_subject() {
+        var order = ["general", "nowPlaying", "artwork", "lyrics",
+            "library", "album", "lyricsView", "karaoke"]
+        var names = ["General", "Now playing", "Artwork", "Lyrics", "Library view",
+            "Album view", "Lyrics view", "Karaoke view"]
+        compare(config.sections.length, order.length)
+        for (var s = 0; s < order.length; s++) {
+            compare(config.sections[s].tag, order[s])
+            compare(config.sections[s].name, names[s])
+        }
+
+        var homes = {
+            musicDir: "general", keyboardStyle: "general", findPlace: "general",
+            findScale: "general", uiScale: "general", wrapAround: "library",
+            playingMarker: "library", fontSubtitle: "library", albumYears: "library",
+            seekThickness: "nowPlaying", iconSize: "nowPlaying", fontTitle: "nowPlaying",
+            fontBody: "nowPlaying", noticeScale: "nowPlaying", fontCaption: "album",
+            albumFont: "album", albumTrackSpacing: "album"
+        }
+        for (var key in homes) {
+            var e = entryFor(key)
+            verify(e !== null, "the row " + key + " is missing")
+            compare(e.section, homes[key], key + " drifted out of its tab")
+        }
+    }
+
     function test_reset_restores_the_captured_defaults() {
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
@@ -173,12 +203,12 @@ TestCase {
         var align = entryFor("coverBandAlign")
         var row = config.rowOf(config.visibleEntries.indexOf(align))
         config.assign(mode, "off")
-        var next = config.activeIndexNear(3, row, 1)
-        var prev = config.activeIndexNear(3, row, -1)
+        var next = config.activeIndexNear(2, row, 1)
+        var prev = config.activeIndexNear(2, row, -1)
         verify(next >= 0 && config.isActive(config.visibleEntries[next]))
         verify(prev >= 0 && config.isActive(config.visibleEntries[prev]))
         config.assign(mode, "auto")
-        compare(config.activeIndexNear(3,
+        compare(config.activeIndexNear(2,
             config.rowOf(config.visibleEntries.indexOf(mode)), 1),
             config.visibleEntries.indexOf(align))
     }
@@ -191,12 +221,12 @@ TestCase {
         var row = config.rowOf(config.visibleEntries.indexOf(align))
         config.assign(mode, "off")
         verify(!config.isActive(align))
-        var target = config.activeIndexAt(3, row)
+        var target = config.activeIndexAt(2, row)
         verify(target >= 0, "the artwork tab should still have a live row")
         verify(config.isActive(config.visibleEntries[target]),
             "the caret landed on a greyed row")
         config.assign(mode, "auto")
-        compare(config.activeIndexAt(3, row), config.visibleEntries.indexOf(align))
+        compare(config.activeIndexAt(2, row), config.visibleEntries.indexOf(align))
     }
 
     // The one row that moves a second property, and the reason assign() has an
@@ -251,6 +281,79 @@ TestCase {
         config.reset()
         config.applyStored({ albumCaption: false, albumInfo: "artist" })
         compare(config.albumInfo, "artist")
+    }
+
+    // The playing tint lost its switch; the row that remains only picks the
+    // accent bar. A file written before the split keeps its choice of sides.
+    function test_the_playing_marker_migrates_and_the_tint_is_always_on() {
+        var e = entryFor("playingMarker")
+        verify(e !== null, "the playing marker row should exist")
+        verify(entryFor("playingHighlight") === null, "the tint switch should be gone")
+        compare(e.label, "Playing marker")
+        config.reset()
+        config.applyStored({ playingMarkerSides: "both" })
+        compare(config.playingMarker, "both")
+        config.reset()
+        config.applyStored({ playingMarkerSides: "left", playingMarker: "right" })
+        compare(config.playingMarker, "right", "an explicit new key wins")
+    }
+
+    // Vim keys and type-to-find were two switches over the same letter keys, so
+    // a stored file is folded into one choice. Vim wins when both were on; with
+    // both off the letters stay inert. An explicit new key always wins.
+    function test_keyboard_style_migrates_from_the_two_switches() {
+        var e = entryFor("keyboardStyle")
+        verify(e !== null, "the keyboard style row should exist")
+        verify(entryFor("vimKeys") === null, "the vim switch should be gone")
+        verify(entryFor("typeaheadSearch") === null, "the find switch should be gone")
+        compare(e.options[0], "find")
+        config.reset()
+        config.applyStored({ vimKeys: true, typeaheadSearch: true })
+        compare(config.keyboardStyle, "vim")
+        config.reset()
+        config.applyStored({ vimKeys: false, typeaheadSearch: false })
+        compare(config.keyboardStyle, "off")
+        config.reset()
+        config.applyStored({ vimKeys: true, typeaheadSearch: false })
+        compare(config.keyboardStyle, "vim")
+        config.reset()
+        config.applyStored({ vimKeys: false, typeaheadSearch: true })
+        compare(config.keyboardStyle, "find")
+        config.reset()
+        config.applyStored({ keyboardStyle: "off", vimKeys: true })
+        compare(config.keyboardStyle, "off", "an explicit new key wins")
+    }
+
+    // The find readout's position and size moved with their setting's rename.
+    // The old corner placement folds into the bottom band, which replaced it.
+    function test_find_readout_settings_migrate_with_their_names() {
+        var place = entryFor("findPlace")
+        var scale = entryFor("findScale")
+        verify(place !== null && scale !== null, "the renamed find rows should exist")
+        compare(place.label, "Find position")
+        compare(scale.label, "Find size")
+        config.reset()
+        config.applyStored({ typeaheadPlace: "center", typeaheadScale: 9 })
+        compare(config.findPlace, "center")
+        compare(config.findScale, 9)
+        config.reset()
+        config.applyStored({ typeaheadPlace: "corner", typeaheadScale: 3,
+                             findPlace: "bottom", findScale: 4 })
+        compare(config.findPlace, "bottom", "an explicit new key wins")
+        compare(config.findScale, 4, "an explicit new key wins")
+    }
+
+    // Position and size describe the find readout, so they only count as live
+    // while the find style is selected.
+    function test_find_rows_wait_on_the_find_style() {
+        var style = entryFor("keyboardStyle")
+        var place = entryFor("findPlace")
+        config.assign(style, "vim")
+        verify(!config.isActive(place), "find position should be greyed out in Vim style")
+        config.assign(style, "off")
+        verify(!config.isActive(place), "find position should be greyed out when letters are off")
+        config.assign(style, "find")
+        verify(config.isActive(place), "find position should come back in Find style")
     }
 
     // Highlighting is the primary word setting, so it belongs with the rest of

@@ -71,7 +71,7 @@ Item {
     // Which edges of the playing row carry the accent bar. Forwarded to the panes
     // untouched; only the tracks pane is handed a current item, so it only ever
     // shows there.
-    property string playingMarkerSides: "both"
+    property string playingMarker: "both"
 
     // Extra right inset the panel hands the tracks pane, so its rows keep clear of
     // the artwork when the cover band is on. Only the tracks pane is set; the other
@@ -199,7 +199,7 @@ Item {
     rowSeparators: root.prefs ? root.prefs.rowSeparators : false
     focusGlow: root.prefs ? root.prefs.focusGlow : true
     showHeading: root.prefs ? root.prefs.paneHeadings : true
-    playingMarkerSides: root.playingMarkerSides
+    playingMarker: root.playingMarker
     uiScale: root.prefs ? root.prefs.uiScale : 1
     borderWidth: root.prefs ? root.prefs.borderWidth : 1
     activeRowBorder: root.prefs ? root.prefs.activeRowBorder : false

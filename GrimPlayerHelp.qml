@@ -54,23 +54,23 @@ Item {
             rows: [
                 { keys: "↑ ↓", action: "Change row" },
                 { keys: "← →", action: "Change pane" },
-                { keys: "any letter, digit or -", action: "Jump by typing a name, or a track number in the tracks pane" }
+                { keys: "any letter, digit or -", action: "Jump by typing a name, or a track number in the tracks pane (Find style); Space adds a word to the find" }
             ]
         },
         {
-            title: "Vim keys",
+            title: "Vim style",
             rows: [
-                { keys: "j   k", action: "Change row" },
-                { keys: "h   l", action: "Change pane" },
-                { keys: "g   G", action: "First / last row" },
-                { keys: "Shift + h  l", action: "Seek ∓ 5 s" }
+                { keys: "j   k", action: "Change row (when Keyboard style is Vim)" },
+                { keys: "h   l", action: "Change pane (when Keyboard style is Vim)" },
+                { keys: "g   G", action: "First / last row (when Keyboard style is Vim)" },
+                { keys: "Shift + h  l", action: "Seek ∓ 5 s (when Keyboard style is Vim)" }
             ]
         },
         {
             title: "Play",
             rows: [
                 { keys: "Enter", action: "Play the artist, album or track under the caret" },
-                { keys: "Space", action: "Play / pause" },
+                { keys: "Space", action: "Play / pause (adds a word to an active find)" },
                 { keys: "Ctrl + ← →", action: "Previous / next track" },
                 { keys: "Ctrl + ↑ ↓", action: "Volume − / + 5%" },
                 { keys: "Ctrl + M", action: "Mute / unmute" },

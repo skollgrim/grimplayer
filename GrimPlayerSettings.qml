@@ -1,11 +1,11 @@
 pragma ComponentBehavior: Bound
 // The settings card, modal over the browser.
 //
-// The settings are cut into tabs by topic: Lists, Panes, Text, Artwork, Lyrics,
-// Album view, Lyrics view and Karaoke view. A tab is one subject rather than one
-// kind of control, so a slider and a switch sit together where their subject says
-// they should, and a setting is always in the same place every time the card
-// opens.
+// The settings are cut into tabs by topic: General, Now playing, Artwork, Lyrics,
+// Library view, Album view, Lyrics view and Karaoke view. A tab is one subject
+// rather than one kind of control, so a slider and a switch sit together where
+// their subject says they should, and a setting is always in the same place every
+// time the card opens.
 //
 // A setting that waits on another is drawn greyed rather than hidden, and is
 // indented beneath the row it waits on, so the row above is why it is greyed and

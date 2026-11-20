@@ -55,16 +55,13 @@ Item {
         // Year prefix on the albums pane, from the tracks' Date tags.
         property bool albumYears: true
 
-        // Tint plus accent bar on the row MPD is actually playing.
-        property bool playingHighlight: true
-
         // Which edges of the playing row carry the accent bar: "none", "left",
-        // "right" or "both". The tint below is unaffected -- this only decides
-        // where the bars sit, so "none" keeps the tint and drops the bars. The
-        // right edge is the default: the labels start at the left margin, so a
-        // bar on the right sits in the margin past the text's end and marks the
-        // row without crowding what it says.
-        property string playingMarkerSides: "right"
+        // "right" or "both". The tint is always on -- this only decides where
+        // the bars sit, so "none" keeps the tint and drops the bars. The right
+        // edge is the default: the labels start at the left margin, so a bar on
+        // the right sits in the margin past the text's end and marks the row
+        // without crowding what it says.
+        property string playingMarker: "right"
         property string coverDecodeSize: "medium"
 
         // Recolour the whole panel from the playing album's cover art, instead
@@ -76,25 +73,24 @@ Item {
         // the player entirely offline and such albums on the placeholder.
         property bool fetchCovers: true
 
-        // Plain j/k/h/l/g/G navigation. Off leaves the arrow keys in charge.
-        property bool vimKeys: false
+        // What the letter keys do in the lists: "find" jumps to a matching row
+        // as it is typed, "vim" uses j/k/h/l/g/G, and "off" leaves letters
+        // inert. The arrow keys navigate in every mode.
+        property string keyboardStyle: "find"
 
         // Height of one list row in logical pixels. The gap between rows is
         // derived from this (an eighth of the row), so one control sets the whole
         // row rhythm -- a separate gap slider only ever fought the row height.
         property int rowSpacing: 28
 
-        // Typing letters jumps the caret to the first matching row.
-        property bool typeaheadSearch: true
-
-        // Where the typeahead readout sits. Both homes are horizontally centred:
-        // "bottom" puts it in the band just above the now-playing strip, the same
-        // spot the Ctrl transport readout uses, and "center" floats it in the
-        // middle of the window, where the eye already is when the lists are long
-        // enough that a band readout is easy to miss. Kept as a named choice
-        // rather than a flag so a third position has somewhere to land without
-        // another boolean.
-        property string typeaheadPlace: "bottom"
+        // Where the find readout sits. Both homes are centred on the tracks pane
+        // (yielding left when a floating cover is in the way): "bottom" puts it in
+        // the band just above the now-playing strip, the same spot the Ctrl
+        // transport readout uses, and "center" floats it in the middle of the list
+        // area, where the eye already is when the lists are long enough that a band
+        // readout is easy to miss. Kept as a named choice rather than a flag so a
+        // third position has somewhere to land without another boolean.
+        property string findPlace: "bottom"
 
         // The readout's font size as an offset from the theme, like the font-size
         // settings. The band readout is a glanceable aside and the centred one
@@ -102,7 +98,7 @@ Item {
         // panel's body text. The range starts at zero -- the theme's own size --
         // rather than below it: the readout is meant to stand out from the text
         // it is drawn over, so a smaller-than-theme setting had no good use.
-        property int typeaheadScale: 6
+        property int findScale: 6
 
         // A faint line between rows. Off is the cleaner, flatter look.
         property bool rowSeparators: false
@@ -149,6 +145,13 @@ Item {
         // as a small title over the track list.
         property string albumInfo: "full"
         property string albumInfoStyle: "quiet"
+
+        // Album view's track list has its own type size and rhythm: the large
+        // centred titles are read at a glance while the record plays, so the
+        // browser's "Rows" no longer changes them. Both are offsets from the
+        // current look -- zero keeps today's type and gap exactly as they are.
+        property int albumFont: 0
+        property int albumTrackSpacing: 0
 
         // Where album view's titles sit. "center" is the surface's own look;
         // "left" lines them up with the column margin. The words have their own
@@ -443,13 +446,14 @@ Item {
     function saveNow() {
         var out = {}
         // Only real properties, not the id or the functions hanging off it.
-        var keys = ["musicDir", "wrapAround", "seekThickness", "albumYears", "playingHighlight",
-                    "playingMarkerSides", "adaptiveColors", "fetchCovers",
-                    "vimKeys", "rowSpacing", "typeaheadSearch", "typeaheadPlace",
-                    "typeaheadScale", "rowSeparators",
+        var keys = ["musicDir", "wrapAround", "seekThickness", "albumYears",
+                    "playingMarker", "adaptiveColors", "fetchCovers",
+                    "keyboardStyle", "rowSpacing", "findPlace",
+                    "findScale", "rowSeparators",
                     "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "coverBorder", "coverPlaceholder",
                     "coverBorderWidth", "coverRounded", "upNextCover", "upNextCoverSize",
-                    "albumInfo", "albumInfoStyle", "trackAlign", "albumLyrics",
+                    "albumInfo", "albumInfoStyle", "albumFont", "albumTrackSpacing",
+                    "trackAlign", "albumLyrics",
                     "activeRowBorder", "repeatMode", "shuffleMode", "coverScale", "stageCoverScale",
                     "trackNumberFormat", "trackNumberMuted",
                     "coverTransition", "coverBandMode", "coverBandAlign", "coverPadding",
@@ -505,10 +509,26 @@ Item {
         if (obj && typeof obj.coverBand === "boolean" && obj.coverBandMode === undefined) {
             obj.coverBandMode = obj.coverBand ? "on" : "off"
         }
-        // The typeahead's second home used to be the artists pane's corner. It is
-        // now the band above the strip, so a file that chose the corner keeps the
-        // band placement rather than falling back to the default by accident.
-        if (obj.typeaheadPlace === "corner") obj.typeaheadPlace = "bottom"
+        // The playing row's tint used to be a switch; it is always on now. A
+        // file that chose where the accent bar sits keeps that choice.
+        if (obj.playingMarker === undefined && obj.playingMarkerSides !== undefined)
+            obj.playingMarker = obj.playingMarkerSides
+        // Vim keys and type-to-find were two switches over the same letter keys,
+        // so they are one choice now. Vim wins when both were on; with both off
+        // the letters stay inert. An explicit keyboardStyle always wins.
+        if (obj.keyboardStyle === undefined
+                && (obj.vimKeys !== undefined || obj.typeaheadSearch !== undefined)) {
+            if (obj.vimKeys === true) obj.keyboardStyle = "vim"
+            else if (obj.typeaheadSearch === false) obj.keyboardStyle = "off"
+            else obj.keyboardStyle = "find"
+        }
+        // The find readout moved with the setting's rename. Its old second home
+        // was the artists pane's corner, which no longer exists: keep the band
+        // placement rather than falling back to the default by accident.
+        if (obj.findPlace === undefined && obj.typeaheadPlace !== undefined)
+            obj.findPlace = obj.typeaheadPlace === "corner" ? "bottom" : obj.typeaheadPlace
+        if (obj.findScale === undefined && obj.typeaheadScale !== undefined)
+            obj.findScale = obj.typeaheadScale
         // Alignment used to be one setting for the album's titles and the words
         // sharing the surface. It is now split: trackAlign for the titles, and
         // the words follow lyricsAlign wherever they appear. A file with the old
@@ -634,16 +654,14 @@ Item {
     readonly property bool wrapAround: store.wrapAround
     readonly property int seekThickness: store.seekThickness
     readonly property bool albumYears: store.albumYears
-    readonly property bool playingHighlight: store.playingHighlight
-    readonly property string playingMarkerSides: store.playingMarkerSides
+    readonly property string playingMarker: store.playingMarker
     readonly property string coverDecodeSize: store.coverDecodeSize
     readonly property bool adaptiveColors: store.adaptiveColors
     readonly property bool fetchCovers: store.fetchCovers
-    readonly property bool vimKeys: store.vimKeys
+    readonly property string keyboardStyle: store.keyboardStyle
     readonly property int rowSpacing: store.rowSpacing
-    readonly property bool typeaheadSearch: store.typeaheadSearch
-    readonly property string typeaheadPlace: store.typeaheadPlace
-    readonly property int typeaheadScale: store.typeaheadScale
+    readonly property string findPlace: store.findPlace
+    readonly property int findScale: store.findScale
     readonly property bool rowSeparators: store.rowSeparators
     readonly property bool focusGlow: store.focusGlow
     readonly property bool paneHeadings: store.paneHeadings
@@ -656,6 +674,8 @@ Item {
     readonly property int upNextCoverSize: store.upNextCoverSize
     readonly property string albumInfo: store.albumInfo
     readonly property string albumInfoStyle: store.albumInfoStyle
+    readonly property int albumFont: store.albumFont
+    readonly property int albumTrackSpacing: store.albumTrackSpacing
     readonly property string trackAlign: store.trackAlign
     readonly property bool albumLyrics: store.albumLyrics
     readonly property string trackNumberFormat: store.trackNumberFormat
@@ -757,10 +777,13 @@ Item {
     // so switching the parent back on restores it exactly as it was, and reset()
     // still restores it too.
     readonly property var entries: [
-        // ---- Lists ----
+        // ---- General ----
+        // Player-wide choices: where the library lives and what the letter keys
+        // do. They stay out of the view tabs because they change the instrument
+        // rather than one surface on it.
         {
             key: "musicDir",
-            section: "list",
+            section: "general",
             label: "Music folder",
             // A free-text row rather than a list of rungs: the library can live
             // anywhere, so there is nothing finite to offer. The card gives it
@@ -770,31 +793,72 @@ Item {
             normalize: function (v) { return Paths.musicRoot(v, Quickshell.env("HOME")) }
         },
         {
+            key: "keyboardStyle",
+            section: "general",
+            label: "Keyboard style",
+            hint: "What the letter keys do: jump to a matching row, move with j/k/h/l/g/G, or leave letters inert. Arrows navigate in every mode",
+            options: ["find", "vim", "off"],
+            format: function (v) {
+                return v === "find" ? "Find" : (v === "vim" ? "Vim" : "Off")
+            }
+        },
+        {
+            key: "findPlace",
+            section: "general",
+            label: "Find position",
+            hint: "Where the typed letters appear: above the now-playing strip, like the transport readout, or centred horizontally in the tracks pane",
+            options: ["bottom", "center"],
+            dependsOn: function () { return store.keyboardStyle === "find" },
+            after: "keyboardStyle"
+        },
+        {
+            key: "findScale",
+            section: "general",
+            label: "Find size",
+            hint: "The typed letters' text size, as an offset from the theme",
+            // Bias large: the readout is a transient overlay read at a glance from
+            // wherever the eye happens to be, so the useful half of the range is
+            // the upper one and +6 is the resting size. The floor is the theme's
+            // own size rather than a step below it -- the readout is meant to
+            // stand out, and a smaller-than-theme setting was a way to make it
+            // harder to read than the text it is drawn over. The top runs to +12
+            // so the resting size sits centred and a bigger readout is a step
+            // away in either direction.
+            options: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+            dependsOn: function () { return store.keyboardStyle === "find" },
+            after: "keyboardStyle",
+            format: root.deltaText
+        },
+        {
+            key: "uiScale",
+            section: "general",
+            label: "UI scale",
+            hint: "Scales rows, spacing, fonts, icons and cover art together",
+            options: [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5],
+            format: function (v) { return (v * 100).toFixed(0) + "%" }
+        },
+
+        // ---- Library ----
+        // Everything tied to the three-pane browser: how the lists scroll, the
+        // rules and focus between them, and how the playing row is marked. Album
+        // years writes the albums pane's label, so it belongs here too.
+        {
             key: "wrapAround",
-            section: "list",
+            section: "library",
             label: "Wrap lists",
             hint: "Down on the last row goes to the top, up on the first goes to the last",
             options: [true, false]
         },
         {
-            key: "playingHighlight",
-            section: "list",
-            label: "Playing tint",
-            hint: "Tint the current track while browsing its album",
-            options: [true, false]
-        },
-        {
-            key: "playingMarkerSides",
-            section: "list",
-            label: "Marker sides",
-            hint: "Which edges of the playing row carry the accent bar; the tint stays either way",
-            options: ["none", "left", "right", "both"],
-            dependsOn: function () { return store.playingHighlight },
-            after: "playingHighlight"
+            key: "playingMarker",
+            section: "library",
+            label: "Playing marker",
+            hint: "Which edges of the playing row carry the accent bar; the tint is always on",
+            options: ["none", "left", "right", "both"]
         },
         {
             key: "rowSpacing",
-            section: "list",
+            section: "library",
             label: "Row height",
             hint: "Height of each list row; the gap between rows follows it",
             options: [24, 28, 32, 36, 40],
@@ -802,33 +866,29 @@ Item {
         },
         {
             key: "rowSeparators",
-            section: "list",
+            section: "library",
             label: "Row lines",
             hint: "Draw a faint line between rows in each pane",
             options: [true, false],
         },
         {
-            key: "seekThickness",
-            section: "list",
-            label: "Seeker height",
-            hint: "How thick the bar above the transport is drawn",
-            // Rungs up to 15: the bar is a thin strip by default, and 9 is the
-            // bottom of the useful range rather than its top. The bar's slot
-            // grows with it (see SeekBar), so a thicker bar takes more room
-            // rather than crowding the elapsed time above it.
-            options: [3, 5, 7, 9, 11, 13, 15],
-            format: function (v) { return v + " px" }
+            key: "fontSubtitle",
+            section: "library",
+            label: "Rows",
+            hint: "Artist and album rows in the browser, as an offset from the theme; album view has its own type size",
+            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
+            format: root.deltaText
         },
         {
             key: "paneHeadings",
-            section: "panes",
+            section: "library",
             label: "Headings",
             hint: "Show the pane name over a rule at the top; off starts the lists at the very top",
             options: [true, false],
         },
         {
             key: "fontBodySmall",
-            section: "panes",
+            section: "library",
             label: "Heading size",
             hint: "The pane name over each pane's rule, as an offset from the theme",
             // The heading is drawn as part of the pane's header, so its size only
@@ -848,14 +908,14 @@ Item {
         },
         {
             key: "paneSeparators",
-            section: "panes",
+            section: "library",
             label: "Pane dividers",
             hint: "Draw the rules between the list panes and the artwork pane",
             options: [true, false],
         },
         {
             key: "borderWidth",
-            section: "panes",
+            section: "library",
             label: "Line width",
             hint: "Thickness of the pane dividers and the heading underlines",
             // One width for both lines, so it only stops meaning anything when
@@ -870,21 +930,21 @@ Item {
         },
         {
             key: "focusGlow",
-            section: "panes",
+            section: "library",
             label: "Dim unfocused",
             hint: "Fade the two unfocused panes so the active one stands out",
             options: [true, false]
         },
         {
             key: "activeRowBorder",
-            section: "panes",
+            section: "library",
             label: "Caret frame",
             hint: "Draw a heavier frame around the caret row in the focused pane",
             options: [true, false],
         },
         {
             key: "trackNumberFormat",
-            section: "panes",
+            section: "library",
             label: "Number format",
             hint: "How the tracks pane writes each number before its title; numbers are padded to two digits",
             options: ["dot", "dash"],
@@ -892,71 +952,39 @@ Item {
         },
         {
             key: "trackNumberMuted",
-            section: "panes",
+            section: "library",
             label: "Quiet numbers",
             hint: "Draw track numbers in the muted ink, like the durations, so the titles lead",
             options: [true, false],
         },
 
-        // ---- Navigation ----
+        // Album years labels the albums pane, so it closes the Library block.
         {
-            key: "vimKeys",
-            section: "list",
-            label: "Vim keys",
-            hint: "Use j/k/h/l/g/G for navigation",
-            options: [true, false],
-        },
-        {
-            key: "typeaheadSearch",
-            section: "list",
-            label: "Type-to-find",
-            hint: "Jump by typing first letters of names",
+            key: "albumYears",
+            section: "library",
+            label: "Album years",
+            hint: "Prefix each album with its release year, read from the Date tag",
             options: [true, false]
         },
-        {
-            key: "typeaheadPlace",
-            section: "list",
-            label: "Position",
-            hint: "Where the typed letters appear: above the now-playing strip, like the transport readout, or centred in the middle of the window",
-            // Bare "Position" and "Size" are enough here: both are indented under
-            // Type-to-find, so the row above names the thing they set. The hint
-            // still says "typed letters" rather than leaning on the label, since
-            // it is read on its own at the foot of the card.
-            options: ["bottom", "center"],
-            dependsOn: function () { return store.typeaheadSearch },
-            after: "typeaheadSearch"
-        },
-        {
-            key: "typeaheadScale",
-            section: "list",
-            label: "Size",
-            hint: "The typed letters' text size, as an offset from the theme",
-            // Bias large: the readout is a transient overlay read at a glance from
-            // wherever the eye happens to be, so the useful half of the range is
-            // the upper one and +6 is the resting size. The floor is the theme's
-            // own size rather than a step below it -- the readout is meant to
-            // stand out, and a smaller-than-theme setting was a way to make it
-            // harder to read than the text it is drawn over. The top runs to +12
-            // so the resting size sits centred and a bigger readout is a step
-            // away in either direction.
-            options: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-            dependsOn: function () { return store.typeaheadSearch },
-            after: "typeaheadSearch",
-            format: root.deltaText
-        },
 
-        // ---- Text ----
+        // ---- Now playing ----
+        // The bar that stays on screen in every view: how tall its seeker is,
+        // how big its icons and title read, and how loud its transient notices are.
         {
-            key: "uiScale",
-            section: "text",
-            label: "UI scale",
-            hint: "Scales rows, spacing, fonts, icons and cover art together",
-            options: [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5],
-            format: function (v) { return (v * 100).toFixed(0) + "%" }
+            key: "seekThickness",
+            section: "nowPlaying",
+            label: "Seeker height",
+            hint: "How thick the bar above the transport is drawn",
+            // Rungs up to 15: the bar is a thin strip by default, and 9 is the
+            // bottom of the useful range rather than its top. The bar's slot
+            // grows with it (see SeekBar), so a thicker bar takes more room
+            // rather than crowding the elapsed time above it.
+            options: [3, 5, 7, 9, 11, 13, 15],
+            format: function (v) { return v + " px" }
         },
         {
             key: "iconSize",
-            section: "text",
+            section: "nowPlaying",
             label: "Icon size",
             hint: "Transport and UI icons",
             options: [12, 14, 16, 18, 20],
@@ -964,39 +992,23 @@ Item {
         },
         {
             key: "fontTitle",
-            section: "text",
+            section: "nowPlaying",
             label: "Now playing",
             hint: "Now playing title, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
             format: root.deltaText
         },
         {
-            key: "fontSubtitle",
-            section: "text",
-            label: "Rows",
-            hint: "Album and track rows, as an offset from the theme",
-            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
-            format: root.deltaText
-        },
-        {
             key: "fontBody",
-            section: "text",
+            section: "nowPlaying",
             label: "Artist & time",
             hint: "Artist and the elapsed/total time, as an offset from the theme",
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
             format: root.deltaText
         },
         {
-            key: "fontCaption",
-            section: "text",
-            label: "Captions",
-            hint: "The album caption, the up-next label and the MPD banner, as an offset from the theme",
-            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
-            format: root.deltaText
-        },
-        {
             key: "noticeScale",
-            section: "text",
+            section: "nowPlaying",
             label: "Transport readout",
             hint: "Shuffle, repeat, mute and volume notices above the strip, as an offset from the theme",
             // Runs below the theme as well as above: the readout is a transient
@@ -1004,13 +1016,6 @@ Item {
             // Zero is the untouched theme size.
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
             format: root.deltaText
-        },
-        {
-            key: "albumYears",
-            section: "text",
-            label: "Album years",
-            hint: "Prefix each album with its release year, read from the Date tag",
-            options: [true, false]
         },
 
         // ---- Cover art ----
@@ -1190,11 +1195,35 @@ Item {
             options: ["quiet", "label", "heading"],
         },
         {
+            key: "fontCaption",
+            section: "album",
+            label: "Captions",
+            hint: "Small caption type: the album's name above the titles, the Up next label and the MPD status line, as an offset from the theme",
+            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
+            format: root.deltaText
+        },
+        {
             key: "trackAlign",
             section: "album",
             label: "Track alignment",
             hint: "In album view, align the titles left or centre them; the words have their own alignment under Lyrics",
             options: ["left", "center"],
+        },
+        {
+            key: "albumFont",
+            section: "album",
+            label: "Track title size",
+            hint: "Album view's track titles, as an offset from the theme; Alt+= / Alt+- changes this while album view is showing",
+            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
+            format: root.deltaText
+        },
+        {
+            key: "albumTrackSpacing",
+            section: "album",
+            label: "Track spacing",
+            hint: "Extra space between album-view titles, in logical pixels; zero keeps the gap sized from the title font",
+            options: [0, 2, 4, 6, 8, 10, 12],
+            format: function (v) { return v + " px" }
         },
         {
             key: "albumLyrics",
@@ -1525,17 +1554,17 @@ Item {
     readonly property var visibleEntries: entries
 
     // The sections the card draws, in tab order, each a name and the tag its
-    // entries carry. A section is one topic -- the lists and what plays them, the
-    // panes and their rules, the text and scale, the cover art, the lyric choices
-    // both surfaces share, the album view, the reading view's own, karaoke's own
-    // surface -- rather than one kind of control, so a slider and a switch sit
-    // together wherever their subject says they should.
+    // entries carry. A section is one topic -- the player-wide choices, the
+    // now-playing strip, the cover art, the lyric choices both surfaces share,
+    // the three-pane library browser, the album view, the reading view's own and
+    // karaoke's own surface -- rather than one kind of control, so a slider and a
+    // switch sit together wherever their subject says they should.
     readonly property var sections: [
-        { tag: "list", name: "Lists" },
-        { tag: "panes", name: "Panes" },
-        { tag: "text", name: "Text" },
+        { tag: "general", name: "General" },
+        { tag: "nowPlaying", name: "Now playing" },
         { tag: "artwork", name: "Artwork" },
         { tag: "lyrics", name: "Lyrics" },
+        { tag: "library", name: "Library view" },
         { tag: "album", name: "Album view" },
         { tag: "lyricsView", name: "Lyrics view" },
         { tag: "karaoke", name: "Karaoke view" }

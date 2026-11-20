@@ -47,8 +47,8 @@ Item {
     readonly property int textAlignment: root.alignLeft
         ? Text.AlignLeft : Text.AlignHCenter
 
-    // Injected by the panel. isCurrent is null when the playing highlight is
-    // turned off, which leaves the list as plain titles.
+    // Injected by the panel. isCurrent identifies the track MPD is playing;
+    // the panel always supplies it now that the tint has no off switch.
     property var isCurrent: null
     property var titleFor: null
 
@@ -98,16 +98,20 @@ Item {
 
     // Bigger than a browser row, but not karaoke-sized: this is read at a glance
     // while the record plays, not from across the room. The offset follows the
-    // same theme-plus-stored-delta rule as every other font in the panel. The
-    // compact column steps down to body size and tightens its rows so it can sit
-    // beside a full reading column without crowding it.
+    // same theme-plus-stored-delta rule as every other font in the panel, but it
+    // is album view's own -- changing the browser's "Rows" no longer resizes
+    // these titles. The compact column steps down to body size and tightens its
+    // rows so it can sit beside a full reading column without crowding it.
     readonly property int fontSize: root.compact
         ? Math.round((root.themeFont.body
             + (root.prefs ? root.prefs.fontBody : 0)) * 1.3 * uiScale)
         : Math.round((root.themeFont.subtitle
-            + (root.prefs ? root.prefs.fontSubtitle : 0)) * 1.9 * uiScale)
+            + (root.prefs ? root.prefs.albumFont : 0)) * 1.9 * uiScale)
     readonly property int rowHeight: Math.round(fontSize * (root.compact ? 1.7 : 2.0))
+    // The gap still scales with the title font; the stored spacing is extra
+    // headroom on top, so zero is exactly the rhythm the view opened with.
     readonly property int rowGap: Math.round(fontSize * (root.compact ? 0.35 : 0.45))
+        + Math.round((root.prefs ? root.prefs.albumTrackSpacing : 0) * uiScale)
     readonly property int rowPitch: rowHeight + rowGap
     readonly property int sideMargin: Math.round((root.compact ? 14 : 24) * uiScale)
 

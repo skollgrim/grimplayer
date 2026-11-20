@@ -120,9 +120,9 @@ Item {
     // Which edges of the playing row carry the accent bar: "none", "left", "right"
     // or "both". The tint is unaffected -- this only places the bars. Only the
     // tracks pane is handed a current item, so the bars only ever show there.
-    property string playingMarkerSides: "both"
-    readonly property bool playingMarkerLeft: playingMarkerSides === "left" || playingMarkerSides === "both"
-    readonly property bool playingMarkerRight: playingMarkerSides === "right" || playingMarkerSides === "both"
+    property string playingMarker: "both"
+    readonly property bool playingMarkerLeft: playingMarker === "left" || playingMarker === "both"
+    readonly property bool playingMarkerRight: playingMarker === "right" || playingMarker === "both"
     // One width and one colour shared by both bars, so the pair can never render
     // as two differently-sized or differently-shaded marks.
     readonly property int playingMarkerWidth: Math.max(2, Math.round(3 * uiScale))
@@ -302,7 +302,7 @@ Item {
                 // treatment that stays at full strength when the pane is not
                 // focused. Left and right are the same bar, sharing their width
                 // and colour, so the pair reads as one frame rather than two
-                // marks; the playingMarkerSides setting decides which show.
+                // marks; the playingMarker setting decides which show.
                 Rectangle {
                     visible: row.playing && root.playingMarkerLeft
                     x: 0
