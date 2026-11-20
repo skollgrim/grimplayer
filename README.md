@@ -41,8 +41,8 @@ with a job of its own reports the failure there. The table says which is which.
 | Embedded cover art | `ffmpeg` | Albums whose artwork is inside the file fall back to the placeholder; sidecar and fetched art are unaffected. |
 | Tag and cover editing, country flags | `mid3v2` (MP3) or `metaflac` (FLAC), and `zenity` to pick a cover file | The tag editor opens and shows what the files hold, but saving writes nothing and Browse cannot choose a cover file. |
 | Look up | `python3` with [`mutagen`](https://mutagen.readthedocs.io/) and [`musicbrainzngs`](https://python-musicbrainzngs.readthedocs.io/), and network access | The Match row reports the failure; editing by hand still works. |
-| Fetch covers | `python3` (standard library only) and network access | Albums with no artwork keep the placeholder. On by default; turned off under **Artwork** in the settings. |
-| Fetch lyrics | `python3` (standard library only) and network access | Tracks with no lyrics on disk show “No lyrics found”. On by default; turned off under **Lyrics** in the settings, which keeps the view local-only. |
+| Fetch covers | `python3` (standard library only) and network access | Albums with no artwork keep the placeholder. On by default; turned off under **General** in the settings. |
+| Fetch lyrics | `python3` (standard library only) and network access | Tracks with no lyrics on disk show “No lyrics found”. On by default; turned off under **General** in the settings, which keeps the player local-only. |
 
 ## Requirements
 
@@ -151,10 +151,10 @@ resets everything, `?` switches to the key reference, `Esc` steps back out and `
 closes. The visible tab follows the caret, and each tab remembers the row you
 left it on.
 
-The card is cut into tabs by topic — General (library folder, keys and UI scale),
-Now playing (the strip), Artwork, Lyrics, Library view (the three-pane browser and
-its row type), Album view, Lyrics view and Karaoke view — so a slider and a
-switch sit together
+The card is cut into tabs by topic — General (library folder, keys, UI scale,
+adaptive colours and fetching), Now playing (the strip), Artwork, Lyrics,
+Library view (the three-pane browser and its row type), Album view, Karaoke view
+and Lyrics view — so a slider and a switch sit together
 where their subject says they should, and a setting is always in the same place.
 A setting that only matters while another is on — a cover border's width, the
 artwork pane's position — stays on the card but is
@@ -317,9 +317,8 @@ sharing lyrics — and nothing is fetched for a track whose lyrics are already o
 disk: the player reads embedded lyrics, a `.lrc` or `.txt` beside the track, and
 the shared `~/.lyrics` cache first, and only then starts the
 bundled `fetch_lyrics.py` — which asks [lrclib](https://lrclib.net/) and writes
-what it finds back to that cache. Turning **Fetch lyrics** off under the
-**Lyrics** tab keeps even that last step local-only, so the view never opens a
-socket.
+what it finds back to that cache. Turning **Fetch lyrics** off under **General**
+keeps even that last step local-only, so the player never opens a socket.
 
 Synced lyrics (`.lrc`, or the `syncedLyrics` field lrclib returns) carry a time on
 each line. **Highlight** marks the current line; its default value also keeps
@@ -329,19 +328,20 @@ out. A manual scroll pauses following for the configured wait rather than
 fighting the wheel. Plain lyrics still display, just without a time to mark or
 seek to; clicking a timed line seeks to it.
 
-The lyric settings are split across three tabs. **Lyrics** leads with
-**Highlight** — marking the current line is the point, and scrolling to it is a
-secondary value of that setting — then holds the words' alignment, text size (an
-offset from the theme, so it tracks the rest of the panel), the width of the
-reading column, whether the title and artist sit above the text, and the choices
-both surfaces share: line spacing, how far the lines around the current one dim,
-how long a manual scroll holds before following resumes, the global sync offset,
-click-to-seek, and fetching. **Lyrics view** holds only the reading view's own
-choices now: whether the cover sits beside the lyrics and whether the playing
-album's titles sit beside them. **Karaoke view** holds karaoke's own text size and
-alignment, its track header, and the cover's placement — beside the lyrics, behind
-them as a low-opacity background, or nowhere — with the background opacity. Every
-default reproduces the views as they looked before the tabs existed.
+The lyric settings are split across three tabs. **Lyrics** holds only what both
+word surfaces share: line spacing, how far the lines around the current one dim,
+how long a manual scroll holds before following resumes, the global sync offset
+and click-to-seek. **Lyrics view** owns the reading view's own choices: its
+**Highlight** — marking the current line, with scrolling as a secondary value of
+that setting — alignment, text size (an offset from the theme, so it tracks the
+rest of the panel), the width of the reading column, whether the title and artist
+sit above the text, and what shares the surface: the cover beside the words and
+the playing album's titles beside them. **Karaoke view** has its own **Highlight**
+alongside its text size, alignment and track header, and the cover's placement —
+beside the lyrics, behind them as a low-opacity background, or nowhere — with the
+background opacity. Fetching is a player-wide choice under **General**, not a
+word setting. Every default reproduces the views as they looked before the tabs
+existed.
 
 **Album view** is its own tab, because those choices belong to the now-playing
 surface rather than to the lists or to either lyric view: what its caption says

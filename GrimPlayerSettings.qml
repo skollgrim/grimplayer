@@ -2,7 +2,7 @@ pragma ComponentBehavior: Bound
 // The settings card, modal over the browser.
 //
 // The settings are cut into tabs by topic: General, Now playing, Artwork, Lyrics,
-// Library view, Album view, Lyrics view and Karaoke view. A tab is one subject
+// Library view, Album view, Karaoke view and Lyrics view. A tab is one subject
 // rather than one kind of control, so a slider and a switch sit together where
 // their subject says they should, and a setting is always in the same place every
 // time the card opens.

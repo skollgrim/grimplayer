@@ -282,11 +282,13 @@ Item {
         // rows' values. Every default here reproduces the views as they looked
         // before these settings existed.
         //
-        // Marking the current line is the point, and it lives here with the words:
-        // lyricsFollow chooses whether the view also scrolls to it, and karaoke
-        // marks and follows unconditionally. The two surfaces keep separate size,
-        // alignment, track header and cover values -- karaoke's below, the reading
-        // view's later in the file.
+        // Marking the current line is the point, and each surface has its own
+        // choice: lyricsFollow governs the reading view and the words that share
+        // album view, karaokeFollow the surface read from across the room. Both
+        // use "follow" to scroll to the line, "highlight" to mark it in place and
+        // "off" to mark nothing. The two surfaces also keep separate size,
+        // alignment, track header and cover values -- karaoke's below, the
+        // reading view's later in the file.
         property string lyricsAlign: "left"
         // A lyrics-only offset from the theme, like the other font sizes. It
         // starts at the body text's own +2 so the view opens exactly as it did.
@@ -298,6 +300,10 @@ Item {
         // "off" marks nothing -- the reading mode for plain lyrics or reading
         // ahead. Highlighting is the main behaviour; following is the modifier.
         property string lyricsFollow: "follow"
+        // Karaoke opens marking and following as it always has, but its own
+        // choice means turning the reading view's highlight off need not dim a
+        // view built around the moving line.
+        property string karaokeFollow: "follow"
         // Gap between lyric lines, in logical pixels. Shared with karaoke.
         property int lyricsSpacing: 8
         // How wide the reading column may get: "full", "wide" (80%) or "narrow"
@@ -462,7 +468,7 @@ Item {
                     "fontTitle", "fontSubtitle", "fontBody", "fontBodySmall",
                     "fontCaption", "noticeScale", "coverDecodeSize",
                     "lyricsAlign", "lyricsFont", "lyricsInfo", "lyricsFollow",
-                    "karaokeAlign",
+                    "karaokeAlign", "karaokeFollow",
                     "lyricsDim", "lyricsResume", "lyricsSpacing", "lyricsWidth",
                     "lyricsCover", "karaokeFont", "karaokeInfo", "karaokeCover", "karaokeCoverOpacity",
                     "lyricsOffset", "lyricsClickSeek", "lyricsDownloads", "lyricsTracks"]
@@ -724,6 +730,7 @@ Item {
     readonly property bool lyricsTracks: store.lyricsTracks
     readonly property int karaokeFont: store.karaokeFont
     readonly property string karaokeAlign: store.karaokeAlign
+    readonly property string karaokeFollow: store.karaokeFollow
     readonly property string karaokeInfo: store.karaokeInfo
     readonly property string karaokeCover: store.karaokeCover
     readonly property real karaokeCoverOpacity: store.karaokeCoverOpacity
@@ -778,9 +785,11 @@ Item {
     // still restores it too.
     readonly property var entries: [
         // ---- General ----
-        // Player-wide choices: where the library lives and what the letter keys
-        // do. They stay out of the view tabs because they change the instrument
-        // rather than one surface on it.
+        // Player-wide choices: where the library lives, what the letter keys do,
+        // and what the player brings in from outside -- colours sampled from the
+        // playing sleeve and metadata fetched when a file has none on disk. They
+        // stay out of the view tabs because they change the instrument rather
+        // than one surface on it.
         {
             key: "musicDir",
             section: "general",
@@ -836,6 +845,27 @@ Item {
             hint: "Scales rows, spacing, fonts, icons and cover art together",
             options: [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5],
             format: function (v) { return (v * 100).toFixed(0) + "%" }
+        },
+        {
+            key: "adaptiveColors",
+            section: "general",
+            label: "Adaptive colours",
+            hint: "Follow the current album cover instead of the shell theme",
+            options: [true, false],
+        },
+        {
+            key: "fetchCovers",
+            section: "general",
+            label: "Fetch covers",
+            hint: "Look a cover up on iTunes or Deezer when an album has none, and cache it",
+            options: [true, false],
+        },
+        {
+            key: "lyricsDownloads",
+            section: "general",
+            label: "Fetch lyrics",
+            hint: "Ask lrclib when a track has no lyrics on disk, for both views; off keeps the player local-only",
+            options: [true, false],
         },
 
         // ---- Library ----
@@ -1021,8 +1051,9 @@ Item {
         // ---- Cover art ----
         //
         // Every entry in this section carries section: "artwork". That is what
-        // the card gathers into its own Artwork tab, so the cover settings sit
-        // together in one place rather than split across the other topics.
+        // the card gathers into its own Artwork tab: how the cover looks and sits.
+        // Where it comes from, and whether it colours the panel, are player-wide
+        // choices and live under General.
         {
             key: "coverBorder",
             section: "artwork",
@@ -1154,20 +1185,6 @@ Item {
             after: "coverBandMode",
             format: function (v) { return v + "%" }
         },
-        {
-            key: "fetchCovers",
-            section: "artwork",
-            label: "Fetch covers",
-            hint: "Look a cover up on iTunes or Deezer when an album has none, and cache it",
-            options: [true, false],
-        },
-        {
-            key: "adaptiveColors",
-            section: "artwork",
-            label: "Adaptive colours",
-            hint: "Follow the current album cover instead of the shell theme",
-            options: [true, false],
-        },
 
         // ---- Album view ----
         //
@@ -1229,7 +1246,7 @@ Item {
             key: "albumLyrics",
             section: "album",
             label: "Lyrics beside tracks",
-            hint: "Share album view with the playing track's lyrics; the cover keeps its own pane. The words' size, spacing and highlight behaviour come from the Lyrics tab",
+            hint: "Share album view with the playing track's lyrics; the cover keeps its own pane. The words' size, alignment, track info and highlight come from Lyrics view, their spacing and sharing from Lyrics",
             options: [true, false],
         },
         {
@@ -1252,53 +1269,10 @@ Item {
 
         // ---- Lyrics ----
         //
-        // Marking the current line is the main choice about the words, so it
-        // leads this tab. The rest shape their look and the behaviour that
-        // reaches both lyric surfaces: the reading view (Alt+L) and karaoke.
-        // Karaoke has its own size, alignment and track header;
-        // everything here applies wherever the words appear, including when they
-        // share album view. The reading view's view-only rows sit under Lyrics
-        // view, and karaoke's under Karaoke view.
-        {
-            key: "lyricsFollow",
-            section: "lyrics",
-            label: "Highlight",
-            hint: "Mark the current lyric line; highlight and follow also scrolls the view to it, highlight only leaves the text where it is, and off marks nothing",
-            options: ["follow", "highlight", "off"],
-            format: function (v) {
-                return v === "follow" ? "Highlight + follow"
-                    : v === "highlight" ? "Highlight only" : "Off"
-            }
-        },
-        {
-            key: "lyricsAlign",
-            section: "lyrics",
-            label: "Alignment",
-            hint: "Align the words left or centre them, both in the lyrics view and when they share album view; karaoke has its own alignment",
-            options: ["left", "center"],
-        },
-        {
-            key: "lyricsFont",
-            section: "lyrics",
-            label: "Text size",
-            hint: "Lyrics view size as an offset from the theme; karaoke has its own",
-            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
-            format: root.deltaText
-        },
-        {
-            key: "lyricsWidth",
-            section: "lyrics",
-            label: "Text width",
-            hint: "How wide the lyrics view's reading column may get; a narrower column keeps long lines readable",
-            options: ["full", "wide", "narrow"],
-        },
-        {
-            key: "lyricsInfo",
-            section: "lyrics",
-            label: "Track info",
-            hint: "In the lyrics view, show the title and artist above the text, the title alone, or neither",
-            options: ["both", "title", "off"],
-        },
+        // Only the choices the words share wherever they appear: the reading
+        // view, album view's companion column and karaoke. How each surface marks
+        // its line, sizes it and sees the track above it is a view choice now and
+        // lives under Lyrics view or Karaoke view.
         {
             key: "lyricsSpacing",
             section: "lyrics",
@@ -1339,21 +1313,54 @@ Item {
             hint: "Click a timed line in either view to jump to that point in the track",
             options: [true, false],
         },
-        {
-            key: "lyricsDownloads",
-            section: "lyrics",
-            label: "Fetch lyrics",
-            hint: "Ask lrclib when a track has no lyrics on disk, for both views; off keeps the player local-only",
-            options: [true, false],
-        },
 
         // ---- Lyrics view ----
         //
-        // What is left of the reading view's own choices: what else shares the
-        // reading surface. Karaoke has its own cover and follows the current line
-        // unconditionally, so changing these must not move the karaoke surface.
-        // The words' alignment, size, width, track header and highlight all live
-        // with the other word settings under Lyrics.
+        // The reading view's own surface: how its words are marked, aligned and
+        // sized, how wide the column is, what sits above the text and what shares
+        // the space. These follow the words into album view when lyrics sit beside
+        // the titles, but karaoke keeps its own highlight, alignment, size,
+        // header and cover under Karaoke view.
+        {
+            key: "lyricsFollow",
+            section: "lyricsView",
+            label: "Highlight",
+            hint: "Mark the current lyric line in the lyrics view and album view's companion words; highlight and follow also scrolls to it, highlight only leaves the text where it is, and off marks nothing",
+            options: ["follow", "highlight", "off"],
+            format: function (v) {
+                return v === "follow" ? "Highlight + follow"
+                    : v === "highlight" ? "Highlight only" : "Off"
+            }
+        },
+        {
+            key: "lyricsAlign",
+            section: "lyricsView",
+            label: "Alignment",
+            hint: "Align the words left or centre them, both in the lyrics view and when they share album view; karaoke has its own alignment",
+            options: ["left", "center"],
+        },
+        {
+            key: "lyricsFont",
+            section: "lyricsView",
+            label: "Text size",
+            hint: "Lyrics view size as an offset from the theme; karaoke has its own",
+            options: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            format: root.deltaText
+        },
+        {
+            key: "lyricsWidth",
+            section: "lyricsView",
+            label: "Text width",
+            hint: "How wide the lyrics view's reading column may get; a narrower column keeps long lines readable",
+            options: ["full", "wide", "narrow"],
+        },
+        {
+            key: "lyricsInfo",
+            section: "lyricsView",
+            label: "Track info",
+            hint: "In the lyrics view, show the title and artist above the text, the title alone, or neither",
+            options: ["both", "title", "off"],
+        },
         {
             key: "lyricsCover",
             section: "lyricsView",
@@ -1372,10 +1379,20 @@ Item {
         // ---- Karaoke view ----
         //
         // Karaoke is its own surface: larger text read from a distance, its own
-        // alignment and track header, and a cover that can share the view, sit
-        // behind it or stay away. These are separate choices from the reading
-        // view's size, alignment and cover switch, so they have a tab of their
-        // own.
+        // highlight, alignment and track header, and a cover that can share the
+        // view, sit behind it or stay away. These are separate choices from the
+        // reading view's, so they have a tab of their own.
+        {
+            key: "karaokeFollow",
+            section: "karaoke",
+            label: "Highlight",
+            hint: "Mark the current karaoke line; highlight and follow also scrolls to it, highlight only leaves the text where it is, and off marks nothing",
+            options: ["follow", "highlight", "off"],
+            format: function (v) {
+                return v === "follow" ? "Highlight + follow"
+                    : v === "highlight" ? "Highlight only" : "Off"
+            }
+        },
         {
             key: "karaokeFont",
             section: "karaoke",
@@ -1556,8 +1573,8 @@ Item {
     // The sections the card draws, in tab order, each a name and the tag its
     // entries carry. A section is one topic -- the player-wide choices, the
     // now-playing strip, the cover art, the lyric choices both surfaces share,
-    // the three-pane library browser, the album view, the reading view's own and
-    // karaoke's own surface -- rather than one kind of control, so a slider and a
+    // the three-pane library browser, the album view, karaoke's own surface and
+    // the reading view's own -- rather than one kind of control, so a slider and a
     // switch sit together wherever their subject says they should.
     readonly property var sections: [
         { tag: "general", name: "General" },
@@ -1566,8 +1583,8 @@ Item {
         { tag: "lyrics", name: "Lyrics" },
         { tag: "library", name: "Library view" },
         { tag: "album", name: "Album view" },
-        { tag: "lyricsView", name: "Lyrics view" },
-        { tag: "karaoke", name: "Karaoke view" }
+        { tag: "karaoke", name: "Karaoke view" },
+        { tag: "lyricsView", name: "Lyrics view" }
     ]
 
     // Each row carries its entry, that entry's index into the table, and whether

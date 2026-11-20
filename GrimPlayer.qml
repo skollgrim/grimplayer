@@ -291,6 +291,11 @@ Item {
             root.lyricsFollowPaused = false
             root.scrollToCurrentLyric()
         }
+        function onKaraokeFollowChanged() {
+            if (prefs.karaokeFollow !== "follow") return
+            root.lyricsFollowPaused = false
+            root.scrollToCurrentLyric()
+        }
         // A new library root has to reach the service immediately: the next
         // tag save, artwork extraction or lyrics lookup must not still use the
         // folder the panel was seeded with at startup.
@@ -1237,14 +1242,16 @@ Item {
     // The lyrics view's own presentation, read straight from prefs so a change
     // in the settings card lands without reopening the view.
     //
-    // Karaoke still marks and follows the current line unconditionally -- that is
-    // what karaoke means -- but it no longer forces the words to the centre: it
-    // has its own alignment so a view read from across the room can be lined up
-    // without moving the reading view. The words share one alignment across the
-    // reading view and album view -- lyricsAlign -- so that choice follows them
-    // wherever they appear. The album's titles use trackAlign on the Album tab.
-    readonly property bool lyricsMarking: root.karaokeView || prefs.lyricsFollow !== "off"
-    readonly property bool lyricsFollowing: root.karaokeView || prefs.lyricsFollow === "follow"
+    // Each surface marks its line on its own setting: karaokeFollow for the view
+    // read from across the room, lyricsFollow for the reading view and the words
+    // that share album view. Both default to "follow", and neither forces the
+    // words to the centre: alignment stays per-surface so karaoke can be lined up
+    // without moving the reading view. Those words share lyricsAlign across the
+    // reading view and album view; the album's titles use trackAlign instead.
+    readonly property bool lyricsMarking: root.karaokeView
+        ? prefs.karaokeFollow !== "off" : prefs.lyricsFollow !== "off"
+    readonly property bool lyricsFollowing: root.karaokeView
+        ? prefs.karaokeFollow === "follow" : prefs.lyricsFollow === "follow"
     readonly property int lyricsTextAlign: root.karaokeView
         ? (prefs.karaokeAlign === "left" ? Text.AlignLeft : Text.AlignHCenter)
         : (prefs.lyricsAlign === "center" ? Text.AlignHCenter : Text.AlignLeft)
@@ -1362,8 +1369,8 @@ Item {
 
     // Keep the highlighted line in the middle of the view. Called when the
     // playback timer moves the highlight, and again when a paused reader lets
-    // following resume. Only "follow" (and karaoke, which always follows)
-    // scrolls: "highlight" marks the line in place, and "off" does not track it.
+    // following resume. Only the "follow" value scrolls, on either surface;
+    // "highlight" marks the line in place, and "off" does not track it.
     function scrollToCurrentLyric() {
         if (!root.lyricsSurfaceActive || !root.lyricsFollowing) return
         if (root.lyricsFollowPaused) return
@@ -2222,10 +2229,10 @@ Item {
                                         horizontalAlignment: root.lyricsTextAlign
                                         color: (root.lyricsMarking && root.currentLyricLine === index)
                                             ? root.lyricsHighlightColor : theme.foreground
-                                        // Marking modes -- follow, highlight and
-                                        // karaoke -- colour the current line and
-                                        // fade the rest; "off" leaves the text
-                                        // uniform, since nothing is current.
+                                        // "follow" and "highlight" colour the
+                                        // current line and fade the rest; "off"
+                                        // leaves the text uniform, since nothing
+                                        // is current.
                                         opacity: (!root.lyricsMarking
                                                   || root.currentLyricLine === index)
                                             ? 1.0 : root.lyricsDimOpacity

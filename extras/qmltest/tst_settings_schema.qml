@@ -114,9 +114,9 @@ TestCase {
     // Album view.
     function test_tabs_group_settings_by_subject() {
         var order = ["general", "nowPlaying", "artwork", "lyrics",
-            "library", "album", "lyricsView", "karaoke"]
+            "library", "album", "karaoke", "lyricsView"]
         var names = ["General", "Now playing", "Artwork", "Lyrics", "Library view",
-            "Album view", "Lyrics view", "Karaoke view"]
+            "Album view", "Karaoke view", "Lyrics view"]
         compare(config.sections.length, order.length)
         for (var s = 0; s < order.length; s++) {
             compare(config.sections[s].tag, order[s])
@@ -125,11 +125,16 @@ TestCase {
 
         var homes = {
             musicDir: "general", keyboardStyle: "general", findPlace: "general",
-            findScale: "general", uiScale: "general", wrapAround: "library",
-            playingMarker: "library", fontSubtitle: "library", albumYears: "library",
+            findScale: "general", uiScale: "general", adaptiveColors: "general",
+            fetchCovers: "general", lyricsDownloads: "general",
+            wrapAround: "library", playingMarker: "library",
+            fontSubtitle: "library", albumYears: "library",
             seekThickness: "nowPlaying", iconSize: "nowPlaying", fontTitle: "nowPlaying",
             fontBody: "nowPlaying", noticeScale: "nowPlaying", fontCaption: "album",
-            albumFont: "album", albumTrackSpacing: "album"
+            albumFont: "album", albumTrackSpacing: "album",
+            lyricsFollow: "lyricsView", lyricsAlign: "lyricsView",
+            lyricsFont: "lyricsView", lyricsWidth: "lyricsView", lyricsInfo: "lyricsView",
+            karaokeFollow: "karaoke"
         }
         for (var key in homes) {
             var e = entryFor(key)
@@ -356,14 +361,21 @@ TestCase {
         verify(config.isActive(place), "find position should come back in Find style")
     }
 
-    // Highlighting is the primary word setting, so it belongs with the rest of
-    // the words and is named for what it does; following is only a value of it.
-    function test_highlight_lives_with_the_words() {
-        var e = entryFor("lyricsFollow")
-        compare(e.section, "lyrics")
-        compare(e.label, "Highlight")
-        compare(e.options[0], "follow")
-        verify(config.textOf(e).indexOf("Highlight") === 0,
+    // Highlighting is a view choice on each word surface, not one global: the
+    // reading view's sits with its own rows and karaoke has its own. Following is
+    // only a value of it.
+    function test_each_word_surface_has_its_own_highlight() {
+        var l = entryFor("lyricsFollow")
+        compare(l.section, "lyricsView")
+        compare(l.label, "Highlight")
+        compare(l.options[0], "follow")
+        verify(config.textOf(l).indexOf("Highlight") === 0,
+            "the value should read as a kind of highlight")
+        var k = entryFor("karaokeFollow")
+        compare(k.section, "karaoke")
+        compare(k.label, "Highlight")
+        compare(k.options[0], "follow")
+        verify(config.textOf(k).indexOf("Highlight") === 0,
             "the value should read as a kind of highlight")
     }
 
