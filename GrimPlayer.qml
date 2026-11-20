@@ -702,17 +702,18 @@ Item {
         window.width, window.height, root.karaokeMargin,
         root.karaokeCoverGap, root.karaokeMinTextWidth, prefs.uiScale,
         prefs.stageCoverScale)
-    // The background cover is a centred wash; the same size setting scales it
-    // and keeps it centred in the reading area instead of pinning it top-left.
+    // The background cover is a centred wash with its own size setting; scaling
+    // it keeps the wash centred instead of pinning it top-left, and leaves the
+    // side cover's size alone.
     readonly property var karaokeBackgroundBox: LayoutMath.karaokeBackgroundCover(
-        window.width, window.height, prefs.stageCoverScale)
+        window.width, window.height, prefs.karaokeBackgroundScale)
     // The largest size the main cover can take in any view, so both of its Image
     // layers decode once and are scaled between placements instead of reloaded.
     // A reload blanks the picture for a frame or two, so a view switch that
     // changes the cover's size would flash. A configured placement that is not
     // showing still counts, because a key can switch to it at any moment. The
-    // background placement is the one non-square case: it fills the window, so
-    // it sets the bounds itself.
+    // background placement is the one non-square case: it is measured against
+    // the window, so it sets the bounds even when scaled down from it.
     readonly property int coverDecodeBoundWidth: Math.max(
         root.heroCover, root.albumCoverSize, root.karaokeCoverSize,
         root.floatingCoverSize,
@@ -731,10 +732,10 @@ Item {
     readonly property int karaokeTextRightInset: root.karaokeCoverSide
         ? root.karaokeCoverSize + root.karaokeCoverGap : 0
 
-    // Height of the now-playing strip. Named because two overlays sit clear of it
-    // and have to agree with it: the typeahead readout and the MPD error banner.
-    // Both read it from here, so a change to the strip's height cannot leave the
-    // banner sitting on top of it.
+    // Height of the now-playing strip. Named because the overlay anchor keeps all
+    // three readouts clear of it: typed letters, transport replies and MPD errors.
+    // They read it from here, so a change to the strip's height cannot leave a
+    // notice sitting on top of it.
     readonly property int stripHeight: Math.round(84 * prefs.uiScale)
 
     // The strip tightens in two steps before the title runs out of room. The
@@ -1302,10 +1303,10 @@ Item {
     readonly property real lyricsDimOpacity: prefs.lyricsDim === "subtle" ? 0.85
         : (prefs.lyricsDim === "strong" ? 0.5 : 0.7)
 
-    // The header above the lyrics. Both surfaces read the same metadata but each
-    // decides how much of it to show: the reading view from lyricsInfo, karaoke
-    // from karaokeInfo. The header sits outside the Flickable in both, so the
-    // details stay put while the words scroll.
+    // The header above the lyrics. Both surfaces read the same metadata but
+    // decide for themselves which pieces to show, one switch per piece. The
+    // header sits outside the Flickable in both, so the details stay put while
+    // the words scroll.
     readonly property string lyricsTrackTitle: (mpd && mpd.current && (mpd.current.Title || mpd.current.file))
         ? (mpd.current.Title || mpd.current.file) : ""
     readonly property string lyricsTrackArtist: (mpd && mpd.current && (mpd.current.Artist || mpd.current.AlbumArtist))
@@ -1313,13 +1314,13 @@ Item {
     readonly property string lyricsTrackAlbum: (mpd && mpd.current && mpd.current.Album)
         ? mpd.current.Album : ""
     readonly property bool lyricsHeaderTitleVisible: root.karaokeView
-        ? prefs.karaokeInfo !== "off"
-        : prefs.lyricsInfo !== "off"
+        ? prefs.karaokeInfoTitle : prefs.lyricsInfoTitle
     readonly property bool lyricsHeaderArtistVisible: (root.karaokeView
-        ? (prefs.karaokeInfo === "both" || prefs.karaokeInfo === "all")
-        : prefs.lyricsInfo === "both") && root.lyricsTrackArtist !== ""
-    readonly property bool lyricsHeaderAlbumVisible: root.karaokeView
-        && prefs.karaokeInfo === "all" && root.lyricsTrackAlbum !== ""
+        ? prefs.karaokeInfoArtist : prefs.lyricsInfoArtist)
+        && root.lyricsTrackArtist !== ""
+    readonly property bool lyricsHeaderAlbumVisible: (root.karaokeView
+        ? prefs.karaokeInfoAlbum : prefs.lyricsInfoAlbum)
+        && root.lyricsTrackAlbum !== ""
     // Karaoke reads its header from further away, so its type is a little larger
     // than the reading view's; the ratio keeps the same hierarchy between rows.
     readonly property real lyricsHeaderScale: root.karaokeView ? 1.25 : 1
@@ -2220,9 +2221,8 @@ Item {
                             elide: Text.ElideRight
                         }
 
-                        // The album row is karaoke's alone: the reading view has
-                        // no setting for it, and one more line above the text
-                        // would only shorten the reading column.
+                        // The album row follows each view's own switch, so it
+                        // can join either header without changing the other.
                         Text {
                             Layout.preferredWidth: root.lyricsColumnWidth
                             Layout.alignment: Qt.AlignHCenter
@@ -2644,75 +2644,78 @@ Item {
             }
         }
 
-        // Typeahead readout: the letters being jumped to, shown only while they
-        // are buffered and gone the moment the buffer ages out, so it always
-        // matches what the next typed letter will search for.
+        // Every transient readout shares one home: typed letters, the Ctrl
+        // transport's one-line reply, and MPD's connection error. This anchor
+        // owns that geometry so the three can never drift into different bands;
+        // "Notice position" in the settings card moves the lot. Both homes centre
+        // on the tracks pane, yielding left only as far as a floating cover needs
+        // and falling back to the window centre when the browser is hidden. When
+        // more than one is up they stack in one column instead of painting over
+        // each other.
         //
-        // Two homes, both centred horizontally on the tracks pane: that is where
-        // a find is happening, so the letters land under the eye that is already
-        // reading that pane. "bottom" puts them in the band just above the
-        // now-playing strip, at the same height as the Ctrl transport readout;
-        // "center" floats them in the middle of the list area above the strip.
-        // A floating cover owns the lower-right of that same pane, so the readout
-        // slides left only as far as it must to clear it; with the cover in its
-        // own pane there is nothing to avoid and it stays dead centre. In album
-        // and lyrics view the browser is hidden, so it falls back to the window
-        // centre instead of pointing at a pane that is not there.
-        //
-        // The vertical positions measure against the window, not the lists
-        // region: this item is a sibling of the panes, so parent is the whole
-        // surface. They subtract the strip because the readout belongs to the
-        // list area above it, not to the footer.
-        //
-        // Position is set with x/y rather than by swapping anchors between the two
-        // placements. Toggling a property that feeds an anchor between undefined
-        // and an anchor line leaves Qt with a half-applied anchor -- an item bound
-        // to both `left` and `horizontalCenter` for a frame stretches to span
-        // them, which is the wide stray rule that showed up when the setting was
-        // flipped. A plain x/y binding has no anchor state to get stuck in.
-        Rectangle {
-            id: typeaheadReadoutBox
+        // Horizontal position is plain x, never an anchor swapped between the
+        // two homes: toggling an anchor between undefined and a line leaves Qt
+        // with a half-applied anchor -- an item bound to both `left` and
+        // `horizontalCenter` for a frame stretches into the wide stray rule that
+        // showed up when the old setting was flipped. A value binding has no
+        // anchor state to get stuck in.
+        Item {
+            id: noticeAnchor
             readonly property bool centered: prefs.findPlace === "center"
             readonly property int gutter: Math.round(12 * prefs.uiScale)
-            // Center: dead middle of the pane area above the strip, so the readout
-            // never rides down into the footer whatever the strip's thickness.
-            // Bottom: the transport readout's band, lifted clear of the error
-            // banner the same way that one is, so the two never stack.
+            readonly property int gap: Math.round(6 * prefs.uiScale)
+            // The boxes are siblings of the panes, so the parent is the whole
+            // surface; the strip is taken out because the notices belong to the
+            // list area above it, not to the footer.
             readonly property int paneArea: Math.max(0, parent.height - root.stripHeight)
-            readonly property int bandY: parent.height - root.stripHeight - gutter - height
-                - (errorBanner.visible ? errorBanner.height + Math.round(8 * prefs.uiScale) : 0)
-            // A typed jump and a transport notice can be up at the same time --
-            // type a letter, then nudge the volume. The notice owns the band,
-            // so the typeahead rides above it instead of being covered. The lift
-            // follows the notice box's own visibility, not the flag, so it holds
-            // through the fade instead of dropping out from under the readout.
-            readonly property int noticeLift: transportNoticeBox.visible
-                ? transportNoticeBox.height + Math.round(6 * prefs.uiScale) : 0
-            // The floating cover sits in the tracks pane's lower-right corner,
-            // exactly where a bottom readout lands, and a tall one reaches the
-            // centred readout too. In its own pane it is out of the way, so the
-            // guard is only armed while it floats over the lists.
+            readonly property int bandBottom: parent.height - root.stripHeight - gutter
+            // A background cover is a wash behind the words, not a picture in the
+            // corner, so it must not shove the notices into the left edge. A side
+            // or floating cover still owns that corner and gets the same guard.
             readonly property int coverGuard: cover.visible && !root.coverPaneShown
+                && !root.karaokeCoverBackground
                 ? cover.x - Math.round(8 * prefs.uiScale) : parent.width
             readonly property int tracksLeft: paneRow.x + paneRow.artistsWidth + paneRow.albumsWidth
             readonly property int tracksCenter: paneRow.x
                 + (paneRow.width + paneRow.artistsWidth + paneRow.albumsWidth) / 2
+            // Bottom-to-top stack order. Heights are text-driven and never depend
+            // on y, so computing one box's y from the others' visible heights
+            // cannot feed back into their own positions.
+            readonly property var items: [
+                { visible: root.typeaheadBuffer.length > 0, height: typeaheadReadoutBox.height },
+                { visible: transportNoticeBox.visible, height: transportNoticeBox.height },
+                { visible: errorBanner.visible, height: errorBanner.height }
+            ]
+
+            function xFor(w) {
+                return LayoutMath.readoutX({
+                    paneVisible: paneRow.visible, parentWidth: parent.width,
+                    tracksLeft: tracksLeft, tracksCenter: tracksCenter,
+                    guard: coverGuard, gutter: gutter, width: w
+                })
+            }
+
+            function yFor(index) {
+                return LayoutMath.readoutStackY({
+                    centered: centered, parentHeight: parent.height,
+                    stripHeight: root.stripHeight, gutter: gutter, gap: gap,
+                    items: items, index: index
+                })
+            }
+        }
+
+        // The letters being jumped to, shown only while they are buffered and
+        // gone the moment the buffer ages out, so they always match what the
+        // next typed letter will search for. Its place comes from the shared
+        // anchor above; it is the first item in the stack, so the two notices
+        // rise above it when they are up at the same time.
+        Rectangle {
+            id: typeaheadReadoutBox
             visible: root.typeaheadBuffer.length > 0
             width: typeaheadReadout.implicitWidth + Math.round(20 * prefs.uiScale)
             height: typeaheadReadout.implicitHeight + Math.round(12 * prefs.uiScale)
-            // Stay as close to the tracks pane's centre as the floating cover
-            // allows: clamp the right edge to the cover's left, and never let the
-            // left edge cross the pane's own margin. The lower bound is a right
-            // edge too -- it includes the readout's width before the final
-            // subtraction -- so a tall floating cover cannot push the box partly
-            // outside the pane. Reading paneRow's geometry keeps the binding live
-            // when the lists region resizes; with no browser on screen the old
-            // window centre is the only sensible place left.
-            x: paneRow.visible
-                ? Math.round(Math.max(tracksLeft + gutter + width,
-                    Math.min(tracksCenter + width / 2, coverGuard)) - width)
-                : Math.round((parent.width - width) / 2)
-            y: centered ? Math.round((paneArea - height) / 2) : bandY - noticeLift
+            x: noticeAnchor.xFor(width)
+            y: noticeAnchor.yFor(0)
             radius: Math.round(6 * prefs.uiScale)
             // Themed like the rest of the panel: a low foreground wash rather
             // than flat black, so it sits in the palette and follows a theme
@@ -2738,19 +2741,14 @@ Item {
         }
 
         // Failure has to be loud: a player that silently shows an empty library
-        // is indistinguishable from an empty one.
-        //
-        // It shares the typeahead's band above the now-playing strip -- the one
-        // part of the window nothing else competes for, and the part least likely
-        // to be over a row the user is reading -- but centred rather than tucked
-        // into the artists pane's corner, because this is a statement about the
-        // whole panel and not about the caret. The band comes from stripHeight so
-        // the two cannot drift apart.
+        // is indistinguishable from an empty one. It uses the same home as the
+        // other readouts, now with the shared anchor rather than its own bottom
+        // margin, so moving the notices cannot leave this one behind. The tint,
+        // border and bodySmall text keep it distinct from a typed jump.
         Rectangle {
             id: errorBanner
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: root.stripHeight + Math.round(12 * prefs.uiScale)
+            x: noticeAnchor.xFor(width)
+            y: noticeAnchor.yFor(2)
             visible: !!root.mpd && (!root.mpd.connected || root.mpd.lastError !== "")
             width: errorText.implicitWidth + Math.round(32 * prefs.uiScale)
             height: errorText.implicitHeight + Math.round(12 * prefs.uiScale)
@@ -2784,21 +2782,13 @@ Item {
             }
         }
 
-        // Transient readout for the Ctrl transport keys: what the last one did,
-        // in the band above the now-playing strip. Same shape and palette as the
-        // typeahead readout, so a mode change and a jump read as the same kind of
-        // aside rather than as two different overlays. It fades rather than
-        // blinking out, and rises clear of the error banner when that is up.
-        //
-        // Karaoke has no strip, and its lyrics stop short of the window's bottom
-        // edge, so there the readout drops into that margin instead of hanging a
-        // footer's height above the window.
+        // Transient readout for the Ctrl transport keys: what the last one did.
+        // Same shape and palette as the typeahead, and now the same home too, so
+        // a mode change and a jump read as one kind of aside wherever the notices
+        // are placed. It fades rather than blinking out, and the shared stack
+        // keeps it clear of the typed letters and the error banner.
         Rectangle {
             id: transportNoticeBox
-            readonly property int gutter: Math.round(12 * prefs.uiScale)
-            readonly property int baseMargin: root.karaokeView
-                ? Math.round(10 * prefs.uiScale)
-                : root.stripHeight + gutter
             visible: opacity > 0
             opacity: root.transportNoticeVisible ? 1 : 0
             Behavior on opacity {
@@ -2807,10 +2797,8 @@ Item {
                     easing.type: Easing.OutCubic
                 }
             }
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: baseMargin
-                + (errorBanner.visible ? errorBanner.height + Math.round(8 * prefs.uiScale) : 0)
+            x: noticeAnchor.xFor(width)
+            y: noticeAnchor.yFor(1)
             width: transportNoticeText.implicitWidth + Math.round(20 * prefs.uiScale)
             height: transportNoticeText.implicitHeight + Math.round(12 * prefs.uiScale)
             radius: Math.round(6 * prefs.uiScale)
@@ -3445,10 +3433,14 @@ Item {
 
     // Alt+Shift+= / Alt+Shift+-: the artwork's size, applied to whichever view
     // is showing. The browser and reading view read coverScale; album view and
-    // karaoke share stageCoverScale, which also scales karaoke's background
-    // wash. Two numbers, because those surfaces size their art differently, but
-    // one key that always moves the one the current view actually reads.
+    // karaoke's square side cover share stageCoverScale. A karaoke background is
+    // sized by its own row instead, so the key moves what is actually on screen.
     function cycleCoverSize(delta) {
+        if (root.karaokeView && root.karaokeCoverBackground) {
+            var b = root.cycleSetting("karaokeBackgroundScale", delta)
+            if (b) root.showTransportNotice("Cover size: " + root.settingText(b))
+            return
+        }
         if (root.albumView || root.karaokeView) {
             var s = root.cycleSetting("stageCoverScale", delta)
             if (s) root.showTransportNotice("Cover size: " + root.settingText(s))

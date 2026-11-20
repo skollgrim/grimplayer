@@ -19,7 +19,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Cover pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Pane above` tunes the window size floor the pane is kept to.
 - **Adaptive colours** — optionally matches the panel's colors to the playing album.
 - **A strip that gives way** — on a narrow window the now-playing strip tightens its margins and shortens the volume track, then drops the track and keeps the speaker, so the title and the transport never squeeze each other.
-- **Keyboard style** — choose what letter keys do: `Find` jumps to a matching row as you type (the default), `Vim` uses `j/k/h/l/g/G` to navigate, and `Off` leaves letters inert while arrows still work. During a find, `Space` adds a word to the search instead of toggling playback; the readout is centred horizontally on the tracks pane and can sit above the now-playing strip (where transport changes appear) or in the middle of the list area, at a size of your choosing. In the tracks pane a number jumps to that track.
+- **Keyboard style** — choose what letter keys do: `Find` jumps to a matching row as you type (the default), `Vim` uses `j/k/h/l/g/G` to navigate, and `Off` leaves letters inert while arrows still work. During a find, `Space` adds a word to the search instead of toggling playback. Typed letters, transport replies and MPD errors all share one position — **Notice position** under General puts them above the now-playing strip or in the middle of the tracks pane — and **Find size** sets the letters' text size. In the tracks pane a number jumps to that track.
 - **Quiet track numbers** — the tracks pane writes `01.` or `01 -` before each title, and can hold the number back in the same muted ink as the durations.
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight the playing line, and can follow it with the view. The playing album's titles can sit beside the words.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large text, centred by default but configurable under **Karaoke view**, the current line bold while marking is on, everything else out of the way.
@@ -127,12 +127,13 @@ to the browser. Closing the panel keeps the view, so the next summon comes back
 to lyrics, karaoke or album view rather than resetting to the browser.
 
 The Ctrl keys and the Alt cover and size keys say what they did: a mode change,
-a volume step or a new size flashes a one-line readout above the strip — or, in
-karaoke, in the margin under the words — and it fades after a moment. The strip's
-own buttons and slider are hidden in karaoke, so without it a shuffle or repeat
-change would be silent there. The readout has its own text size (Now playing →
-Transport readout), so it can be made easier to catch at a glance without
-touching the lists.
+a volume step or a new size flashes a one-line readout and fades after a moment.
+It lands in the same place as type-to-find, set by **Notice position** under
+General, and an MPD connection error uses that home too; when more than one is
+up they stack rather than overlap. The strip's own buttons and slider are hidden
+in karaoke, so without the readout a shuffle or repeat change would be silent
+there. Transport replies keep their own text size (Now playing → Transport
+readout), so they can be made easier to catch without touching the lists.
 
 Shuffle has three pools, not one: the playing album, the artist, or the whole
 library. `Ctrl` + `S` (or the shuffle button) cycles off → album → artist →
@@ -334,12 +335,14 @@ how long a manual scroll holds before following resumes, the global sync offset
 and click-to-seek. **Lyrics view** owns the reading view's own choices: its
 **Highlight** — marking the current line, with scrolling as a secondary value of
 that setting — alignment, text size (an offset from the theme, so it tracks the
-rest of the panel), the width of the reading column, whether the title and artist
-sit above the text, and what shares the surface: the cover beside the words and
-the playing album's titles beside them. **Karaoke view** has its own **Highlight**
-alongside its text size, alignment and track header, and the cover's placement —
-beside the lyrics, behind them as a low-opacity background, or nowhere — with the
-background opacity. Fetching is a player-wide choice under **General**, not a
+rest of the panel), the width of the reading column, separate **Title above
+lyrics**, **Artist above lyrics** and **Album above lyrics** switches for the
+line written over the words, and what shares the surface: the cover beside the
+words and the playing album's titles beside them. **Karaoke view** has its own
+**Highlight** alongside its text size and alignment, the same three header
+switches, and the cover's placement — beside the lyrics, behind them as a
+low-opacity background, or nowhere — with the background's own size and opacity.
+Fetching is a player-wide choice under **General**, not a
 word setting. Every default reproduces the views as they looked before the tabs
 existed.
 
@@ -372,12 +375,13 @@ strip are hidden, the text is set large (centred by default, with its own
 alignment setting), and the current line is marked by default — **Highlight** under
 **Karaoke view** chooses whether it is followed, marked in place, or not marked at
 all. The track
-header sits above the scrolling words and stays put as they move; **Track info** chooses whether it shows the track, the
-track and artist, those plus the album, or nothing. The **Cover** setting puts a
+header sits above the scrolling words and stays put as they move; **Title above
+lyrics**, **Artist above lyrics** and **Album above lyrics** each write their
+piece onto that line, so any one of them can stand alone. The **Cover** setting puts a
 full-size cover to the right of the lyrics, matching the artwork pane at full
 size, which shifts the text left into the room that leaves; in **Background** it
-lays the cover over the whole view at the chosen opacity with the lyrics on top,
-and **Hidden** leaves the text centred on its own. It is a view of the same
+lays the cover over the view at the chosen size and opacity with the lyrics on
+top, and **Hidden** leaves the text centred on its own. It is a view of the same
 window, toggled exactly like `Alt` + `L` — press it again to go back to the
 browser, or press `Alt` + `L` to step straight to the reading view. The shared
 reading settings still apply where they make sense — spacing, dimming, resume,
@@ -421,10 +425,10 @@ spacing, follow the tab's `Track alignment`, and the shared words follow the
 one `Alignment` setting under Lyrics, so the two columns can be lined up
 independently. On a window too narrow for both, the titles keep the surface.
 `Alt` + `Shift` + `=` / `-` resizes the cover in whichever view is showing: the
-browser and reading view use the artwork-pane **Cover size**, while album view
-and karaoke share **Album & karaoke cover size**, which also scales karaoke's
-background wash. Hovering a title lights it
-exactly as the caret does, but the highlight follows a live pointer: a key press
+browser and reading view use the artwork-pane **Cover size**, album view and
+karaoke's side cover share **Album & side cover size**, and karaoke's background
+wash uses its own **Background cover size** while it is showing. Hovering a
+title lights it exactly as the caret does, but the highlight follows a live pointer: a key press
 hides the cursor and takes the highlight with it, and moving the pointer again
 brings both back.
 

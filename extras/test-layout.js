@@ -192,6 +192,9 @@ check("karaokeBackgroundCover: a smaller share stays centred", () => {
     assert.deepEqual(Layout.karaokeBackgroundCover(1000, 800, 25), {
         width: 250, height: 200, x: 375, y: 300
     })
+    assert.deepEqual(Layout.karaokeBackgroundCover(1000, 800, 30), {
+        width: 300, height: 240, x: 350, y: 280
+    })
 })
 
 check("karaokeBackgroundCover: odd sizes round without leaving the centre", () => {
@@ -287,6 +290,64 @@ check("coverBandVisible: the slack covers the compositor's rounding", () => {
     assert.equal(Layout.coverBandVisible(band({ windowWidth: 994 })), true)    // 1000 >= 1000
     assert.equal(Layout.coverBandVisible(band({ windowWidth: 1014, minWidth: 1020 })), true)
     assert.equal(Layout.coverBandVisible(band({ windowWidth: 1013, minWidth: 1020 })), false)
+})
+
+// ---- shared notice home ----
+
+const readoutXBase = (over) => Object.assign({
+    paneVisible: true, parentWidth: 1000, tracksLeft: 300,
+    tracksCenter: 500, guard: 1000, gutter: 12, width: 100
+}, over)
+
+check("readoutX: a lone notice centres on the window without the browser", () => {
+    assert.equal(Layout.readoutX(readoutXBase({ paneVisible: false })), 450)
+})
+
+check("readoutX: the band centres on the tracks pane", () => {
+    assert.equal(Layout.readoutX(readoutXBase({})), 450)
+})
+
+check("readoutX: a floating cover pushes the box left by only what it needs", () => {
+    assert.equal(Layout.readoutX(readoutXBase({ guard: 480 })), 380)
+    // A cramped pane binds on the left gutter instead of the cover.
+    assert.equal(Layout.readoutX(readoutXBase({
+        tracksLeft: 300, tracksCenter: 350, guard: 480
+    })), 312)
+})
+
+const stack = (over) => Object.assign({
+    centered: false, parentHeight: 900, stripHeight: 84, gutter: 12,
+    gap: 6, index: 0,
+    items: [
+        { visible: true, height: 30 },
+        { visible: true, height: 24 },
+        { visible: true, height: 40 }
+    ]
+}, over)
+
+check("readoutStackY: the find readout owns the band and the notices stack above", () => {
+    assert.equal(Layout.readoutStackY(stack({ index: 0 })), 774)
+    assert.equal(Layout.readoutStackY(stack({ index: 1 })), 744)
+    assert.equal(Layout.readoutStackY(stack({ index: 2 })), 698)
+})
+
+check("readoutStackY: hidden items leave no gap behind", () => {
+    const one = stack({
+        items: [
+            { visible: false, height: 30 },
+            { visible: true, height: 24 },
+            { visible: true, height: 40 }
+        ]
+    })
+    assert.equal(Layout.readoutStackY(Object.assign({}, one, { index: 1 })), 780)
+    assert.equal(Layout.readoutStackY(Object.assign({}, one, { index: 2 })), 734)
+})
+
+check("readoutStackY: center centres the whole stack, not each box", () => {
+    const centered = stack({ centered: true })
+    assert.equal(Layout.readoutStackY(Object.assign({}, centered, { index: 0 })), 431)
+    assert.equal(Layout.readoutStackY(Object.assign({}, centered, { index: 1 })), 401)
+    assert.equal(Layout.readoutStackY(Object.assign({}, centered, { index: 2 })), 355)
 })
 
 // ---- window inset ----

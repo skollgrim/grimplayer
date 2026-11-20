@@ -133,8 +133,12 @@ TestCase {
             fontBody: "nowPlaying", noticeScale: "nowPlaying", fontCaption: "album",
             albumFont: "album", albumTrackSpacing: "album",
             lyricsFollow: "lyricsView", lyricsAlign: "lyricsView",
-            lyricsFont: "lyricsView", lyricsWidth: "lyricsView", lyricsInfo: "lyricsView",
-            karaokeFollow: "karaoke"
+            lyricsFont: "lyricsView", lyricsWidth: "lyricsView",
+            lyricsInfoTitle: "lyricsView", lyricsInfoArtist: "lyricsView",
+            lyricsInfoAlbum: "lyricsView",
+            karaokeFollow: "karaoke", karaokeInfoTitle: "karaoke",
+            karaokeInfoArtist: "karaoke", karaokeInfoAlbum: "karaoke",
+            karaokeBackgroundScale: "karaoke"
         }
         for (var key in homes) {
             var e = entryFor(key)
@@ -348,8 +352,13 @@ TestCase {
         var place = entryFor("findPlace")
         var scale = entryFor("findScale")
         verify(place !== null && scale !== null, "the renamed find rows should exist")
-        compare(place.label, "Find position")
+        compare(place.label, "Notice position")
         compare(scale.label, "Find size")
+        verify(place.after === undefined, "notice position must not be an indented child")
+        compare(place.orderAfter, "keyboardStyle")
+        verify(config.sectionLists.general.indexOf(place)
+            < config.sectionLists.general.indexOf(scale),
+            "notice position should lead find size")
         config.reset()
         config.applyStored({ typeaheadPlace: "center", typeaheadScale: 9 })
         compare(config.findPlace, "center")
@@ -361,17 +370,21 @@ TestCase {
         compare(config.findScale, 4, "an explicit new key wins")
     }
 
-    // Position and size describe the find readout, so they only count as live
-    // while the find style is selected.
-    function test_find_rows_wait_on_the_find_style() {
+    // Position is shared by every notice, so it stays live in every keyboard
+    // style; only the typed letters' own size waits on the find style.
+    function test_only_find_size_waits_on_the_find_style() {
         var style = entryFor("keyboardStyle")
         var place = entryFor("findPlace")
+        var scale = entryFor("findScale")
         config.assign(style, "vim")
-        verify(!config.isActive(place), "find position should be greyed out in Vim style")
+        verify(config.isActive(place), "notice position should stay live in Vim style")
+        verify(!config.isActive(scale), "find size should be greyed out in Vim style")
         config.assign(style, "off")
-        verify(!config.isActive(place), "find position should be greyed out when letters are off")
+        verify(config.isActive(place), "notice position should stay live when letters are off")
+        verify(!config.isActive(scale), "find size should be greyed out when letters are off")
         config.assign(style, "find")
-        verify(config.isActive(place), "find position should come back in Find style")
+        verify(config.isActive(place), "notice position should stay live in Find style")
+        verify(config.isActive(scale), "find size should come back in Find style")
     }
 
     // Highlighting is a view choice on each word surface, not one global: the
@@ -401,6 +414,100 @@ TestCase {
         compare(config.karaokeFollow, "highlight")
         config.applyStored({ karaokeFollow: "bogus" })
         compare(config.karaokeFollow, "highlight")
+    }
+
+    // Each header piece is its own switch on both word surfaces. The old single
+    // choice still folds into the switches on load, but an explicit switch wins
+    // over the stale value however the two arrive in the file.
+    function test_track_headers_are_independent_switches() {
+        var rows = ["lyricsInfoTitle", "lyricsInfoArtist", "lyricsInfoAlbum",
+            "karaokeInfoTitle", "karaokeInfoArtist", "karaokeInfoAlbum"]
+        var expected = ["Title above lyrics", "Artist above lyrics", "Album above lyrics",
+            "Title above lyrics", "Artist above lyrics", "Album above lyrics"]
+        for (var i = 0; i < rows.length; i++) {
+            var e = entryFor(rows[i])
+            verify(e !== null, rows[i] + " is missing")
+            compare(e.label, expected[i], rows[i] + " should say where the text goes")
+            compare(e.options[0], true)
+            compare(e.options[1], false)
+            verify(e.after === undefined, rows[i] + " must be a top-level row")
+        }
+        verify(entryFor("lyricsInfo") === null, "the lyrics cycle should be gone")
+        verify(entryFor("karaokeInfo") === null, "the karaoke cycle should be gone")
+        // The header group leads each tab; the text settings below it are not
+        // its children, so none of them should read as an indented subcategory.
+        var order = ["lyricsInfoTitle", "lyricsFollow", "karaokeInfoTitle", "karaokeFollow"]
+        for (var o = 0; o + 1 < order.length; o += 2) {
+            verify(config.visibleEntries.indexOf(entryFor(order[o]))
+                < config.visibleEntries.indexOf(entryFor(order[o + 1])),
+                order[o] + " should lead its tab")
+        }
+        var plain = ["lyricsFollow", "lyricsAlign", "lyricsFont", "karaokeFollow",
+            "karaokeFont", "karaokeAlign"]
+        for (var p = 0; p < plain.length; p++)
+            verify(entryFor(plain[p]).after === undefined, plain[p] + " must not indent")
+
+        compare(config.codeDefaults.lyricsInfoTitle, true)
+        compare(config.codeDefaults.lyricsInfoArtist, true)
+        compare(config.codeDefaults.lyricsInfoAlbum, false)
+        compare(config.codeDefaults.karaokeInfoTitle, true)
+        compare(config.codeDefaults.karaokeInfoArtist, true)
+        compare(config.codeDefaults.karaokeInfoAlbum, false)
+
+        config.reset()
+        config.applyStored({ lyricsInfo: "off", karaokeInfo: "all" })
+        compare(config.lyricsInfoTitle, false)
+        compare(config.lyricsInfoArtist, false)
+        compare(config.lyricsInfoAlbum, false, "the reading view never had an album line")
+        compare(config.karaokeInfoTitle, true)
+        compare(config.karaokeInfoArtist, true)
+        compare(config.karaokeInfoAlbum, true)
+
+        config.reset()
+        config.applyStored({ lyricsInfo: "title", karaokeInfo: "track" })
+        compare(config.lyricsInfoTitle, true)
+        compare(config.lyricsInfoArtist, false)
+        compare(config.karaokeInfoTitle, true)
+        compare(config.karaokeInfoArtist, false)
+        compare(config.karaokeInfoAlbum, false)
+
+        config.reset()
+        config.applyStored({ karaokeInfoAlbum: true, karaokeInfo: "off" })
+        compare(config.karaokeInfoTitle, false)
+        compare(config.karaokeInfoArtist, false)
+        compare(config.karaokeInfoAlbum, true, "an explicit switch wins")
+        config.applyStored({ karaokeInfo: "bogus" })
+        compare(config.karaokeInfoAlbum, true, "a stale cycle is ignored")
+
+        config.reset()
+        config.applyStored({ lyricsInfoAlbum: true, lyricsInfo: "off" })
+        compare(config.lyricsInfoTitle, false)
+        compare(config.lyricsInfoAlbum, true, "an explicit album switch wins")
+    }
+
+    // The background wash had been sharing the side cover's size. It now has a
+    // row of its own, greyed unless that placement is showing, and a file that
+    // only knows the old size starts with the wash it already had.
+    function test_karaoke_background_has_its_own_cover_size() {
+        var e = entryFor("karaokeBackgroundScale")
+        compare(e.section, "karaoke")
+        compare(e.label, "Background cover size")
+        compare(config.codeDefaults.karaokeBackgroundScale, 100)
+        verify(!config.isActive(e), "the size waits for the background cover")
+
+        config.applyStored({ karaokeCover: "background" })
+        verify(config.isActive(e))
+        config.applyStored({ karaokeBackgroundScale: 30 })
+        compare(config.karaokeBackgroundScale, 30)
+        config.applyStored({ karaokeBackgroundScale: "nope" })
+        compare(config.karaokeBackgroundScale, 30, "an invalid value is ignored")
+
+        config.reset()
+        config.applyStored({ stageCoverScale: 40, karaokeBackgroundScale: 60 })
+        compare(config.karaokeBackgroundScale, 60, "an explicit new size wins")
+        config.reset()
+        config.applyStored({ stageCoverScale: 40 })
+        compare(config.karaokeBackgroundScale, 40, "an old file keeps its wash size")
     }
 
     // Karaoke lines the words up on its own setting, so the reading view's choice

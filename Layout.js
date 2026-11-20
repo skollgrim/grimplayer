@@ -118,6 +118,56 @@ function karaokeBackgroundCover(parentWidth, parentHeight, scalePct) {
     }
 }
 
+// The shared home for the transient overlays: typed letters, transport replies
+// and MPD errors all read their x from here, so one setting moves the lot. Both
+// homes centre on the tracks pane; with no browser on screen the window centre
+// is the only meaningful place. A floating cover owns the lower right, so the
+// box slides left only as far as it must to clear it.
+function readoutX(options) {
+    var o = options || {}
+    var w = Math.max(0, asNumber(o.width))
+    var gutter = asNumber(o.gutter)
+    if (!o.paneVisible)
+        return Math.round((asNumber(o.parentWidth) - w) / 2)
+    var guard = o.guard === undefined ? asNumber(o.parentWidth) : asNumber(o.guard)
+    var left = asNumber(o.tracksLeft)
+    var center = asNumber(o.tracksCenter)
+    return Math.round(Math.max(left + gutter + w,
+        Math.min(center + w / 2, guard)) - w)
+}
+
+// Vertical home for one box in a stack sharing that x. Items run bottom-to-top
+// (find, transport, error): "bottom" grows the stack up from the band above the
+// strip, "center" centres the whole stack in the list area, so a queue of
+// notices still lands where the eye is. Hidden items take no room and leave no
+// gap behind, which keeps a single notice in exactly the find readout's spot.
+function readoutStackY(options) {
+    var o = options || {}
+    var items = o.items || []
+    var index = Math.max(0, Math.min(items.length - 1, Math.round(asNumber(o.index))))
+    var gap = Math.max(0, asNumber(o.gap))
+    var i, count = 0, total = 0, below = 0
+    for (i = 0; i < items.length; i++) {
+        if (items[i] && items[i].visible) {
+            count++
+            total += Math.max(0, asNumber(items[i].height))
+        }
+    }
+    total += gap * Math.max(0, count - 1)
+    for (i = 0; i < index; i++) {
+        if (items[i] && items[i].visible)
+            below += Math.max(0, asNumber(items[i].height)) + gap
+    }
+    var h = items[index] && items[index].visible
+        ? Math.max(0, asNumber(items[index].height)) : 0
+    if (o.centered) {
+        var paneArea = Math.max(0, asNumber(o.parentHeight) - asNumber(o.stripHeight))
+        return Math.round((paneArea - total) / 2) + Math.round(total - h - below)
+    }
+    return Math.round(asNumber(o.parentHeight) - asNumber(o.stripHeight)
+        - asNumber(o.gutter) - below - h)
+}
+
 // The measure of the lyric column. Karaoke always takes the full layout width;
 // the reading view narrows it by the text-width setting.
 function lyricsColumnWidth(layoutWidth, karaoke, setting) {
@@ -279,6 +329,8 @@ if (typeof module !== "undefined" && module.exports) {
         floatingCoverSize: floatingCoverSize,
         karaokeCoverSize: karaokeCoverSize,
         karaokeBackgroundCover: karaokeBackgroundCover,
+        readoutX: readoutX,
+        readoutStackY: readoutStackY,
         lyricsColumnWidth: lyricsColumnWidth,
         companionTrackWidth: companionTrackWidth,
         coverBandVisible: coverBandVisible,

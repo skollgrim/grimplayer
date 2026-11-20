@@ -83,13 +83,14 @@ Item {
         // row rhythm -- a separate gap slider only ever fought the row height.
         property int rowSpacing: 28
 
-        // Where the find readout sits. Both homes are centred on the tracks pane
-        // (yielding left when a floating cover is in the way): "bottom" puts it in
-        // the band just above the now-playing strip, the same spot the Ctrl
-        // transport readout uses, and "center" floats it in the middle of the list
-        // area, where the eye already is when the lists are long enough that a band
-        // readout is easy to miss. Kept as a named choice rather than a flag so a
-        // third position has somewhere to land without another boolean.
+        // Where the transient readouts sit: typed letters, the Ctrl transport reply
+        // and MPD's error banner all share this home. Both places centre on the
+        // tracks pane (yielding left when a floating cover is in the way):
+        // "bottom" puts them in the band just above the now-playing strip, and
+        // "center" floats them in the middle of the list area, where the eye already
+        // is when the lists are long enough that a band readout is easy to miss.
+        // The old key is kept so an existing file's choice survives the rename to
+        // "Notice position"; a named choice leaves room for a third place.
         property string findPlace: "bottom"
 
         // The readout's font size as an offset from the theme, like the font-size
@@ -294,8 +295,11 @@ Item {
         // A lyrics-only offset from the theme, like the other font sizes. It
         // starts at the body text's own +2 so the view opens exactly as it did.
         property int lyricsFont: 2
-        // "both", "title" or "off": the track and artist block above the text.
-        property string lyricsInfo: "both"
+        // Which pieces of the track's identity are written above the reading
+        // view's words. Separate switches so any one can stand on its own.
+        property bool lyricsInfoTitle: true
+        property bool lyricsInfoArtist: true
+        property bool lyricsInfoAlbum: false
         // The current line is highlighted by default; "follow" also scrolls the
         // view to keep it centred, "highlight" leaves the text where it is, and
         // "off" marks nothing -- the reading mode for plain lyrics or reading
@@ -335,13 +339,16 @@ Item {
         // a change to the reading view cannot move a view read from across the
         // room.
         property string karaokeAlign: "center"
-        // What karaoke keeps above the scrolling lyrics: "off", "track", "both"
-        // (track and artist) or "all" (track, artist and album). The header sits
-        // outside the scroll, so the details stay put while the words move.
-        property string karaokeInfo: "both"
+        // Which details are written above karaoke's scrolling words. Each piece
+        // has its own switch, so an artist can be shown without a title and the
+        // album can join either. The header sits outside the scroll, so the
+        // details stay put while the words move.
+        property bool karaokeInfoTitle: true
+        property bool karaokeInfoArtist: true
+        property bool karaokeInfoAlbum: false
         // Where karaoke puts the cover: "side" sets it to the right of the
-        // lyrics and shifts the text left, "background" lays it over the whole
-        // view at low opacity behind the text, and "hide" leaves the lyrics
+        // lyrics and shifts the text left, "background" lays a sized wash over
+        // the view at low opacity behind the text, and "hide" leaves the lyrics
         // centred on their own. A separate choice from the side pane: the two
         // layouts are different enough that hiding one should not silently hide
         // the other.
@@ -349,6 +356,10 @@ Item {
         // How strongly the background cover shows through. Only read in the
         // "background" mode; a side cover is drawn at full strength.
         property real karaokeCoverOpacity: 0.2
+        // How much of the karaoke view the background cover fills. Separate from
+        // the side cover's size: a wash can be pulled in without shrinking the
+        // square artwork beside the words. 100 is the full-window wash.
+        property int karaokeBackgroundScale: 100
 
         // ---- shared lyric behaviour ----
         //
@@ -468,10 +479,12 @@ Item {
                     "uiScale", "settingsOpacity", "iconSize",
                     "fontTitle", "fontSubtitle", "fontBody", "fontBodySmall",
                     "fontCaption", "noticeScale", "coverDecodeSize",
-                    "lyricsAlign", "lyricsFont", "lyricsInfo", "lyricsFollow",
+                    "lyricsAlign", "lyricsFont", "lyricsInfoTitle", "lyricsInfoArtist",
+                    "lyricsInfoAlbum", "lyricsFollow",
                     "karaokeAlign", "karaokeFollow",
                     "lyricsDim", "lyricsResume", "lyricsSpacing", "lyricsWidth",
-                    "lyricsCover", "karaokeFont", "karaokeInfo", "karaokeCover", "karaokeCoverOpacity",
+                    "lyricsCover", "karaokeFont", "karaokeInfoTitle", "karaokeInfoArtist",
+                    "karaokeInfoAlbum", "karaokeCover", "karaokeCoverOpacity", "karaokeBackgroundScale",
                     "lyricsOffset", "lyricsClickSeek", "lyricsDownloads", "lyricsTracks"]
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i]
@@ -562,6 +575,38 @@ Item {
         // silently turn the cover back on.
         if (typeof obj.karaokeCover === "boolean") {
             obj.karaokeCover = obj.karaokeCover ? "side" : "hide"
+        }
+        // The track headers used to be one choice per view. Fold each stored
+        // choice into the switches that replace it: "off" shows nothing, "track"
+        // and "title" only the name, "both" the name and artist, and "all" the
+        // album as well. The reading view never offered an album line, so its
+        // new switch starts off. An explicit switch always wins over the choice.
+        var oldKaraokeInfo = obj.karaokeInfo
+        if (oldKaraokeInfo === "off" || oldKaraokeInfo === "track"
+                || oldKaraokeInfo === "both" || oldKaraokeInfo === "all") {
+            if (obj.karaokeInfoTitle === undefined)
+                obj.karaokeInfoTitle = oldKaraokeInfo !== "off"
+            if (obj.karaokeInfoArtist === undefined)
+                obj.karaokeInfoArtist = oldKaraokeInfo === "both" || oldKaraokeInfo === "all"
+            if (obj.karaokeInfoAlbum === undefined)
+                obj.karaokeInfoAlbum = oldKaraokeInfo === "all"
+        }
+        var oldLyricsInfo = obj.lyricsInfo
+        if (oldLyricsInfo === "off" || oldLyricsInfo === "title"
+                || oldLyricsInfo === "both") {
+            if (obj.lyricsInfoTitle === undefined)
+                obj.lyricsInfoTitle = oldLyricsInfo !== "off"
+            if (obj.lyricsInfoArtist === undefined)
+                obj.lyricsInfoArtist = oldLyricsInfo === "both"
+            if (obj.lyricsInfoAlbum === undefined)
+                obj.lyricsInfoAlbum = false
+        }
+        // The background cover used to share the side cover's size. Seed the new
+        // row from that value so an existing wash keeps the size it already had;
+        // a file that has the new key keeps its own answer.
+        if (obj.karaokeBackgroundScale === undefined
+                && obj.stageCoverScale !== undefined) {
+            obj.karaokeBackgroundScale = obj.stageCoverScale
         }
         for (var k in obj) {
             if (store[k] === undefined) continue
@@ -705,6 +750,7 @@ Item {
     }
     readonly property int coverScale: store.coverScale
     readonly property int stageCoverScale: store.stageCoverScale
+    readonly property int karaokeBackgroundScale: store.karaokeBackgroundScale
     readonly property int coverTransition: store.coverTransition
     readonly property string coverBandMode: store.coverBandMode
     readonly property string coverBandAlign: store.coverBandAlign
@@ -721,7 +767,9 @@ Item {
     readonly property int noticeScale: store.noticeScale
     readonly property string lyricsAlign: store.lyricsAlign
     readonly property int lyricsFont: store.lyricsFont
-    readonly property string lyricsInfo: store.lyricsInfo
+    readonly property bool lyricsInfoTitle: store.lyricsInfoTitle
+    readonly property bool lyricsInfoArtist: store.lyricsInfoArtist
+    readonly property bool lyricsInfoAlbum: store.lyricsInfoAlbum
     readonly property string lyricsFollow: store.lyricsFollow
     readonly property string lyricsDim: store.lyricsDim
     readonly property int lyricsResume: store.lyricsResume
@@ -732,7 +780,9 @@ Item {
     readonly property int karaokeFont: store.karaokeFont
     readonly property string karaokeAlign: store.karaokeAlign
     readonly property string karaokeFollow: store.karaokeFollow
-    readonly property string karaokeInfo: store.karaokeInfo
+    readonly property bool karaokeInfoTitle: store.karaokeInfoTitle
+    readonly property bool karaokeInfoArtist: store.karaokeInfoArtist
+    readonly property bool karaokeInfoAlbum: store.karaokeInfoAlbum
     readonly property string karaokeCover: store.karaokeCover
     readonly property real karaokeCoverOpacity: store.karaokeCoverOpacity
     readonly property int lyricsOffset: store.lyricsOffset
@@ -815,11 +865,13 @@ Item {
         {
             key: "findPlace",
             section: "general",
-            label: "Find position",
-            hint: "Where the typed letters appear: above the now-playing strip, like the transport readout, or centred horizontally in the tracks pane",
+            label: "Notice position",
+            hint: "Where typed letters, transport replies and MPD errors appear: above the now-playing strip or centred in the tracks pane",
             options: ["bottom", "center"],
-            dependsOn: function () { return store.keyboardStyle === "find" },
-            after: "keyboardStyle"
+            // Next to the keyboard style it used to belong to, but not one of
+            // its greyed-out children: notices still land somewhere in every
+            // style. orderAfter places the row; only `after` indents it.
+            orderAfter: "keyboardStyle"
         },
         {
             key: "findScale",
@@ -1168,8 +1220,8 @@ Item {
         {
             key: "stageCoverScale",
             section: "artwork",
-            label: "Album & karaoke cover size",
-            hint: "Size of the artwork in album view and karaoke, as a share of the room the layout can give it; 100% is the natural fit",
+            label: "Album & side cover size",
+            hint: "Size of the artwork in album view and karaoke's side cover, as a share of the room the layout can give it; 100% is the natural fit",
             options: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
             format: function (v) { return v + "%" }
         },
@@ -1318,11 +1370,34 @@ Item {
 
         // ---- Lyrics view ----
         //
-        // The reading view's own surface: how its words are marked, aligned and
-        // sized, how wide the column is, what sits above the text and what shares
-        // the space. These follow the words into album view when lyrics sit beside
-        // the titles, but karaoke keeps its own highlight, alignment, size,
-        // header and cover under Karaoke view.
+        // The reading view's own surface. The lines written above the words come
+        // first, each with its own switch, so they read as one group rather than
+        // as details of the text settings below. Then come the words themselves --
+        // how they are marked, aligned and sized, how wide the column is -- and
+        // finally what shares the space. These follow the words into album view
+        // when lyrics sit beside the titles, but karaoke keeps its own highlight,
+        // alignment, size, header and cover under Karaoke view.
+        {
+            key: "lyricsInfoTitle",
+            section: "lyricsView",
+            label: "Title above lyrics",
+            hint: "Write the playing track's title on the line above the words",
+            options: [true, false],
+        },
+        {
+            key: "lyricsInfoArtist",
+            section: "lyricsView",
+            label: "Artist above lyrics",
+            hint: "Write the playing track's artist on the line above the words",
+            options: [true, false],
+        },
+        {
+            key: "lyricsInfoAlbum",
+            section: "lyricsView",
+            label: "Album above lyrics",
+            hint: "Write the playing track's album on the line above the words",
+            options: [true, false],
+        },
         {
             key: "lyricsFollow",
             section: "lyricsView",
@@ -1357,13 +1432,6 @@ Item {
             options: ["full", "wide", "narrow"],
         },
         {
-            key: "lyricsInfo",
-            section: "lyricsView",
-            label: "Track info",
-            hint: "In the lyrics view, show the title and artist above the text, the title alone, or neither",
-            options: ["both", "title", "off"],
-        },
-        {
             key: "lyricsCover",
             section: "lyricsView",
             label: "Cover beside lyrics",
@@ -1380,10 +1448,35 @@ Item {
 
         // ---- Karaoke view ----
         //
-        // Karaoke is its own surface: larger text read from a distance, its own
-        // highlight, alignment and track header, and a cover that can share the
-        // view, sit behind it or stay away. These are separate choices from the
-        // reading view's, so they have a tab of their own.
+        // ---- Karaoke view ----
+        //
+        // Its own surface: larger text read from a distance, its own highlight
+        // and alignment, and a cover that can share the view, sit behind it or
+        // stay away. The lines written above the words come first, each with its
+        // own switch, so they read as one group rather than as details of the
+        // text settings below. These are separate choices from the reading
+        // view's, so they have a tab of their own.
+        {
+            key: "karaokeInfoTitle",
+            section: "karaoke",
+            label: "Title above lyrics",
+            hint: "Write the playing track's title on the line above the karaoke words",
+            options: [true, false],
+        },
+        {
+            key: "karaokeInfoArtist",
+            section: "karaoke",
+            label: "Artist above lyrics",
+            hint: "Write the playing track's artist on the line above the karaoke words",
+            options: [true, false],
+        },
+        {
+            key: "karaokeInfoAlbum",
+            section: "karaoke",
+            label: "Album above lyrics",
+            hint: "Write the playing track's album on the line above the karaoke words",
+            options: [true, false],
+        },
         {
             key: "karaokeFollow",
             section: "karaoke",
@@ -1411,19 +1504,6 @@ Item {
             options: ["left", "center"],
         },
         {
-            key: "karaokeInfo",
-            section: "karaoke",
-            label: "Track info",
-            hint: "Keep the track details above the scrolling lyrics: the track, the track and artist, or those plus the album",
-            options: ["off", "track", "both", "all"],
-            format: function (v) {
-                return v === "off" ? "Off"
-                    : v === "track" ? "Track"
-                    : v === "both" ? "Track & artist"
-                    : "Track, artist & album"
-            }
-        },
-        {
             key: "karaokeCover",
             section: "karaoke",
             label: "Cover",
@@ -1432,6 +1512,16 @@ Item {
             format: function (v) {
                 return v === "side" ? "Beside" : v === "background" ? "Background" : "Hidden"
             }
+        },
+        {
+            key: "karaokeBackgroundScale",
+            section: "karaoke",
+            label: "Background cover size",
+            hint: "How much of the karaoke view the background cover fills; 100% covers it, smaller sizes stay centred",
+            options: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+            dependsOn: function () { return store.karaokeCover === "background" },
+            after: "karaokeCover",
+            format: function (v) { return v + "%" }
         },
         {
             key: "karaokeCoverOpacity",
@@ -1609,14 +1699,14 @@ Item {
         return out
     }
 
-    // The table order, arranged so every dependent sits directly under the row it
-    // waits on. An entry naming a parent in `after` is pulled up beside it; one
-    // without keeps its table position. The arrangement is done here rather than
-    // left to the table's written order so that "a dependent sits under its
-    // parent" is a property of the list the card draws, not a thing a later edit
-    // to the table can quietly break -- and so a parent's dependents keep their
-    // own order among themselves. The card indents a row that names a parent, so
-    // the same flag both places it and marks it as a child.
+    // The table order, arranged so every entry that names a parent sits directly
+    // under it. `after` marks a dependent child; `orderAfter` only pulls a row
+    // beside its parent without the indent, for settings that belong there but
+    // are not switched off with it. An entry naming neither keeps its table
+    // position. The arrangement is done here rather than left to the table's
+    // written order so that this is a property of the list the card draws, not
+    // a thing a later edit to the table can quietly break -- and so a parent's
+    // children keep their own order among themselves.
     //
     // Each parent is walked once, emitting the parent and then everything that
     // names it, in table order. Entries are only emitted once, so a table written
@@ -1628,9 +1718,10 @@ Item {
         var childrenByKey = {}
         for (var i = 0; i < visibleEntries.length; i++) {
             var d = visibleEntries[i]
-            if (!d.after) continue
-            if (!childrenByKey[d.after]) childrenByKey[d.after] = []
-            childrenByKey[d.after].push(d)
+            var parent = d.after || d.orderAfter
+            if (!parent) continue
+            if (!childrenByKey[parent]) childrenByKey[parent] = []
+            childrenByKey[parent].push(d)
         }
         for (var k = 0; k < visibleEntries.length; k++) {
             var e = visibleEntries[k]
