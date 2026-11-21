@@ -93,12 +93,11 @@ Item {
         // "Notice position"; a named choice leaves room for a third place.
         property string findPlace: "bottom"
 
-        // The readout's font size as an offset from the theme, like the font-size
-        // settings. The band readout is a glanceable aside and the centred one
-        // has to hold the eye from across the window, so it starts well above the
-        // panel's body text. The range starts at zero -- the theme's own size --
-        // rather than below it: the readout is meant to stand out from the text
-        // it is drawn over, so a smaller-than-theme setting had no good use.
+        // One size for every transient notice: typed letters, the transport
+        // reply and MPD's error line. It is an offset from each notice's own
+        // resting size, so the default keeps the panel's current look and moving
+        // the one knob moves all three together. The original "find" name stays
+        // as the stored key; the settings row is now called "Notice size".
         property int findScale: 6
 
         // A faint line between rows. Off is the cleaner, flatter look.
@@ -117,16 +116,39 @@ Item {
         // between.
         property bool paneSeparators: true
 
-        // Line width: the vertical rules between the panes and the underline
-        // beneath each pane heading. One setting for both, so the two are always
-        // the same weight -- a divider and a heading underline that disagreed
-        // would read as two different sorts of line. The cover art's ring is
-        // deliberately not one of them: it has its own width (coverBorderWidth)
-        // so the art's frame and the pane rules never drag each other along.
-        // This is greyed only while both of a line's homes are off (see the
-        // entry), which is the one state where nothing on screen is drawn with
-        // it.
+        // Line width: the vertical rules between the panes, the underline beneath
+        // each pane heading, and the two rules on the now-playing strip. One
+        // setting for them all, so lines that meet the eye together carry the same
+        // weight -- a divider and a heading underline that disagreed would read as
+        // two different sorts of line. The cover art's ring is deliberately not
+        // one of them: it has its own width (coverBorderWidth) so the art's frame
+        // and the pane rules never drag each other along. This is greyed only
+        // while all four of its homes are off (see the entry), which is the one
+        // state where nothing on screen is drawn with it.
         property int borderWidth: 1
+
+        // A quiet hairline along the strip's top edge, in the pane rule colour and
+        // width. Off leaves the colour step in GrimTheme.strip as the only
+        // boundary, which is how the strip looked before the rule. The hairline
+        // stands down while the seeker itself is the edge.
+        property bool stripSeparator: true
+
+        // The bolder boundary: the seek bar runs the full width of the strip's
+        // top edge, with the track details and controls beneath it. The strip
+        // grows by the bar's slot and the row is inset by the same amount, so
+        // the transport does not get pushed around when this is switched on.
+        property bool stripSeekEdge: false
+
+        // How the strip's progress reads. On, elapsed, seek and total share one
+        // row and the strip gives back the space the old clock line took; off
+        // restores the stacked seek and `elapsed / total` line.
+        property bool progressInline: true
+
+        // The clock is a detail beside the track, not a second artist line. On,
+        // it uses the theme's small body size; off restores the older body size
+        // shared with the artist.
+        property bool quietTime: true
+
         property bool coverBorder: false
         property bool coverPlaceholder: true
         property int coverBorderWidth: 1
@@ -268,14 +290,6 @@ Item {
         property int fontBody: 2
         property int fontBodySmall: 4
         property int fontCaption: 0
-
-        // The transient readout above the strip -- the line a shuffle, repeat,
-        // mute or volume change leaves behind. Its own offset from the theme
-        // rather than one of the font settings above, because it is an overlay
-        // read at a glance rather than a piece of the panel's body text, and
-        // wanting it larger should not also grow the lists. Zero is the theme's
-        // subtitle size.
-        property int noticeScale: 0
 
         // ---- lyrics ----
         //
@@ -468,7 +482,8 @@ Item {
                     "playingMarker", "adaptiveColors", "fetchCovers",
                     "keyboardStyle", "rowSpacing", "findPlace",
                     "findScale", "rowSeparators",
-                    "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "coverBorder", "coverPlaceholder",
+                    "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "stripSeparator",
+                    "stripSeekEdge", "progressInline", "quietTime", "coverBorder", "coverPlaceholder",
                     "coverBorderWidth", "coverRounded", "upNextCover", "upNextCoverSize",
                     "albumInfo", "albumInfoStyle", "albumFont", "albumTrackSpacing",
                     "trackAlign", "albumLyrics",
@@ -478,7 +493,7 @@ Item {
                     "coverBandMinPct",
                     "uiScale", "settingsOpacity", "iconSize",
                     "fontTitle", "fontSubtitle", "fontBody", "fontBodySmall",
-                    "fontCaption", "noticeScale", "coverDecodeSize",
+                    "fontCaption", "coverDecodeSize",
                     "lyricsAlign", "lyricsFont", "lyricsInfoTitle", "lyricsInfoArtist",
                     "lyricsInfoAlbum", "lyricsFollow",
                     "karaokeAlign", "karaokeFollow",
@@ -719,6 +734,13 @@ Item {
     readonly property bool paneHeadings: store.paneHeadings
     readonly property bool paneSeparators: store.paneSeparators
     readonly property int borderWidth: store.borderWidth
+    readonly property bool stripSeparator: store.stripSeparator
+    readonly property bool stripSeekEdge: store.stripSeekEdge
+    // With the seeker as the edge the stacked arrangement has no bar to stack,
+    // so the strip always uses the inline geometry. The stored choice is left
+    // alone; it comes back when the edge is switched off.
+    readonly property bool progressInline: store.stripSeekEdge || store.progressInline
+    readonly property bool quietTime: store.quietTime
     readonly property bool coverBorder: store.coverBorder
     readonly property bool coverPlaceholder: store.coverPlaceholder
     readonly property int coverBorderWidth: store.coverBorderWidth
@@ -764,7 +786,6 @@ Item {
     readonly property int fontBody: store.fontBody
     readonly property int fontBodySmall: store.fontBodySmall
     readonly property int fontCaption: store.fontCaption
-    readonly property int noticeScale: store.noticeScale
     readonly property string lyricsAlign: store.lyricsAlign
     readonly property int lyricsFont: store.lyricsFont
     readonly property bool lyricsInfoTitle: store.lyricsInfoTitle
@@ -806,6 +827,15 @@ Item {
     function deltaText(value) {
         if (value === 0) return "theme"
         return (value > 0 ? "+" : "") + value + " px"
+    }
+
+    // Notice size is measured from the resting look, not from the theme: six is
+    // where all three notices sit today, so that value reads "Default" and the
+    // steps either side read as bigger or smaller than that.
+    function noticeSizeText(value) {
+        var delta = value - 6
+        if (delta === 0) return "Default"
+        return (delta > 0 ? "+" : "") + delta + " px"
     }
 
     // The rows the settings card offers, in the order each tab shows them.
@@ -876,20 +906,14 @@ Item {
         {
             key: "findScale",
             section: "general",
-            label: "Find size",
-            hint: "The typed letters' text size, as an offset from the theme",
-            // Bias large: the readout is a transient overlay read at a glance from
-            // wherever the eye happens to be, so the useful half of the range is
-            // the upper one and +6 is the resting size. The floor is the theme's
-            // own size rather than a step below it -- the readout is meant to
-            // stand out, and a smaller-than-theme setting was a way to make it
-            // harder to read than the text it is drawn over. The top runs to +12
-            // so the resting size sits centred and a bigger readout is a step
-            // away in either direction.
+            label: "Notice size",
+            hint: "Text size of typed letters, transport replies and MPD errors, together",
+            // One knob for every transient notice. The resting size sits in the
+            // middle of the range so it can grow or shrink without changing what
+            // the find letters, the transport reply and the error line mean.
             options: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-            dependsOn: function () { return store.keyboardStyle === "find" },
-            after: "keyboardStyle",
-            format: root.deltaText
+            orderAfter: "findPlace",
+            format: root.noticeSizeText
         },
         {
             key: "uiScale",
@@ -1008,14 +1032,15 @@ Item {
             key: "borderWidth",
             section: "library",
             label: "Line width",
-            hint: "Thickness of the pane dividers and the heading underlines",
-            // One width for both lines, so it only stops meaning anything when
-            // neither line is drawn: the dividers are off and so are the
-            // headings, which leaves nothing on screen using it. While either
-            // one is on the setting is live -- greying it under Pane dividers
-            // alone would hide the knob that still sizes the heading underline.
+            hint: "Thickness of the pane dividers, heading underlines and the strip separator",
+            // One width for the pane rules, heading underlines and the strip's
+            // hairline. The seeker edge uses its own thickness instead, so a
+            // separator hidden behind it no longer keeps this knob live.
             options: [1, 2, 3, 4],
-            dependsOn: function () { return store.paneSeparators || store.paneHeadings },
+            dependsOn: function () {
+                return store.paneSeparators || store.paneHeadings
+                    || (store.stripSeparator && !store.stripSeekEdge)
+            },
             after: "paneSeparators",
             format: function (v) { return v + " px" }
         },
@@ -1052,17 +1077,54 @@ Item {
         },
 
         // ---- Now playing ----
-        // The bar that stays on screen in every view: how tall its seeker is,
-        // how big its icons and title read, and how loud its transient notices are.
+        // The bar that stays on screen in every view: how its top edge is drawn,
+        // how its progress and clock read, how tall its seeker is, and how big
+        // its icons and title read. Notice placement and size live under General.
+        {
+            key: "stripSeparator",
+            section: "nowPlaying",
+            label: "Strip separator",
+            hint: "Draw a quiet hairline above the now-playing strip in the pane rule colour",
+            options: [true, false]
+        },
+        {
+            key: "stripSeekEdge",
+            section: "nowPlaying",
+            label: "Seeker as edge",
+            hint: "Use the seek bar as the strip's full-width top boundary instead of a separate hairline",
+            options: [true, false],
+            orderAfter: "stripSeparator"
+        },
+        {
+            key: "progressInline",
+            section: "nowPlaying",
+            label: "Inline progress",
+            hint: "Put elapsed, seek and total on one row and trim the strip to fit. Seeker as edge holds this on",
+            options: [true, false],
+            // The stored value survives, but the card reads On and refuses edits
+            // while the seeker is the edge: there is no in-strip bar to stack.
+            get: function () { return root.progressInline },
+            set: function (v) { if (!store.stripSeekEdge) store.progressInline = v },
+            dependsOn: function () { return !store.stripSeekEdge },
+            after: "stripSeekEdge"
+        },
+        {
+            key: "quietTime",
+            section: "nowPlaying",
+            label: "Time size",
+            hint: "Draw the elapsed and total time in the small body size instead of the regular one",
+            options: [true, false],
+            format: function (v) { return v ? "Small" : "Regular" }
+        },
         {
             key: "seekThickness",
             section: "nowPlaying",
             label: "Seeker height",
             hint: "How thick the bar above the transport is drawn",
             // Rungs up to 15: the bar is a thin strip by default, and 9 is the
-            // bottom of the useful range rather than its top. The bar's slot
-            // grows with it (see SeekBar), so a thicker bar takes more room
-            // rather than crowding the elapsed time above it.
+            // bottom of the useful range rather than its top. The bar's slot and
+            // the strip both grow with it (see SeekBar and LayoutMath.stripHeight),
+            // so a thicker bar takes more room rather than crowding the title.
             options: [3, 5, 7, 9, 11, 13, 15],
             format: function (v) { return v + " px" }
         },
@@ -1090,18 +1152,6 @@ Item {
             options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
             format: root.deltaText
         },
-        {
-            key: "noticeScale",
-            section: "nowPlaying",
-            label: "Transport readout",
-            hint: "Shuffle, repeat, mute and volume notices above the strip, as an offset from the theme",
-            // Runs below the theme as well as above: the readout is a transient
-            // aside, and on a small panel a quieter line is a legitimate choice.
-            // Zero is the untouched theme size.
-            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
-            format: root.deltaText
-        },
-
         // ---- Cover art ----
         //
         // Every entry in this section carries section: "artwork". That is what
@@ -1589,15 +1639,18 @@ Item {
     // card, the panel's keys and saveSoon() all read one place.
     property string textEditKey: ""
     property string textEditDraft: ""
-    // The first keystroke replaces the whole value, so opening the row does not
-    // mean deleting a long path first.
-    property bool textEditFresh: false
+    // Index in the draft where the next keystroke lands. The card draws a caret
+    // here, so an edit in the middle of a long path is visible rather than a
+    // guess about which character Backspace will take.
+    property int textEditCaret: 0
 
     function beginTextEdit(entry) {
         if (!isText(entry)) return
         textEditKey = entry.key
+        // Start at the end: most edits append or trim a tail. The arrow keys
+        // walk back into the path when the change is somewhere in the middle.
         textEditDraft = String(valueFor(entry))
-        textEditFresh = true
+        textEditCaret = textEditDraft.length
     }
 
     // What the row draws: the draft while it is being edited, the stored value
@@ -1611,21 +1664,39 @@ Item {
         if (textEditKey === "") return
         var s = String(text)
         if (s === "") return
-        if (textEditFresh) {
-            textEditDraft = ""
-            textEditFresh = false
-        }
-        textEditDraft += s
+        textEditDraft = textEditDraft.substring(0, textEditCaret) + s
+            + textEditDraft.substring(textEditCaret)
+        textEditCaret += s.length
     }
 
     function textBackspace() {
+        if (textEditKey === "" || textEditCaret === 0) return
+        textEditDraft = textEditDraft.substring(0, textEditCaret - 1)
+            + textEditDraft.substring(textEditCaret)
+        textEditCaret--
+    }
+
+    function textDelete() {
+        if (textEditKey === "" || textEditCaret >= textEditDraft.length) return
+        textEditDraft = textEditDraft.substring(0, textEditCaret)
+            + textEditDraft.substring(textEditCaret + 1)
+    }
+
+    function textMoveCaret(delta) {
         if (textEditKey === "") return
-        if (textEditFresh || textEditDraft.length === 0) {
-            textEditDraft = ""
-            textEditFresh = false
-            return
-        }
-        textEditDraft = textEditDraft.slice(0, -1)
+        textEditCaret = Math.max(0,
+            Math.min(textEditDraft.length, textEditCaret + delta))
+    }
+
+    function textCaretToEdge(edge) {
+        if (textEditKey === "") return
+        textEditCaret = edge < 0 ? 0 : textEditDraft.length
+    }
+
+    function textClear() {
+        if (textEditKey === "") return
+        textEditDraft = ""
+        textEditCaret = 0
     }
 
     // Accepts or discards the draft. `commit` is false for Esc, which leaves the
@@ -1644,7 +1715,7 @@ Item {
         }
         textEditKey = ""
         textEditDraft = ""
-        textEditFresh = false
+        textEditCaret = 0
     }
 
     // Whether a dependent setting's parent is satisfied. Every entry is in the

@@ -732,11 +732,39 @@ Item {
     readonly property int karaokeTextRightInset: root.karaokeCoverSide
         ? root.karaokeCoverSize + root.karaokeCoverGap : 0
 
+    // When the seeker is the strip's edge, this is the space it claims: its own
+    // slot plus a little air. The strip grows by exactly this much and the
+    // content row is inset by the same amount, so the row's height -- and with it
+    // the transport's centre line -- does not move.
+    readonly property int seekEdgeInset: LayoutMath.seekEdgeInset(
+        prefs.seekThickness, prefs.uiScale)
+    readonly property int seekEdgeHeight: Math.max(1, prefs.seekThickness)
     // Height of the now-playing strip. Named because the overlay anchor keeps all
     // three readouts clear of it: typed letters, transport replies and MPD errors.
     // They read it from here, so a change to the strip's height cannot leave a
-    // notice sitting on top of it.
-    readonly property int stripHeight: Math.round(84 * prefs.uiScale)
+    // notice sitting on top of it. Inline progress gives back the clock's row;
+    // a taller seeker adds its extra height so the title keeps its breathing room.
+    readonly property int stripHeight: LayoutMath.stripHeight(
+        prefs.progressInline, prefs.seekThickness, prefs.uiScale, prefs.stripSeekEdge)
+    // The separator is a quiet hairline in the shared rule colour and width. It
+    // has its own switch, so it cannot borrow coverPaneRule's tie to paneSeparators,
+    // and it stands down when the seeker itself is the boundary.
+    readonly property int stripRule: prefs.stripSeparator && !prefs.stripSeekEdge
+        ? Math.max(1, Math.round(prefs.borderWidth * prefs.uiScale))
+        : 0
+    readonly property color stripRuleColor: theme
+        ? Util.alpha(theme.foreground, theme.light ? 0.24 : 0.16)
+        : Qt.rgba(1, 1, 1, 0.08)
+    // The clock is a detail beside the track. The small clock size uses the
+    // theme's small body token; regular keeps the old body size and fontBody offset.
+    readonly property int stripTimeFontPx: Math.round((
+        prefs.quietTime ? root.themeFont.bodySmall : root.themeFont.body + prefs.fontBody)
+        * prefs.uiScale)
+    // Notice size is measured from the resting look. The find readout uses the
+    // stored value outright -- six is where it already sat -- while the reply
+    // and the error line take the offset from six, so their default sizes stay
+    // put and the one knob moves all three together.
+    readonly property int noticeSizeOffset: prefs.findScale - 6
 
     // The strip tightens in two steps before the title runs out of room. The
     // transport keeps a fixed footprint, so a narrow panel is paid for by the
@@ -2415,6 +2443,10 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: Math.round((root.stripCompact ? 12 : 20) * prefs.uiScale)
                     anchors.rightMargin: Math.round((root.stripCompact ? 12 : 20) * prefs.uiScale)
+                    // The seeker edge is an overlay on the strip's top edge. Inset
+                    // by exactly the space it adds to stripHeight so the row keeps
+                    // its old height and the transport stays on its centre line.
+                    anchors.topMargin: prefs.stripSeekEdge ? root.seekEdgeInset : 0
                     spacing: Math.round((root.stripCompact ? 10 : 16) * prefs.uiScale)
 
                     ColumnLayout {
@@ -2453,21 +2485,88 @@ Item {
                             elide: Text.ElideRight
                         }
 
-                        SeekBar {
+                        // All three progress arrangements stay mounted so switching
+                        // a setting is instant. StackLayout gives the visible one
+                        // the room and draws only that copy; the inactive ones
+                        // cannot take a pointer click.
+                        StackLayout {
+                            id: progressStack
                             Layout.fillWidth: true
-                            theme: theme
-                            uiScale: prefs.uiScale
-                            progress: root.progress
-                            duration: root.duration
-                            thickness: prefs.seekThickness
-                            formatTime: root.formatTime
-                            onSeekRequested: function (fraction) { root.seekToFraction(fraction) }
-                        }
+                            // A StackLayout takes its implicit height from the
+                            // tallest child, including the two hidden ones. That
+                            // made the column taller than the trimmed inline strip
+                            // and pushed the transport row below its centre line.
+                            // Size the stack to the visible arrangement instead.
+                            Layout.preferredHeight: prefs.stripSeekEdge
+                                ? edgeClock.implicitHeight
+                                : (prefs.progressInline
+                                    ? inlineProgress.implicitHeight
+                                    : stackedProgress.implicitHeight)
+                            currentIndex: prefs.stripSeekEdge ? 2 : (prefs.progressInline ? 1 : 0)
 
-                        Text {
-                            text: root.formatTime(root.elapsed) + " / " + root.formatTime(root.duration)
-                            color: theme.muted
-                            font.pixelSize: Math.round((root.themeFont.body + prefs.fontBody) * prefs.uiScale)
+                            // The older arrangement: seek on its own row, with the
+                            // two times together underneath.
+                            ColumnLayout {
+                                id: stackedProgress
+                                Layout.fillWidth: true
+                                spacing: Math.round(4 * prefs.uiScale)
+
+                                SeekBar {
+                                    Layout.fillWidth: true
+                                    theme: theme
+                                    uiScale: prefs.uiScale
+                                    progress: root.progress
+                                    duration: root.duration
+                                    thickness: prefs.seekThickness
+                                    formatTime: root.formatTime
+                                    onSeekRequested: function (fraction) { root.seekToFraction(fraction) }
+                                }
+                                Text {
+                                    text: root.formatTime(root.elapsed) + " / " + root.formatTime(root.duration)
+                                    color: theme.muted
+                                    font.pixelSize: root.stripTimeFontPx
+                                }
+                            }
+
+                            // One progress line. The clocks sit at either end and
+                            // the seek fills the gap between them.
+                            RowLayout {
+                                id: inlineProgress
+                                Layout.fillWidth: true
+                                spacing: Math.round(8 * prefs.uiScale)
+
+                                Text {
+                                    text: root.formatTime(root.elapsed)
+                                    color: theme.muted
+                                    font.pixelSize: root.stripTimeFontPx
+                                }
+                                SeekBar {
+                                    Layout.fillWidth: true
+                                    theme: theme
+                                    uiScale: prefs.uiScale
+                                    progress: root.progress
+                                    duration: root.duration
+                                    thickness: prefs.seekThickness
+                                    formatTime: root.formatTime
+                                    onSeekRequested: function (fraction) { root.seekToFraction(fraction) }
+                                }
+                                Text {
+                                    text: root.formatTime(root.duration)
+                                    color: theme.muted
+                                    font.pixelSize: root.stripTimeFontPx
+                                }
+                            }
+
+                            // With the seek on the strip's top edge, the column
+                            // keeps only the clock. It reads exactly like the old
+                            // stacked time, minus the bar that moved up.
+                            Text {
+                                id: edgeClock
+                                Layout.fillWidth: true
+                                text: root.formatTime(root.elapsed) + " / " + root.formatTime(root.duration)
+                                color: theme.muted
+                                font.pixelSize: root.stripTimeFontPx
+                            }
                         }
                     }
 
@@ -2478,6 +2577,10 @@ Item {
                     // their centrelines pin together, and the row centres with the
                     // text beside it.
                     RowLayout {
+                        // Take the strip's full height so the controls centre on
+                        // the band itself, whatever the progress column's own
+                        // height happens to be.
+                        Layout.fillHeight: true
                         Layout.alignment: Qt.AlignVCenter
                         spacing: Math.round((root.stripCompact ? 10 : 16) * prefs.uiScale)
 
@@ -2504,6 +2607,41 @@ Item {
                             onAudibleVolumeChanged: function (v) { root.lastAudibleVolume = v }
                         }
                     }
+                }
+
+                // The quiet top edge. Anchored rather than laid out, so it takes
+                // no room from the controls; painted last so it stays the rule
+                // even if a larger font ever reaches the top of the strip.
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    height: root.stripRule
+                    visible: root.stripRule > 0
+                    z: 2
+                    color: root.stripRuleColor
+                }
+
+                // The bolder alternative: the seek bar itself is the top edge.
+                // Square ends and a full-width anchor make it meet both window
+                // edges; the clock bubble flips below it so it never covers the
+                // notices waiting above the strip.
+                SeekBar {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    height: root.seekEdgeHeight
+                    visible: prefs.stripSeekEdge
+                    z: 3
+                    theme: theme
+                    uiScale: prefs.uiScale
+                    progress: root.progress
+                    duration: root.duration
+                    thickness: prefs.seekThickness
+                    formatTime: root.formatTime
+                    square: true
+                    previewBelow: true
+                    onSeekRequested: function (fraction) { root.seekToFraction(fraction) }
                 }
             }
         }
@@ -2732,9 +2870,8 @@ Item {
                 color: theme.accent
                 // Subtitle rather than body: one step up from the panel's default
                 // text, because this is a transient readout that has to be legible
-                // away from the caret. The size setting is an offset on top, so the
-                // centred placement can be pushed larger without touching the
-                // panel's other type.
+                // away from the caret. Notice size is the one offset on top, shared
+                // with the transport reply and the error line.
                 font.pixelSize: Math.round((root.themeFont.subtitle + prefs.findScale) * prefs.uiScale)
                 font.family: root.themeFont.family
             }
@@ -2776,9 +2913,10 @@ Item {
                 color: theme.foreground
                 // bodySmall, one step up from caption: this is a status line that
                 // has to be read at a glance, and caption was the smallest text in
-                // the panel. The user offset still applies on top, so anyone who
-                // wants it larger from the settings card can have it.
-                font.pixelSize: Math.round((root.themeFont.bodySmall + prefs.fontCaption) * prefs.uiScale)
+                // the panel. The shared notice size applies on top, so all three
+                // overlays grow and shrink together without losing their roles.
+                font.pixelSize: Math.round((root.themeFont.bodySmall + prefs.fontCaption
+                    + root.noticeSizeOffset) * prefs.uiScale)
             }
         }
 
@@ -2813,7 +2951,7 @@ Item {
                 // Accent, the same as the typeahead and a live value in the
                 // settings card.
                 color: theme.accent
-                font.pixelSize: Math.round((root.themeFont.subtitle + prefs.noticeScale) * prefs.uiScale)
+                font.pixelSize: Math.round((root.themeFont.subtitle + root.noticeSizeOffset) * prefs.uiScale)
                 font.family: root.themeFont.family
             }
         }
@@ -2998,6 +3136,37 @@ Item {
                             break
                         case Qt.Key_Backspace:
                             prefs.textBackspace()
+                            break
+                        case Qt.Key_Delete:
+                            prefs.textDelete()
+                            break
+                        case Qt.Key_Left:
+                            prefs.textMoveCaret(-1)
+                            break
+                        case Qt.Key_Right:
+                            prefs.textMoveCaret(1)
+                            break
+                        case Qt.Key_Home:
+                            prefs.textCaretToEdge(-1)
+                            break
+                        case Qt.Key_End:
+                            prefs.textCaretToEdge(1)
+                            break
+                        case Qt.Key_A:
+                            if (ctrl) {
+                                prefs.textClear()
+                                break
+                            }
+                            // A plain 'a' is part of the path; fall through.
+                        case Qt.Key_AsciiTilde:
+                            // The tilde key is labelled AsciiTilde almost
+                            // everywhere, but some layouts send it with no
+                            // event.text. Use the text when it is there (an
+                            // unshifted backtick is a legal path character) and
+                            // fall back to "~", which the normaliser expands to
+                            // the home folder on save.
+                            prefs.textKeyStroke(event.text && event.text.length > 0
+                                ? event.text : "~")
                             break
                         case Qt.Key_Up:
                             root.settingsEditMode = false

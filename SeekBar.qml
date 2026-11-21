@@ -2,12 +2,12 @@ pragma ComponentBehavior: Bound
 // The progress bar, as one control.
 //
 // Same reason as TransportRow and VolumeControl: the panel places the seek bar
-// in two different arrangements (inline in the thin strip's column, and
-// stretched edge to edge under the cover band), and this is the one definition
-// both use. It owns no state of its own -- it draws whatever progress it is
-// handed and reports the fraction a drag lands on -- so the panel keeps its
-// scrub-then-release model (one MPD command per drag instead of one per pixel)
-// and both placements behave identically.
+// in three arrangements (inline or stacked in the thin strip's column, stretched
+// edge to edge under the cover band, and as the strip's own top boundary), and
+// this is the one definition all three use. It owns no state of its own -- it
+// draws whatever progress it is handed and reports the fraction a drag lands on
+// -- so the panel keeps its scrub-then-release model (one MPD command per drag
+// instead of one per pixel) and all placements behave identically.
 import QtQuick
 import qs.Commons
 
@@ -22,6 +22,12 @@ Item {
     // so a drag on a dead bar does nothing rather than seeking to zero.
     property real duration: 0
     property real thickness: 3
+    // The strip-edge placement wants square ends so the bar meets both window
+    // edges; the other placements keep the usual rounded caps.
+    property bool square: false
+    // On the strip's top edge the pointer's clock belongs below the bar, inside
+    // the strip, rather than floating over the panes and their notices.
+    property bool previewBelow: false
     // Injected by the panel: the one clock format used everywhere else, so the
     // preview reads "1:23" rather than a second implementation of it.
     property var formatTime: function (seconds) { return String(Math.floor(seconds || 0)) }
@@ -47,14 +53,14 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         width: parent.width
         height: root.thickness
-        radius: root.thickness / 2
+        radius: root.square ? 0 : root.thickness / 2
         color: root.theme ? Util.alpha(root.theme.foreground, 0.14) : Util.alpha(Color.foreground, 0.14)
     }
     Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         width: parent.width * root.shown
         height: root.thickness
-        radius: root.thickness / 2
+        radius: root.square ? 0 : root.thickness / 2
         color: root.theme ? root.theme.accent : Color.accent
     }
 
@@ -72,8 +78,8 @@ Item {
     }
 
     // A small clock bubble under the pointer, so a scrub is aimed rather than
-    // guessed at. It only exists on hover or drag and sits above the bar, so
-    // the resting surface is still just a line.
+    // guessed at. It only exists on hover or drag; the strip-edge placement
+    // flips it below the bar so it never covers the notices above the strip.
     Item {
         id: preview
         visible: root.duration > 0 && (seekArea.containsMouse || seekArea.pressed)
@@ -82,7 +88,9 @@ Item {
         z: 2
         x: Math.max(0, Math.min(root.width - width,
             root.width * (seekArea.pressed ? seekArea.scrubFraction : seekArea.pointerFraction) - width / 2))
-        y: -height - Math.round(6 * root.uiScale)
+        y: root.previewBelow
+            ? parent.height + Math.round(6 * root.uiScale)
+            : -height - Math.round(6 * root.uiScale)
 
         Rectangle {
             anchors.fill: parent

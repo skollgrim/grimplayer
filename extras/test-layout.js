@@ -350,6 +350,48 @@ check("readoutStackY: center centres the whole stack, not each box", () => {
     assert.equal(Layout.readoutStackY(Object.assign({}, centered, { index: 2 })), 355)
 })
 
+// ---- now-playing strip ----
+
+check("seekEdgeInset: the bar's slot plus air, scaled once", () => {
+    assert.equal(Layout.seekEdgeInset(9, 1), 11)
+    assert.equal(Layout.seekEdgeInset(15, 1), 17)
+    assert.equal(Layout.seekEdgeInset(15, 1.25), 21)
+    assert.equal(Layout.seekEdgeInset(0, 1), 3)
+})
+
+check("stripHeight: stacked progress keeps the original band", () => {
+    assert.equal(Layout.stripHeight(false, 9, 1), 84)
+    assert.equal(Layout.stripHeight(false, 3, 1), 84)
+})
+
+check("stripHeight: a taller seeker gives the title its room back", () => {
+    assert.equal(Layout.stripHeight(false, 15, 1), 90)
+    assert.equal(Layout.stripHeight(false, 11, 1), 86)
+})
+
+check("stripHeight: inline progress drops the clock's empty row", () => {
+    assert.equal(Layout.stripHeight(true, 9, 1), 66)
+    assert.equal(Layout.stripHeight(true, 15, 1), 72)
+})
+
+check("stripHeight: the scale rounds once at the end", () => {
+    assert.equal(Layout.stripHeight(true, 9, 1.25), 83)
+    assert.equal(Layout.stripHeight(false, 15, 1.25), 113)
+})
+
+check("stripHeight: the seeker edge keeps the row's height", () => {
+    var cases = [
+        [false, 9, 1], [true, 9, 1], [true, 15, 1],
+        [true, 9, 1.25], [false, 15, 1.15]
+    ]
+    for (var i = 0; i < cases.length; i++) {
+        var c = cases[i]
+        var plain = Layout.stripHeight(c[0], c[1], c[2], false)
+        var edged = Layout.stripHeight(c[0], c[1], c[2], true)
+        assert.equal(edged - plain, Layout.seekEdgeInset(c[1], c[2]))
+    }
+})
+
 // ---- window inset ----
 
 check("windowInset: the measured panel frame", () => {

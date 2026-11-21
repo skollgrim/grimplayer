@@ -130,7 +130,9 @@ TestCase {
             wrapAround: "library", playingMarker: "library",
             fontSubtitle: "library", albumYears: "library",
             seekThickness: "nowPlaying", iconSize: "nowPlaying", fontTitle: "nowPlaying",
-            fontBody: "nowPlaying", noticeScale: "nowPlaying", fontCaption: "album",
+            fontBody: "nowPlaying", stripSeparator: "nowPlaying", stripSeekEdge: "nowPlaying",
+            progressInline: "nowPlaying", quietTime: "nowPlaying",
+            fontCaption: "album",
             albumFont: "album", albumTrackSpacing: "album",
             lyricsFollow: "lyricsView", lyricsAlign: "lyricsView",
             lyricsFont: "lyricsView", lyricsWidth: "lyricsView",
@@ -158,6 +160,80 @@ TestCase {
         compare(config.settingsOpacity, 0.7)
         config.applyStored({ settingsOpacity: "nope" })
         compare(config.settingsOpacity, 0.7, "an invalid value should be ignored")
+    }
+
+    // The strip rule shares the pane rules' width but has its own switch, so it
+    // starts on for an immediate edge and survives a file written by the card.
+    function test_strip_separator_starts_on_and_round_trips() {
+        var e = entryFor("stripSeparator")
+        compare(e.label, "Strip separator")
+        compare(config.codeDefaults.stripSeparator, true)
+        compare(config.stripSeparator, true)
+        config.applyStored({ stripSeparator: false })
+        compare(config.stripSeparator, false)
+        config.applyStored({ stripSeparator: "nope" })
+        compare(config.stripSeparator, false, "an invalid value should be ignored")
+    }
+
+    // The two remaining strip refinements share the separator's treatment: each
+    // starts on, each can be switched off, and each ignores a stored value the
+    // row does not offer. The time one is a plain size choice now.
+    function test_strip_refinements_start_on_and_round_trip() {
+        compare(entryFor("quietTime").label, "Time size")
+        var keys = ["progressInline", "quietTime"]
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i]
+            compare(config.codeDefaults[key], true, key + " does not start on")
+            compare(config.valueFor(entryFor(key)), true, key + " is not on")
+            var off = {}
+            off[key] = false
+            config.applyStored(off)
+            compare(config.valueFor(entryFor(key)), false, key + " did not switch off")
+            var bad = {}
+            bad[key] = "nope"
+            config.applyStored(bad)
+            compare(config.valueFor(entryFor(key)), false,
+                key + " accepted a value it does not offer")
+        }
+    }
+
+    // With the seek as the edge there is no in-strip bar to stack, so the row
+    // reads On and stops taking edits. The stored choice survives underneath.
+    function test_inline_progress_is_held_on_by_the_seeker_edge() {
+        var e = entryFor("progressInline")
+        config.applyStored({ progressInline: false, stripSeekEdge: true })
+        verify(!config.isActive(e), "inline progress should be disabled with the edge")
+        compare(config.valueFor(e), true, "the row should read on")
+        compare(config.progressInline, true, "the strip should use inline geometry")
+        config.applyStored({ stripSeekEdge: false })
+        verify(config.isActive(e))
+        compare(config.valueFor(e), false, "the stored choice should come back")
+    }
+
+    // The bolder boundary starts off so the quiet strip is still the resting
+    // look, but it persists like every other switch once chosen.
+    function test_seek_edge_starts_off_and_round_trips() {
+        var e = entryFor("stripSeekEdge")
+        compare(e.label, "Seeker as edge")
+        compare(config.codeDefaults.stripSeekEdge, false)
+        compare(config.stripSeekEdge, false)
+        config.applyStored({ stripSeekEdge: true })
+        compare(config.stripSeekEdge, true)
+        config.applyStored({ stripSeekEdge: "nope" })
+        compare(config.stripSeekEdge, true, "an invalid value should be ignored")
+    }
+
+    // Line width still has a job with the pane rules off when the strip separator
+    // is on; the seeker edge uses its own thickness instead of this width.
+    function test_line_width_stays_live_for_the_strip_separator() {
+        var e = entryFor("borderWidth")
+        config.applyStored({ paneSeparators: false, paneHeadings: false,
+            stripSeparator: true, stripSeekEdge: false })
+        verify(config.isActive(e))
+        config.applyStored({ stripSeekEdge: true })
+        verify(!config.isActive(e), "the seeker edge replaces the hairline")
+        config.applyStored({ stripSeekEdge: false, stripSeparator: false })
+        verify(!config.isActive(e))
     }
 
     function test_reset_restores_the_captured_defaults() {
@@ -346,14 +422,14 @@ TestCase {
         compare(config.keyboardStyle, "off", "an explicit new key wins")
     }
 
-    // The find readout's position and size moved with their setting's rename.
-    // The old corner placement folds into the bottom band, which replaced it.
-    function test_find_readout_settings_migrate_with_their_names() {
+    // The notice position and size moved with their setting's rename. The old
+    // corner placement folds into the bottom band, which replaced it.
+    function test_notice_settings_migrate_with_their_names() {
         var place = entryFor("findPlace")
         var scale = entryFor("findScale")
-        verify(place !== null && scale !== null, "the renamed find rows should exist")
+        verify(place !== null && scale !== null, "the renamed notice rows should exist")
         compare(place.label, "Notice position")
-        compare(scale.label, "Find size")
+        compare(scale.label, "Notice size")
         verify(place.after === undefined, "notice position must not be an indented child")
         compare(place.orderAfter, "keyboardStyle")
         verify(config.sectionLists.general.indexOf(place)
@@ -363,6 +439,7 @@ TestCase {
         config.applyStored({ typeaheadPlace: "center", typeaheadScale: 9 })
         compare(config.findPlace, "center")
         compare(config.findScale, 9)
+        compare(config.textOf(scale), "+3 px", "size is measured from the resting look")
         config.reset()
         config.applyStored({ typeaheadPlace: "corner", typeaheadScale: 3,
                              findPlace: "bottom", findScale: 4 })
@@ -370,21 +447,18 @@ TestCase {
         compare(config.findScale, 4, "an explicit new key wins")
     }
 
-    // Position is shared by every notice, so it stays live in every keyboard
-    // style; only the typed letters' own size waits on the find style.
-    function test_only_find_size_waits_on_the_find_style() {
+    // Both notice rows are shared by the letters, the transport reply and the
+    // error line, so neither waits on the keyboard style any more.
+    function test_notice_rows_stay_live_in_every_keyboard_style() {
         var style = entryFor("keyboardStyle")
         var place = entryFor("findPlace")
         var scale = entryFor("findScale")
-        config.assign(style, "vim")
-        verify(config.isActive(place), "notice position should stay live in Vim style")
-        verify(!config.isActive(scale), "find size should be greyed out in Vim style")
-        config.assign(style, "off")
-        verify(config.isActive(place), "notice position should stay live when letters are off")
-        verify(!config.isActive(scale), "find size should be greyed out when letters are off")
-        config.assign(style, "find")
-        verify(config.isActive(place), "notice position should stay live in Find style")
-        verify(config.isActive(scale), "find size should come back in Find style")
+        var styles = ["find", "vim", "off"]
+        for (var i = 0; i < styles.length; i++) {
+            config.assign(style, styles[i])
+            verify(config.isActive(place), "notice position should stay live in " + styles[i])
+            verify(config.isActive(scale), "notice size should stay live in " + styles[i])
+        }
     }
 
     // Highlighting is a view choice on each word surface, not one global: the
@@ -538,14 +612,17 @@ TestCase {
         compare(config.musicDir, "/srv/music", "a non-string must not replace a good one")
     }
 
-    function test_editing_a_text_row_commits_only_on_accept() {
+    function test_editing_a_text_row_appends_and_commits_only_on_accept() {
         var e = entryFor("musicDir")
         config.assign(e, "/srv/music")
         config.beginTextEdit(e)
+        compare(config.textEditDraft, "/srv/music", "editing starts at the old value")
         config.textKeyStroke("x")
-        compare(config.textEditDraft, "x", "the first keystroke replaces the value")
+        compare(config.textEditDraft, "/srv/musicx", "typing appends")
         config.textBackspace()
-        compare(config.textEditDraft, "")
+        compare(config.textEditDraft, "/srv/music")
+        config.textClear()
+        compare(config.textEditDraft, "", "Ctrl+A clears for a fresh path")
         config.textKeyStroke("/")
         config.textKeyStroke("l")
         config.textKeyStroke("i")
@@ -557,12 +634,51 @@ TestCase {
         compare(config.displayText(e), "/srv/music")
 
         config.beginTextEdit(e)
+        config.textKeyStroke("~")
+        compare(config.textEditDraft, "/srv/music~", "tilde is a typed character")
+        config.textClear()
         config.textKeyStroke("/")
         config.textKeyStroke("n")
         config.textKeyStroke("e")
         config.textKeyStroke("w")
         config.endTextEdit(true)
         compare(config.musicDir, "/new")
+    }
+
+    function test_text_caret_walks_and_edits_at_its_position() {
+        var e = entryFor("musicDir")
+        config.assign(e, "/srv/music")
+        config.beginTextEdit(e)
+        compare(config.textEditCaret, 10, "editing starts at the end")
+
+        config.textMoveCaret(-4)
+        compare(config.textEditCaret, 6)
+        config.textKeyStroke("X")
+        compare(config.textEditDraft, "/srv/mXusic", "typing goes at the caret")
+        compare(config.textEditCaret, 7)
+
+        config.textBackspace()
+        compare(config.textEditDraft, "/srv/music", "Backspace takes the character before it")
+        compare(config.textEditCaret, 6)
+
+        config.textDelete()
+        compare(config.textEditDraft, "/srv/msic", "Delete takes the character at it")
+        compare(config.textEditCaret, 6, "Delete does not move the caret")
+
+        config.textMoveCaret(-100)
+        compare(config.textEditCaret, 0, "the caret stops at the start")
+        config.textMoveCaret(100)
+        compare(config.textEditCaret, 9, "the caret stops at the end")
+        config.textCaretToEdge(-1)
+        compare(config.textEditCaret, 0)
+        config.textCaretToEdge(1)
+        compare(config.textEditCaret, 9)
+
+        config.textClear()
+        compare(config.textEditDraft, "")
+        compare(config.textEditCaret, 0, "clearing resets the caret")
+        config.endTextEdit(false)
+        compare(config.textEditCaret, 0, "leaving the editor resets the caret")
     }
 
     // MPD reports its own music_directory, which is the folder every path it

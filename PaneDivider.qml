@@ -15,8 +15,7 @@ pragma ComponentBehavior: Bound
 // light rule, which is the whole job. A heavier or higher-contrast rule would
 // compete with the selected-row highlight, and that highlight is what should be
 // the loudest line on screen. The thickness is the borderWidth preference, shared
-// with the pane outline, the heading underlines and the rule above the now playing
-// strip.
+// with the pane heading underlines and the quiet strip separator.
 //
 // Named PaneDivider rather than Separator because QtQuick.Controls exports a
 // Separator of its own, and the collision made the component fail to resolve.

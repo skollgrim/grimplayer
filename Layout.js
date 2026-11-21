@@ -209,6 +209,27 @@ function coverBandVisible(options) {
     return o.windowWidth + o.slack >= o.minWidth
 }
 
+// Room the seeker claims when it becomes the strip's top edge: the bar itself
+// plus a couple of pixels of air before the labels start. The strip grows by
+// exactly this much and the content row is inset by the same amount, so the
+// row keeps its old height and the transport stays on its centre line.
+function seekEdgeInset(thickness, uiScale) {
+    var bar = Math.max(1, Math.round(asNumber(thickness)))
+    return Math.round((bar + 2) * (asNumber(uiScale) || 1))
+}
+
+// Height of the now-playing strip. Inline progress removes the clock's own row,
+// so the strip gives that space back instead of holding an empty band. Above a
+// 9px seeker the bar's slot grows, and the strip grows with it so the title keeps
+// the same breathing room instead of being pushed towards the top edge. Seeker
+// as edge adds its inset on top without changing the room left for the row.
+function stripHeight(inline, seekThickness, uiScale, seekEdge) {
+    var base = inline ? 66 : 84
+    var extra = Math.max(0, Math.round(asNumber(seekThickness)) - 9)
+    var plain = Math.round((base + extra) * (asNumber(uiScale) || 1))
+    return plain + (seekEdge ? seekEdgeInset(seekThickness, uiScale) : 0)
+}
+
 // The compositor's frame around the panel, in logical pixels. Hyprland reports
 // the gap and border in physical pixels, so they are scaled by the ratio of the
 // panel's logical width to its physical one. Zero when either width is unknown.
@@ -334,6 +355,8 @@ if (typeof module !== "undefined" && module.exports) {
         lyricsColumnWidth: lyricsColumnWidth,
         companionTrackWidth: companionTrackWidth,
         coverBandVisible: coverBandVisible,
+        seekEdgeInset: seekEdgeInset,
+        stripHeight: stripHeight,
         windowInset: windowInset,
         optionInt: optionInt,
         gapsOutHorizontal: gapsOutHorizontal,

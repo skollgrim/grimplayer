@@ -322,6 +322,7 @@ Item {
                     // the box is fixed and the ink right-aligned, bolding would
                     // nudge the value sideways as the caret lands on the row.
                     Text {
+                        id: valueText
                         text: root.config ? root.config.displayText(row.entryData) : ""
                         textFormat: Text.PlainText
                         // The accent marks a live value; a greyed row's value is
@@ -340,6 +341,37 @@ Item {
                         horizontalAlignment: Text.AlignRight
                         Layout.preferredWidth: root.valueWidth
                         Layout.fillWidth: row.textRow
+
+                        // The caret sits over the right-aligned text rather than
+                        // replacing a character, so the whole path stays readable
+                        // while it is edited. Measuring the full draft and the part
+                        // before the caret gives the same offset whether the text
+                        // fits or the left end has been elided away: both are pinned
+                        // to the value's right edge. A caret in the elided part
+                        // clamps to the left edge instead of disappearing.
+                        Rectangle {
+                            id: draftCaret
+                            visible: row.textRow && root.config
+                                && root.config.textEditKey === row.entryData.key
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: Math.max(0, Math.min(parent.width - width,
+                                parent.width - fullDraftMetrics.width
+                                    + prefixDraftMetrics.width))
+                            width: Math.max(1, Math.round(2 * root.uiScale))
+                            height: Math.round(14 * root.uiScale)
+                            color: root.colAccent
+                        }
+                        TextMetrics {
+                            id: fullDraftMetrics
+                            text: valueText.text
+                            font: valueText.font
+                        }
+                        TextMetrics {
+                            id: prefixDraftMetrics
+                            text: valueText.text.substring(0, root.config
+                                ? root.config.textEditCaret : 0)
+                            font: valueText.font
+                        }
                     }
                 }
             }
@@ -527,7 +559,7 @@ Item {
                 Layout.fillWidth: true
                 text: root.editMode
                     ? (root.config && root.config.textEditKey !== ""
-                        ? "EDITING — type a path  ·  Enter saves  ·  Esc cancels  ·  Backspace deletes"
+                        ? "EDITING — ←/→ move caret  ·  Ctrl+A clears  ·  ~ means home  ·  Enter saves  ·  Esc cancels"
                         : "EDITING — ←/→ or H/L adjust  ·  Enter/Esc step back")
                     : "↑↓←→ or J K H L move  ·  Enter toggles, or edits a slider or path  ·  g/G first/last  ·  Backspace resets row  ·  R resets all  ·  ? keys  ·  Esc/Q closes"
                 textFormat: Text.PlainText
