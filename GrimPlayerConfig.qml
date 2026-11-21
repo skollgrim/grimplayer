@@ -1639,9 +1639,9 @@ Item {
     // card, the panel's keys and saveSoon() all read one place.
     property string textEditKey: ""
     property string textEditDraft: ""
-    // Index in the draft where the next keystroke lands. The card draws a caret
-    // here, so an edit in the middle of a long path is visible rather than a
-    // guess about which character Backspace will take.
+    // Index in the draft where the next keystroke lands. The native editor
+    // mirrors its caret here, so the panel's fallback keymap edits at the same
+    // place instead of guessing which character Backspace will take.
     property int textEditCaret: 0
 
     function beginTextEdit(entry) {

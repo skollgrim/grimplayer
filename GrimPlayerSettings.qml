@@ -126,6 +126,11 @@ Item {
             readonly property var opts: entryData.options || []
             readonly property bool numeric: root.config ? root.config.isSlider(entryData) : false
             readonly property bool textRow: root.config ? root.config.isText(entryData) : false
+            // Only the row whose draft is open gets a native editor. The value
+            // text keeps its place in the layout, but turns transparent while
+            // this is true so the input's own caret is the one being read.
+            readonly property bool textEditing: textRow && root.editMode && root.config
+                && root.config.textEditKey === entryData.key
             readonly property int optIndex: root.config
                 ? opts.indexOf(root.config.valueFor(entryData)) : -1
             readonly property real fraction: opts.length > 1 ? Math.max(0, optIndex) / (opts.length - 1) : 0
@@ -323,12 +328,16 @@ Item {
                     // nudge the value sideways as the caret lands on the row.
                     Text {
                         id: valueText
+                        objectName: "valueText"
                         text: root.config ? root.config.displayText(row.entryData) : ""
                         textFormat: Text.PlainText
                         // The accent marks a live value; a greyed row's value is
                         // muted so it reads as held-but-inactive rather than
-                        // current.
-                        color: row.active ? root.colAccent : root.colMuted
+                        // current. While a native editor is over the cell, this
+                        // copy goes transparent: the input draws the same draft
+                        // with the same ink, and two copies of it would blur.
+                        color: row.textEditing ? "transparent"
+                            : (row.active ? root.colAccent : root.colMuted)
                         font.pixelSize: Math.round((row.textRow
                             ? root.themeFont.bodySmall : root.themeFont.body) * root.uiScale)
                         // The path's tail names the folder; the head is what can
@@ -336,41 +345,142 @@ Item {
                         elide: row.textRow ? Text.ElideLeft : Text.ElideNone
                         // An underline on the row being typed into is the one
                         // cue that the text is a draft and not the stored value.
-                        font.underline: row.textRow && root.config
-                            ? root.config.textEditKey === row.entryData.key : false
+                        font.underline: row.textEditing
                         horizontalAlignment: Text.AlignRight
                         Layout.preferredWidth: root.valueWidth
                         Layout.fillWidth: row.textRow
 
-                        // The caret sits over the right-aligned text rather than
-                        // replacing a character, so the whole path stays readable
-                        // while it is edited. Measuring the full draft and the part
-                        // before the caret gives the same offset whether the text
-                        // fits or the left end has been elided away: both are pinned
-                        // to the value's right edge. A caret in the elided part
-                        // clamps to the left edge instead of disappearing.
-                        Rectangle {
-                            id: draftCaret
-                            visible: row.textRow && root.config
-                                && root.config.textEditKey === row.entryData.key
-                            anchors.verticalCenter: parent.verticalCenter
-                            x: Math.max(0, Math.min(parent.width - width,
-                                parent.width - fullDraftMetrics.width
-                                    + prefixDraftMetrics.width))
-                            width: Math.max(1, Math.round(2 * root.uiScale))
-                            height: Math.round(14 * root.uiScale)
-                            color: root.colAccent
-                        }
-                        TextMetrics {
-                            id: fullDraftMetrics
-                            text: valueText.text
-                            font: valueText.font
-                        }
-                        TextMetrics {
-                            id: prefixDraftMetrics
-                            text: valueText.text.substring(0, root.config
-                                ? root.config.textEditCaret : 0)
-                            font: valueText.font
+                        // While the row is being edited, a real TextInput takes
+                        // over the value cell. That buys the three things a hand-
+                        // rolled keymap kept getting wrong: a caret that blinks
+                        // and scrolls with a long path, native selection and paste,
+                        // and whatever character the layout produces for the tilde
+                        // key. The panel's keymap stays as a fallback for shells
+                        // that do not hand focus to this item.
+                        TextInput {
+                            id: draftInput
+                            objectName: "draftInput"
+                            // Exposed for the QML tests: the harness has no window,
+                            // so an item's effective `visible` is always false
+                            // there even when this flag says the editor is live.
+                            readonly property bool editorActive: row.textEditing
+                            visible: editorActive
+                            focus: editorActive
+                            anchors.fill: parent
+                            font.pixelSize: valueText.font.pixelSize
+                            font.family: valueText.font.family
+                            font.underline: true
+                            color: row.active ? root.colAccent : root.colMuted
+                            horizontalAlignment: TextInput.AlignRight
+                            verticalAlignment: TextInput.AlignVCenter
+                            cursorVisible: true
+                            selectByMouse: true
+                            selectionColor: root.colAccent
+                            selectedTextColor: root.colBackground
+
+                            // Plain property rather than a binding: Qt owns every
+                            // keystroke and paste, and the two connections below
+                            // mirror the result into the draft and pick up edits
+                            // that came through the panel's fallback keymap.
+                            text: ""
+                            // Guards the two-way mirror: a programmatic change
+                            // from either side must not bounce straight back as
+                            // a user edit and overwrite the other side's position.
+                            property bool syncing: false
+
+                            // `forceCaret` is for opening the editor, where the
+                            // draft may already match but the caret still has to
+                            // be placed. A routine draft change from typing must
+                            // not put the caret back: Qt has just advanced it.
+                            function syncDraft(forceCaret) {
+                                if (!root.config || syncing) return
+                                syncing = true
+                                var draft = root.config.textEditDraft
+                                var textChanged = text !== draft
+                                if (textChanged) text = draft
+                                if (forceCaret || textChanged) {
+                                    var caret = root.config.textEditCaret
+                                    if (cursorPosition !== caret)
+                                        cursorPosition = Math.max(0, Math.min(text.length, caret))
+                                }
+                                syncing = false
+                            }
+
+                            function syncCaret() {
+                                if (!root.config || syncing) return
+                                syncing = true
+                                var caret = root.config.textEditCaret
+                                if (cursorPosition !== caret)
+                                    cursorPosition = Math.max(0, Math.min(text.length, caret))
+                                syncing = false
+                            }
+
+                            Connections {
+                                target: root.config
+                                function onTextEditDraftChanged() {
+                                    if (draftInput.editorActive) draftInput.syncDraft(false)
+                                }
+                                function onTextEditCaretChanged() {
+                                    if (draftInput.editorActive) draftInput.syncCaret()
+                                }
+                            }
+
+                            onTextChanged: function () {
+                                if (syncing || !root.config || !editorActive) return
+                                if (text !== root.config.textEditDraft)
+                                    root.config.textEditDraft = text
+                            }
+                            onCursorPositionChanged: function () {
+                                if (syncing || !root.config || !editorActive) return
+                                if (root.config.textEditCaret !== cursorPosition)
+                                    root.config.textEditCaret = cursorPosition
+                            }
+                            onEditorActiveChanged: function () {
+                                if (editorActive) syncDraft(true)
+                            }
+                            Component.onCompleted: syncDraft(true)
+                            onVisibleChanged: function () {
+                                if (!visible) return
+                                syncDraft(true)
+                                // A summon hands focus back to the panel's key
+                                // catcher on a later tick; doing the same here
+                                // keeps the caret in this field whichever call
+                                // lands last.
+                                Qt.callLater(function () {
+                                    if (visible) forceActiveFocus()
+                                })
+                            }
+
+                            Keys.onPressed: function (event) {
+                                // Ctrl+A keeps the card's long-standing meaning
+                                // of clearing the field. A native TextInput would
+                                // otherwise only select its text.
+                                if (event.key === Qt.Key_A
+                                        && (event.modifiers & Qt.ControlModifier)) {
+                                    if (root.config) root.config.textClear()
+                                    event.accepted = true
+                                    return
+                                }
+                                // Some layouts send the tilde key with no text.
+                                // Without this the native input would swallow a
+                                // key that typed nothing, and the panel's fallback
+                                // would never see it. An unshifted backtick still
+                                // arrives as text and stays a legal path character.
+                                if (event.key === Qt.Key_AsciiTilde
+                                        && (!event.text || event.text.length === 0)) {
+                                    if (root.config) root.config.textKeyStroke("~")
+                                    event.accepted = true
+                                }
+                            }
+                            Keys.onReturnPressed: function (event) {
+                                event.accepted = true
+                                root.editModeRequested(false)
+                            }
+                            Keys.onEscapePressed: function (event) {
+                                event.accepted = true
+                                if (root.config) root.config.endTextEdit(false)
+                                root.editModeRequested(false)
+                            }
                         }
                     }
                 }
@@ -559,9 +669,9 @@ Item {
                 Layout.fillWidth: true
                 text: root.editMode
                     ? (root.config && root.config.textEditKey !== ""
-                        ? "EDITING — ←/→ move caret  ·  Ctrl+A clears  ·  ~ means home  ·  Enter saves  ·  Esc cancels"
-                        : "EDITING — ←/→ or H/L adjust  ·  Enter/Esc step back")
-                    : "↑↓←→ or J K H L move  ·  Enter toggles, or edits a slider or path  ·  g/G first/last  ·  Backspace resets row  ·  R resets all  ·  ? keys  ·  Esc/Q closes"
+                        ? "EDITING — arrows move caret  ·  Ctrl+A clear  ·  Ctrl+V paste  ·  ~ home  ·  Enter save  ·  Esc cancel"
+                        : "EDITING — arrows adjust  ·  Enter/Esc back")
+                    : "Arrows/JKHL move  ·  Enter toggle/edit  ·  g/G ends  ·  Backspace reset row  ·  R reset all  ·  ? keys  ·  Esc/Q close"
                 textFormat: Text.PlainText
                 color: root.editMode ? root.colAccent : root.colMuted
                 font.pixelSize: Math.round(root.themeFont.caption * root.uiScale)

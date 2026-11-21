@@ -24,7 +24,7 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight the playing line, and can follow it with the view. The playing album's titles can sit beside the words.
 - **Karaoke** (`Alt` + `K`) — turns the open player into a lyrics-only view: large text, centred by default but configurable under **Karaoke view**, the current line bold while marking is on, everything else out of the way.
 - **Album view** (`Alt` + `A`) — a now-playing surface rather than a browser: the album's titles in large centred type, every track but the playing one held back, and the cover beside them. A small preview of the next album's cover sits above the bar, and the playing lyrics can share the surface. `Esc` returns to the browser.
-- **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, the album view, lyrics, themes, the music folder and optional features. The music folder types at a visible caret that the arrow keys move, `Ctrl+A` clears it, and `~` means your home folder.
+- **Extensive settings** (`Alt` + `S`) — layout, fonts, spacing, cover art, the album view, lyrics, themes, the music folder and optional features. The music folder types at a visible caret that the arrow keys move, `Ctrl+A` clears it, `Ctrl+V` pastes at the caret, and `~` means your home folder.
 - **Vim motions (optional)** — pick `Vim` as the Keyboard style and `j` `k` `h` `l` `g` `G` navigate alongside arrows; `Shift` + `h`/`l` seek.
 - **Key reference** (`?`) — quick overview of keys.
 

@@ -847,6 +847,10 @@ Item {
             if (e && prefs.isActive(e) && prefs.isText(e)) prefs.beginTextEdit(e)
         } else {
             prefs.endTextEdit(true)
+            // The native editor had active focus while the draft was open. Put
+            // the card's keys back on the catcher as the editor goes away, so
+            // arrows still walk rows and Enter still opens the next one.
+            keyCatcher.forceActiveFocus()
         }
     }
 
