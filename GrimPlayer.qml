@@ -328,6 +328,13 @@ Item {
         // tag save, artwork extraction or lyrics lookup must not still use the
         // folder the panel was seeded with at startup.
         function onMusicDirChanged() { root.applyMusicDir() }
+
+        // Settings action rows fire here. Rescanning asks MPD to update its
+        // database so newly added files appear in the library.
+        function onActionTriggered(action, entry) {
+            if (action === "rescanLibrary" && root.mpd)
+                root.mpd.send("update")
+        }
     }
 
     // Re-read on the monitor changing under the open window. The frame figures
@@ -3157,6 +3164,7 @@ Item {
                     var editable = entry && prefs.isActive(entry)
                     var isNumeric = editable && prefs.isSlider(entry)
                     var isText = editable && prefs.isText(entry)
+                    var isAction = editable && prefs.isAction(entry)
 
                     // A free-text row's edit mode has its own keymap: the typed
                     // characters are the value, so only the keys that leave the
@@ -3266,13 +3274,16 @@ Item {
                     case Qt.Key_Enter:
                         if (root.settingsEditMode) root.settingsEditMode = false
                         else if (isNumeric || isText) root.settingsEditMode = true
+                        else if (isAction) prefs.triggerAction(entry)
                         else root.changeSetting(1)
                         break
                     case Qt.Key_Space:
                         // A free-text row opens with Enter: Space belongs in a
                         // path, and starting an editor on it would surprise.
+                        // Action rows activate on Enter/Space like a button.
                         if (root.settingsEditMode) root.settingsEditMode = false
                         else if (isNumeric) root.settingsEditMode = true
+                        else if (isAction) prefs.triggerAction(entry)
                         else if (!isText) root.changeSetting(1)
                         break
 

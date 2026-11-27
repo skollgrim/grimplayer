@@ -927,6 +927,16 @@ Item {
             normalize: function (v) { return Paths.musicRoot(v, Quickshell.env("HOME")) }
         },
         {
+            key: "rescanLibrary",
+            section: "general",
+            label: "Rescan library",
+            kind: "action",
+            action: "rescanLibrary",
+            buttonText: "Rescan",
+            hint: "Ask MPD to scan the music folder for new, changed or removed files",
+            orderAfter: "musicDir"
+        },
+        {
             key: "keyboardStyle",
             section: "general",
             label: "Keyboard style",
@@ -1711,6 +1721,20 @@ Item {
         return !!(entry && entry.kind === "text")
     }
 
+    // An action row runs something once when activated instead of holding a
+    // value. The card renders it as a button; the config only declares it and
+    // reports when the user fired it.
+    function isAction(entry) {
+        return !!(entry && entry.kind === "action")
+    }
+
+    signal actionTriggered(string action, var entry)
+
+    function triggerAction(entry) {
+        if (!isAction(entry)) return
+        root.actionTriggered(String(entry.action || entry.key || ""), entry)
+    }
+
     // ---- free-text editing ----
     //
     // A text row edits a draft and writes it only once the edit is accepted.
@@ -1734,8 +1758,9 @@ Item {
     }
 
     // What the row draws: the draft while it is being edited, the stored value
-    // otherwise.
+    // otherwise. Action rows show their button label instead of a stored value.
     function displayText(entry) {
+        if (isAction(entry)) return String(entry.buttonText || "Run")
         if (isText(entry) && textEditKey === entry.key) return textEditDraft
         return textOf(entry)
     }

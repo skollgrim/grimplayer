@@ -126,6 +126,7 @@ Item {
             readonly property var opts: entryData.options || []
             readonly property bool numeric: root.config ? root.config.isSlider(entryData) : false
             readonly property bool textRow: root.config ? root.config.isText(entryData) : false
+            readonly property bool actionRow: root.config ? root.config.isAction(entryData) : false
             // Only the row whose draft is open gets a native editor. The value
             // text keeps its place in the layout, but turns transparent while
             // this is true so the input's own caret is the one being read.
@@ -219,9 +220,12 @@ Item {
                     }
                     // Clicking the row you are already on does what Enter does: a
                     // plain switch flips, a slider or a text row opens for
-                    // editing (and clicking it again accepts the edit).
+                    // editing (and clicking it again accepts the edit), and an
+                    // action row fires its action.
                     if (row.numeric || row.textRow) {
                         root.editModeRequested(!root.editMode)
+                    } else if (row.actionRow && root.config) {
+                        root.config.triggerAction(row.entryData)
                     } else if (root.config) {
                         root.config.cycle(row.entryData, 1)
                     }
@@ -262,7 +266,8 @@ Item {
                 // within a tab, which is what the layout asks for.
                 RowLayout {
                     Layout.preferredWidth: row.numeric ? root.controlWidth
-                        : (row.textRow ? root.textWidth : root.valueWidth)
+                        : (row.textRow ? root.textWidth
+                            : (row.actionRow ? Math.round(90 * root.uiScale) : root.valueWidth))
                     Layout.alignment: Qt.AlignRight
                     spacing: 8
 
@@ -345,10 +350,10 @@ Item {
                         elide: row.textRow ? Text.ElideLeft : Text.ElideNone
                         // An underline on the row being typed into is the one
                         // cue that the text is a draft and not the stored value.
-                        font.underline: row.textEditing
+                        font.underline: row.textEditing || row.actionRow
                         horizontalAlignment: Text.AlignRight
-                        Layout.preferredWidth: root.valueWidth
-                        Layout.fillWidth: row.textRow
+                        Layout.preferredWidth: row.textRow || row.actionRow ? -1 : root.valueWidth
+                        Layout.fillWidth: row.textRow || row.actionRow
 
                         // While the row is being edited, a real TextInput takes
                         // over the value cell. That buys the three things a hand-
