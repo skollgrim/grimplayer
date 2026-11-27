@@ -909,7 +909,8 @@ Item {
     readonly property var entries: [
         // ---- General ----
         // Player-wide choices: where the library lives, what the letter keys do,
-        // how the settings card sits over the panel, and what the player brings
+        // whether lists stop or wrap at their ends, how the settings card sits over
+        // the panel, and what the player brings
         // in from outside -- colours sampled from the playing sleeve and metadata
         // fetched when a file has none on disk. They stay out of the view tabs
         // because they change the instrument rather than one surface on it.
@@ -933,6 +934,13 @@ Item {
             format: function (v) {
                 return v === "find" ? "Find" : (v === "vim" ? "Vim" : "Off")
             }
+        },
+        {
+            key: "wrapAround",
+            section: "general",
+            label: "Wrap lists",
+            hint: "Down on the last row goes to the top, up on the first goes to the last; applies to album view's track list too",
+            options: [true, false]
         },
         {
             key: "findPlace",
@@ -996,16 +1004,10 @@ Item {
         },
 
         // ---- Library ----
-        // Everything tied to the three-pane browser: how the lists scroll, the
-        // rules and focus between them, and how the playing row is marked. Album
-        // years writes the albums pane's label, so it belongs here too.
-        {
-            key: "wrapAround",
-            section: "library",
-            label: "Wrap lists",
-            hint: "Down on the last row goes to the top, up on the first goes to the last",
-            options: [true, false]
-        },
+        // Everything tied to the three-pane browser: the rules and focus between
+        // the lists, and how the playing row is marked. Album years writes the
+        // albums pane's label, so it belongs here too. List wrapping is general:
+        // the same up/down keys drive album view's tracks, so it lives there.
         {
             key: "playingMarker",
             section: "library",

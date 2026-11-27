@@ -152,8 +152,8 @@ resets everything, `?` switches to the key reference, `Esc` steps back out and `
 closes. The visible tab follows the caret, and each tab remembers the row you
 left it on.
 
-The card is cut into tabs by topic — General (library folder, keys, UI scale,
-card opacity, adaptive colours and fetching), Now playing (the strip), Artwork, Lyrics,
+The card is cut into tabs by topic — General (library folder, keys, list wrapping,
+UI scale, card opacity, adaptive colours and fetching), Now playing (the strip), Artwork, Lyrics,
 Library view (the three-pane browser and its row type), Album view, Karaoke view
 and Lyrics view — so a slider and a switch sit together
 where their subject says they should, and a setting is always in the same place.

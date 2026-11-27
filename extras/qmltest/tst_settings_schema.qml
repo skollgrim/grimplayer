@@ -127,7 +127,7 @@ TestCase {
             musicDir: "general", keyboardStyle: "general", findPlace: "general",
             findScale: "general", uiScale: "general", settingsOpacity: "general",
             adaptiveColors: "general", fetchCovers: "general", lyricsDownloads: "general",
-            wrapAround: "library", playingMarker: "library",
+            wrapAround: "general", playingMarker: "library",
             fontSubtitle: "library", albumYears: "library",
             seekThickness: "nowPlaying", stripTopGap: "nowPlaying",
             iconSize: "nowPlaying", fontTitle: "nowPlaying",
