@@ -160,6 +160,7 @@ TestCase {
             wrapAround: "general", playingMarker: "library",
             fontSubtitle: "library", albumYears: "library",
             seekThickness: "nowPlaying", stripTopGap: "nowPlaying",
+            showNowPlayingBar: "nowPlaying",
             iconSize: "nowPlaying", fontTitle: "nowPlaying",
             fontBody: "nowPlaying", stripSeparator: "nowPlaying", stripSeekEdge: "nowPlaying",
             progressInline: "nowPlaying", quietTime: "nowPlaying",
@@ -194,6 +195,19 @@ TestCase {
         compare(config.settingsOpacity, 0.7)
         config.applyStored({ settingsOpacity: "nope" })
         compare(config.settingsOpacity, 0.7, "an invalid value should be ignored")
+    }
+
+    // The footer starts on, but can be hidden from the card or Alt+P. Its stored
+    // choice must survive, and a value the switch does not offer is ignored.
+    function test_now_playing_bar_starts_on_and_round_trips() {
+        var e = entryFor("showNowPlayingBar")
+        compare(e.label, "Now playing bar")
+        compare(config.codeDefaults.showNowPlayingBar, true)
+        compare(config.showNowPlayingBar, true)
+        config.applyStored({ showNowPlayingBar: false })
+        compare(config.showNowPlayingBar, false)
+        config.applyStored({ showNowPlayingBar: "nope" })
+        compare(config.showNowPlayingBar, false, "an invalid value should be ignored")
     }
 
     // The strip rule shares the pane rules' width but has its own switch, so it
@@ -301,6 +315,22 @@ TestCase {
         config.assign(e, 3)
         config.cycle(e, -1)
         compare(config.seekThickness, 15)
+    }
+
+    function test_step_clamped_stops_at_both_ends() {
+        var e = entryFor("karaokeFont")
+        // karaoke's size runs 0..8; nudging past an end must hold, not wrap to
+        // the opposite end and make the text look as if it collapsed.
+        config.assign(e, 8)
+        config.stepClamped(e, 1)
+        compare(config.karaokeFont, 8)
+        config.stepClamped(e, -1)
+        compare(config.karaokeFont, 7)
+        config.assign(e, 0)
+        config.stepClamped(e, -1)
+        compare(config.karaokeFont, 0)
+        config.stepClamped(e, 1)
+        compare(config.karaokeFont, 1)
     }
 
     function test_strip_top_gap_starts_tight_and_survives_a_save() {

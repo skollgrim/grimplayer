@@ -39,22 +39,29 @@ function browserListMinWidth(windowWidth, uiScale) {
         Math.round(680 * ui))
 }
 
-// Album view borrows the artwork pane even when the browser folds the cover
-// back to a floating corner. There it is a square beside one centred column of
-// titles, so it is capped at half the window width rather than 60%. The shared
-// right gutter and the padding's inner margin come out of the room, each once.
-// The optional scale is album view's cover-size setting: 100 leaves the natural
-// fit alone, lower shares hold the art back, and higher shares grow it into the
-// room the titles can spare. It still stops at the pane height and the list's
-// readable floor. The floor itself is not scaled.
-function albumCoverSize(windowWidth, paneHeight, minListWidth, coverPad, uiScale, scalePct, edgeGap) {
-    var height = asNumber(paneHeight)
-    var room = asNumber(windowWidth) - asNumber(minListWidth)
-        - asNumber(edgeGap) - asNumber(coverPad)
-    var fit = Math.min(height, Math.round(asNumber(windowWidth) * 0.50), room)
+// The framed cover is the same feature in album view and karaoke beside the
+// words: one fit from the pane height, a 60% width cap and the room left beside
+// a readable companion column. Sharing it means equal scale settings draw the
+// same square; both views then centre it with the same margin, so it lands in
+// the same spot when the bar is hidden. The companion floor keeps a cramped
+// window from squeezing the titles or the words away.
+function featureCoverSize(paneHeight, windowWidth, margin, gap, minCompanionWidth, uiScale, scalePct) {
+    var heightRoom = asNumber(paneHeight) - asNumber(margin) * 2
+    var companionRoom = asNumber(windowWidth) - asNumber(margin) * 2
+        - asNumber(gap) - asNumber(minCompanionWidth)
+    var fit = Math.min(heightRoom, Math.round(asNumber(windowWidth) * 0.60), companionRoom)
     var pct = scalePct === undefined ? 100 : asNumber(scalePct)
     var scaled = Math.round(fit * pct / 100)
-    return Math.max(Math.round(48 * uiScale), Math.min(height, room, scaled))
+    return Math.max(Math.round(48 * uiScale),
+        Math.min(heightRoom, companionRoom, scaled))
+}
+
+// Album view follows karaoke's fit rather than keeping its own 50%/list-room
+// rule: at the same 100% setting the art was a different size and sat at a
+// different y, which read as the cover jumping when switching views.
+function albumCoverSize(windowWidth, paneHeight, margin, gap, minCompanionWidth, uiScale, scalePct) {
+    return featureCoverSize(paneHeight, windowWidth, margin, gap,
+        minCompanionWidth, uiScale, scalePct)
 }
 
 // The right-hand margin of the artwork pane. It comes from the same padding
@@ -134,18 +141,12 @@ function floatingCoverSize(hero, windowWidth, paneHeight, gutter, uiScale) {
             asNumber(paneHeight) - gutter * 2))
 }
 
-// Karaoke's cover beside the lyrics: as tall as the reading area, capped at its
-// own 60% of the window and by the readable text column that has to remain. The
-// same cover-size setting scales it: 100 is the natural fit, lower shares hold
-// the art back, higher shares grow into the room the words can spare. Even at
-// the top rung the text column and the reading height keep their floor.
-function karaokeCoverSize(windowWidth, windowHeight, margin, gap, minTextWidth, uiScale, scalePct) {
-    var heightRoom = asNumber(windowHeight) - margin * 2
-    var textRoom = asNumber(windowWidth) - margin * 2 - gap - minTextWidth
-    var fit = Math.min(heightRoom, Math.round(asNumber(windowWidth) * 0.60), textRoom)
-    var pct = scalePct === undefined ? 100 : asNumber(scalePct)
-    var scaled = Math.round(fit * pct / 100)
-    return Math.max(Math.round(48 * uiScale), Math.min(heightRoom, textRoom, scaled))
+// Karaoke's cover beside the lyrics uses the shared feature fit. The height is
+// the reading pane, not the whole window, so showing the footer for the session
+// with Alt+P shrinks the art with the rest of the pane instead of overflowing it.
+function karaokeCoverSize(windowWidth, paneHeight, margin, gap, minTextWidth, uiScale, scalePct) {
+    return featureCoverSize(paneHeight, windowWidth, margin, gap,
+        minTextWidth, uiScale, scalePct)
 }
 
 // Karaoke's background cover: a wash behind the words that fills the reading

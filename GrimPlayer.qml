@@ -655,15 +655,14 @@ Item {
         : 0
     //
     // Album view borrows this pane even when the browser folds the cover back to
-    // a floating corner. There it is a square beside a single centred column of
-    // titles rather than a full-height pane, so it is capped at half the window
-    // width: the titles are the content, and the cover should leave them room.
-    // The last cap keeps a readable track list on a narrow window.
-    readonly property int albumMinListWidth: Math.round(240 * prefs.uiScale)
+    // a floating corner. It now shares karaoke's feature fit -- same margin, same
+    // companion floor, same 100% -- so the art is the same size and sits in the
+    // same centred spot when both views are barless. The scale is album view's
+    // own; karaoke keeps its separate one.
     readonly property int albumCoverSize: LayoutMath.albumCoverSize(
-        window.width, root.paneHeight, root.albumMinListWidth,
-        root.coverPad, prefs.uiScale, prefs.albumCoverScale,
-        root.coverEdgeGap)
+        window.width, root.paneHeight, root.karaokeMargin,
+        root.karaokeCoverGap, root.karaokeMinTextWidth,
+        prefs.uiScale, prefs.albumCoverScale)
     // Album view and karaoke frame their cover large enough to carry a fuller
     // radius; each has its own switch, and off follows the global Artwork
     // rounding. Karaoke's background is a wash, so it stays square either way.
@@ -730,7 +729,7 @@ Item {
     // the right margin past the left one.
     readonly property int karaokeMinTextWidth: Math.round(200 * prefs.uiScale)
     readonly property int karaokeCoverSize: LayoutMath.karaokeCoverSize(
-        window.width, window.height, root.karaokeMargin,
+        window.width, root.paneHeight, root.karaokeMargin,
         root.karaokeCoverGap, root.karaokeMinTextWidth, prefs.uiScale,
         prefs.karaokeCoverScale)
     // The background cover is a centred wash with its own size setting; scaling
@@ -738,21 +737,17 @@ Item {
     // side cover's size alone.
     readonly property var karaokeBackgroundBox: LayoutMath.karaokeBackgroundCover(
         window.width, window.height, prefs.karaokeBackgroundScale)
-    // The largest size the main cover can take in any view, so both of its Image
-    // layers decode once and are scaled between placements instead of reloaded.
-    // A reload blanks the picture for a frame or two, so a view switch that
-    // changes the cover's size would flash. A configured placement that is not
-    // showing still counts, because a key can switch to it at any moment. The
-    // background placement is the one non-square case: it is measured against
-    // the window, so it sets the bounds even when scaled down from it.
-    readonly property int coverDecodeBoundWidth: Math.max(
-        root.heroCover, root.albumCoverSize, root.karaokeCoverSize,
-        root.floatingCoverSize,
-        prefs.karaokeCover === "background" ? window.width : 0)
-    readonly property int coverDecodeBoundHeight: Math.max(
-        root.heroCover, root.albumCoverSize, root.karaokeCoverSize,
-        root.floatingCoverSize,
-        prefs.karaokeCover === "background" ? window.height : 0)
+    // The edge both of the main cover's Image layers decode at, in logical
+    // pixels. Every placement is a share of the window, so the window itself is
+    // the fixed ceiling: measuring against the live pane height made hiding the
+    // now-playing bar change sourceSize, and adding the window only in karaoke
+    // background mode made Alt+C change it. Either way Qt reloaded the picture
+    // and blanked it for a frame. One square bound, held while the panel is up,
+    // turns every toggle and view switch into a scale instead of a reload. It
+    // also covers the non-square background wash, which is cropped from it.
+    readonly property int coverDecodeBoundEdge: Math.max(window.width, window.height)
+    readonly property int coverDecodeBoundWidth: root.coverDecodeBoundEdge
+    readonly property int coverDecodeBoundHeight: root.coverDecodeBoundEdge
     // Karaoke's reading surface shares the album view's margin, so both frame
     // their art the same way. Only the library pane follows Cover padding.
     readonly property int karaokeMargin: root.readingMargin
@@ -775,9 +770,16 @@ Item {
     // They read it from here, so a change to the strip's height cannot leave a
     // notice sitting on top of it. Inline progress gives back the clock's row;
     // a taller seeker adds its extra height so the title keeps its breathing room.
-    readonly property int stripHeight: LayoutMath.stripHeight(
-        prefs.progressInline, prefs.seekThickness, prefs.uiScale, prefs.stripSeekEdge,
-        root.stripTopPad)
+    // Hiding the bar drops the height to zero so the panes, the album view and the
+    // readouts reclaim the space instead of leaving an empty footer band. Karaoke
+    // starts with the bar off but can show it for this session with Alt+P, so it
+    // reads its own flag rather than the saved preference.
+    readonly property bool nowPlayingBarVisible: root.karaokeView
+        ? root.karaokeBarVisible : prefs.showNowPlayingBar
+    readonly property int stripHeight: root.nowPlayingBarVisible
+        ? LayoutMath.stripHeight(prefs.progressInline, prefs.seekThickness,
+            prefs.uiScale, prefs.stripSeekEdge, root.stripTopPad)
+        : 0
     // The separator is a quiet hairline in the shared rule colour and width. It
     // has its own switch, so it cannot borrow coverPaneRule's tie to paneSeparators,
     // and it stands down when the seeker itself is the boundary.
@@ -856,6 +858,12 @@ Item {
     // the text set large. Alt+K toggles it in the open player, the way Alt+L
     // toggles the lyrics view; Esc leaves it for the browser.
     property bool karaokeView: false
+    // Karaoke keeps its own bar state. It starts barless even when the saved
+    // preference says show -- the words own the window there -- and Alt+P flips
+    // only this view-local flag, leaving the setting (and every other view) as
+    // it was. It is session state, not a preference: a restart restores the
+    // quiet default without touching what the card shows.
+    property bool karaokeBarVisible: false
     // Album view: the playing album's tracks on the left and its cover on the
     // right. It reuses the browser's selection, so j/k, typeahead and Enter keep
     // working; entering the view snaps that selection to the playing album.
@@ -2470,9 +2478,11 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.stripHeight
-                // Karaoke hides the whole footer so the lyrics get the window;
-                // play/pause still works from Space, and a line click seeks.
-                visible: !root.karaokeView
+                // Alt+P hides the footer in every view. Karaoke starts with it
+                // off so the words get the window, but its own Alt+P state can
+                // bring it back for the session; play/pause still works from
+                // Space, and a line click seeks.
+                visible: root.nowPlayingBarVisible
                 // A step away from the panes, so the footer reads as a strip
                 // rather than as more of the same list background. The shade
                 // comes from the theme (see GrimTheme.strip), because how far to
@@ -2764,7 +2774,7 @@ Item {
                         : parent.width - width - root.floatGutter))
             y: root.karaokeCoverBackground ? root.karaokeBackgroundBox.y
                 : (root.karaokeCoverSide
-                    ? Math.round((parent.height - height) / 2)
+                    ? Math.round((root.paneHeight - height) / 2)
                     : (root.coverPaneShown
                         ? root.coverBandY
                         : parent.height - root.stripHeight - root.floatGutter - height))
@@ -3050,9 +3060,10 @@ Item {
                 // work from inside the settings card or the key reference as well
                 // as from the browser: Alt+S toggles the card, Alt+T opens the tag
                 // editor, Alt+L toggles lyrics view in the panes area, Alt+K
-                // toggles karaoke over it. Alt+C and Alt+O, and the size keys,
-                // act on the view that is showing: the cover's placement, the
-                // karaoke background's opacity, and the text or artwork size.
+                // toggles karaoke over it, and Alt+P hides or shows the now-playing
+                // bar. Alt+C and Alt+O, and the size keys, act on the view that
+                // is showing: the cover's placement, the karaoke background's
+                // opacity, and the text or artwork size.
                 // The tag editor is the exception -- it disables this catcher and
                 // reads its own keys. Plain ? opens the reference, and is left to
                 // the branches below so it can also close a screen.
@@ -3062,7 +3073,7 @@ Item {
                             || event.key === Qt.Key_L || event.key === Qt.Key_K
                             || event.key === Qt.Key_A
                             || event.key === Qt.Key_C || event.key === Qt.Key_O
-                            || sizeUp || sizeDown)) {
+                            || event.key === Qt.Key_P || sizeUp || sizeDown)) {
                     if (event.key === Qt.Key_S) {
                         root.toggleSettings()
                     } else if (event.key === Qt.Key_T) {
@@ -3079,6 +3090,8 @@ Item {
                         root.cycleCover()
                     } else if (event.key === Qt.Key_O) {
                         root.cycleCoverOpacity()
+                    } else if (event.key === Qt.Key_P) {
+                        root.toggleNowPlayingBar()
                     } else if (sizeUp) {
                         // Shift turns the same key from text size into cover
                         // size; the two axes otherwise share a key and a nudge
@@ -3595,6 +3608,13 @@ Item {
         return entry
     }
 
+    function stepSettingClamped(key, delta) {
+        var entry = prefs ? prefs.entryFor(key) : null
+        if (!entry || !prefs.isActive(entry)) return null
+        prefs.stepClamped(entry, delta)
+        return entry
+    }
+
     function settingText(entry) {
         return entry ? prefs.textOf(entry) : ""
     }
@@ -3605,8 +3625,9 @@ Item {
     // because each view has its own sensible next state.
     function cycleCover() {
         if (root.karaokeView) {
-            var k = root.cycleSetting("karaokeCover", 1)
-            if (k) root.showTransportNotice("Karaoke cover: " + root.settingText(k))
+            // The three placements are obvious on screen; a readout only drew
+            // attention to the cover while it was changing size.
+            root.cycleSetting("karaokeCover", 1)
         } else if (root.lyricsView) {
             var l = root.cycleSetting("lyricsCover", 1)
             if (l) root.showTransportNotice("Cover beside lyrics: " + root.settingText(l))
@@ -3631,48 +3652,59 @@ Item {
         if (e) root.showTransportNotice("Cover opacity: " + root.settingText(e))
     }
 
+    // Alt+P: show or hide the now-playing footer. Outside karaoke this cycles
+    // the saved setting; inside it only the view-local flag moves, so the quiet
+    // default is restored next time without changing the card. No readout --
+    // the bar's presence is its own answer. The panes pick up the freed height
+    // through stripHeight, which is zero while the bar is hidden.
+    function toggleNowPlayingBar() {
+        if (root.karaokeView) root.karaokeBarVisible = !root.karaokeBarVisible
+        else root.cycleSetting("showNowPlayingBar", 1)
+    }
+
     // Alt+= / Alt+-: the text size of the view on screen -- karaoke's own offset
     // there, the reading view's in lyrics, the titles' in album view, and the
-    // whole panel's scale in the browser. This is the one size key that always
-    // does something visible.
+    // whole panel's scale in the browser. These step to an end and stop; wrapping
+    // from largest back to smallest read as the text suddenly collapsing.
     function cycleTextSize(delta) {
         if (root.karaokeView) {
-            var k = root.cycleSetting("karaokeFont", delta)
+            var k = root.stepSettingClamped("karaokeFont", delta)
             if (k) root.showTransportNotice("Karaoke text: " + root.settingText(k))
         } else if (root.lyricsView) {
-            var l = root.cycleSetting("lyricsFont", delta)
+            var l = root.stepSettingClamped("lyricsFont", delta)
             if (l) root.showTransportNotice("Lyrics text: " + root.settingText(l))
         } else if (root.albumView) {
-            var a = root.cycleSetting("albumFont", delta)
+            var a = root.stepSettingClamped("albumFont", delta)
             if (a) root.showTransportNotice("Album titles: " + root.settingText(a))
         } else {
-            var u = root.cycleSetting("uiScale", delta)
+            var u = root.stepSettingClamped("uiScale", delta)
             if (u) root.showTransportNotice("UI scale: " + root.settingText(u))
         }
     }
 
-    // Alt+Shift+= / Alt+Shift+-: the artwork's size, applied to whichever view
+    // Alt+Shift++ / Alt+Shift+-: the artwork's size, applied to whichever view
     // is showing. The browser and reading view read coverScale; album view reads
     // albumCoverScale and karaoke's square side cover karaokeCoverScale. A
     // karaoke background is sized by its own row instead, so the key moves what
-    // is actually on screen.
+    // is actually on screen. Like the font keys, these stop at the end of the
+    // ladder rather than jumping back to the smallest size.
     function cycleCoverSize(delta) {
         if (root.karaokeView && root.karaokeCoverBackground) {
-            var b = root.cycleSetting("karaokeBackgroundScale", delta)
+            var b = root.stepSettingClamped("karaokeBackgroundScale", delta)
             if (b) root.showTransportNotice("Cover size: " + root.settingText(b))
             return
         }
         if (root.albumView) {
-            var a = root.cycleSetting("albumCoverScale", delta)
+            var a = root.stepSettingClamped("albumCoverScale", delta)
             if (a) root.showTransportNotice("Cover size: " + root.settingText(a))
             return
         }
         if (root.karaokeView) {
-            var k = root.cycleSetting("karaokeCoverScale", delta)
+            var k = root.stepSettingClamped("karaokeCoverScale", delta)
             if (k) root.showTransportNotice("Cover size: " + root.settingText(k))
             return
         }
-        var e = root.cycleSetting("coverScale", delta)
+        var e = root.stepSettingClamped("coverScale", delta)
         if (e) {
             root.showTransportNotice("Cover size: " + root.settingText(e))
         } else {

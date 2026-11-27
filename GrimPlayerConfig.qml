@@ -58,6 +58,10 @@ Item {
         // small default keeps the strip tight on a laptop panel.
         property int stripTopGap: 2
 
+        // Draw the now-playing footer at all. Alt+P flips the same setting; with
+        // it off the panes and album view reclaim the strip's height.
+        property bool showNowPlayingBar: true
+
         // Year prefix on the albums pane, from the tracks' Date tags.
         property bool albumYears: true
 
@@ -488,7 +492,7 @@ Item {
     function saveNow() {
         var out = {}
         // Only real properties, not the id or the functions hanging off it.
-        var keys = ["musicDir", "wrapAround", "seekThickness", "stripTopGap", "albumYears",
+        var keys = ["musicDir", "wrapAround", "seekThickness", "stripTopGap", "showNowPlayingBar", "albumYears",
                     "playingMarker", "adaptiveColors", "fetchCovers",
                     "keyboardStyle", "rowSpacing", "findPlace",
                     "findScale", "rowSeparators",
@@ -764,6 +768,7 @@ Item {
     readonly property bool wrapAround: store.wrapAround
     readonly property int seekThickness: store.seekThickness
     readonly property int stripTopGap: store.stripTopGap
+    readonly property bool showNowPlayingBar: store.showNowPlayingBar
     readonly property bool albumYears: store.albumYears
     readonly property string playingMarker: store.playingMarker
     readonly property string coverDecodeSize: store.coverDecodeSize
@@ -1138,6 +1143,13 @@ Item {
         // The bar that stays on screen in every view: how its top edge is drawn,
         // how its progress and clock read, how tall its seeker is, and how big
         // its icons and title read. Notice placement and size live under General.
+        {
+            key: "showNowPlayingBar",
+            section: "nowPlaying",
+            label: "Now playing bar",
+            hint: "Show the title, seek bar and transport footer; Alt+P toggles it. Karaoke starts without it and toggles its own session state",
+            options: [true, false]
+        },
         {
             key: "stripSeparator",
             section: "nowPlaying",
@@ -2019,6 +2031,26 @@ Item {
             return
         }
         assign(entry, options[(i + delta + options.length) % options.length])
+        saveSoon()
+    }
+
+    // Step a size without wrapping. The size keys are nudges: running up to the
+    // last rung should stay there rather than dropping back to the smallest,
+    // which looks like the font collapsed. A stale value still steps to an end,
+    // the same way cycle() folds it to the first option.
+    function stepClamped(entry, delta) {
+        if (!entry || !isActive(entry)) return
+        var options = entry.options || []
+        if (options.length === 0) return
+        var i = options.indexOf(valueFor(entry))
+        if (i === -1) {
+            assign(entry, options[delta < 0 ? 0 : options.length - 1])
+            saveSoon()
+            return
+        }
+        var next = Math.max(0, Math.min(options.length - 1, i + delta))
+        if (next === i) return
+        assign(entry, options[next])
         saveSoon()
     }
 

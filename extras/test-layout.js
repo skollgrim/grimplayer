@@ -45,51 +45,44 @@ check("browserListMinWidth: the old 40% until a readable maximum", () => {
 
 // ---- album view's square ----
 
-check("albumCoverSize: half the window width binds on a normal panel", () => {
-    // room = 1200 - 240 - 28 = 932; min(700, 600, 932)
-    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1), 600)
+check("albumCoverSize: shares karaoke's fit at the same scale", () => {
+    // Both views centre the same square with the same margin, so equal settings
+    // now land the art in the same spot instead of at two different y positions.
+    assert.equal(Layout.albumCoverSize(1200, 700, 40, 10, 200, 1), 620)
+    assert.equal(Layout.albumCoverSize(1200, 700, 40, 10, 200, 1),
+        Layout.karaokeCoverSize(1200, 700, 40, 10, 200, 1))
 })
 
-check("albumCoverSize: the track list's minimum width can bind", () => {
-    // room = 1000 - 900 - 0 = 100
-    assert.equal(Layout.albumCoverSize(1000, 700, 900, 0, 1), 100)
+check("albumCoverSize: the companion column binds on a narrow panel", () => {
+    // 500 - 80 - 10 - 200 = 210, under both the height and the 60% width cap.
+    assert.equal(Layout.albumCoverSize(500, 826, 40, 10, 200, 1), 210)
 })
 
-check("albumCoverSize: the pane height binds on a tall narrow window", () => {
-    // min(400, 500, 1200 - 240) = 400
-    assert.equal(Layout.albumCoverSize(1000, 400, 240, 0, 1), 400)
+check("albumCoverSize: the pane height binds on a short panel", () => {
+    // heightRoom = 200 - 80 = 120.
+    assert.equal(Layout.albumCoverSize(756, 200, 40, 10, 200, 1), 120)
 })
 
 check("albumCoverSize: a cramped window still gets the floor", () => {
-    // room = 300 - 240 - 40 = 20
-    assert.equal(Layout.albumCoverSize(300, 700, 240, 20, 1), 48)
-    assert.equal(Layout.albumCoverSize(300, 700, 240, 20, 1.5), 72)
-})
-
-check("albumCoverSize: the shared right gutter is reserved once", () => {
-    // Room is width - list - gutter - padding; the old formula took padding twice.
-    assert.equal(Layout.albumCoverSize(1000, 900, 700, 0, 1, 100, 40), 260)
-    assert.equal(Layout.albumCoverSize(1000, 900, 700, 0, 1, 100, 0), 300)
-    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 100, 40), 600)
+    assert.equal(Layout.albumCoverSize(300, 700, 40, 10, 200, 1), 48)
+    assert.equal(Layout.albumCoverSize(300, 700, 40, 10, 200, 1.5), 72)
 })
 
 check("albumCoverSize: the scale holds the art back from the natural fit", () => {
-    // natural fit 600: 50% is 300, 25% is 150; an omitted scale still means 100%
-    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1), 600)
-    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 50), 300)
-    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 25), 150)
+    // natural fit 620: 50% is 310, 25% is 155; an omitted scale still means 100%
+    assert.equal(Layout.albumCoverSize(1200, 700, 40, 10, 200, 1, 50), 310)
+    assert.equal(Layout.albumCoverSize(1200, 700, 40, 10, 200, 1, 25), 155)
 })
 
 check("albumCoverSize: scaling never drops below the readability floor", () => {
-    // fit 600, 5% is 30, floored at 48
-    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 5), 48)
+    assert.equal(Layout.albumCoverSize(1200, 700, 40, 10, 200, 1, 5), 48)
 })
 
-check("albumCoverSize: above 100 grows into spare room but keeps the list", () => {
-    // fit 600, 150% is 900, held to the 700px pane height.
-    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 150), 700)
-    // On a tall panel there is room: fit 592, 150% is 888, under the 904 room.
-    assert.equal(Layout.albumCoverSize(1184, 1492, 240, 0, 1, 150, 40), 888)
+check("albumCoverSize: above 100 grows but keeps the companion room", () => {
+    // fit 620, 150% is 930, held to the height room of 620.
+    assert.equal(Layout.albumCoverSize(1200, 700, 40, 10, 200, 1, 150), 620)
+    // A tall panel has room: fit 710, 110% is 781, under the 894 companion room.
+    assert.equal(Layout.albumCoverSize(1184, 1558, 40, 10, 200, 1, 110), 781)
 })
 
 // ---- the pane's square ----

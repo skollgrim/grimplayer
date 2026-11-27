@@ -94,6 +94,7 @@ Item {
                 { keys: "Alt + L", action: "Lyrics — toggle lyrics in the panes area" },
                 { keys: "Alt + K", action: "Karaoke — toggle the lyrics-only view in the player" },
                 { keys: "Alt + A", action: "Album view — the playing album's titles and cover" },
+                { keys: "Alt + P", action: "Now playing bar — toggle the footer; karaoke starts without it" },
                 { keys: "Alt + L  K  A", action: "Each view works from either of the others" }
             ]
         },
@@ -103,7 +104,7 @@ Item {
                 { keys: "Alt + C", action: "Cycle the cover for the current view" },
                 { keys: "Alt + O", action: "Karaoke background opacity" },
                 { keys: "Alt + =  -", action: "Text size for the current view" },
-                { keys: "Alt + Shift + =  -", action: "Cover size in the current view" }
+                { keys: "Alt + Shift + +  -", action: "Cover size in the current view" }
             ]
         },
         {
