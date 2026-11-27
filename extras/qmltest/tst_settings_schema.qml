@@ -271,11 +271,11 @@ TestCase {
         compare(config.seekThickness, 15)
     }
 
-    function test_strip_top_gap_starts_roomy_and_survives_a_save() {
+    function test_strip_top_gap_starts_tight_and_survives_a_save() {
         var e = entryFor("stripTopGap")
         verify(e !== null, "the strip top gap row should exist")
-        compare(config.stripTopGap, 10)
-        compare(config.codeDefaults.stripTopGap, 10)
+        compare(config.stripTopGap, 2)
+        compare(config.codeDefaults.stripTopGap, 2)
         compare(e.options[0], 0)
         compare(e.options[e.options.length - 1], 24)
         config.assign(e, 20)
@@ -496,6 +496,7 @@ TestCase {
         verify(entryFor("playingHighlight") === null, "the tint switch should be gone")
         compare(e.label, "Playing marker")
         config.reset()
+        compare(config.playingMarker, "left", "the default marks the left edge")
         config.applyStored({ playingMarkerSides: "both" })
         compare(config.playingMarker, "both")
         config.reset()

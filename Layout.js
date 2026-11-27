@@ -57,6 +57,23 @@ function albumCoverSize(windowWidth, paneHeight, minListWidth, coverPad, uiScale
     return Math.max(Math.round(48 * uiScale), Math.min(height, room, scaled))
 }
 
+// The right-hand margin of the artwork pane. It comes from the same padding
+// setting as the other edges: off is flush with the panel, on uses the same
+// inset as the top, bottom and inner edge. A fixed extra gutter made the cover
+// stop short of the edge by an amount that only made sense on one monitor.
+function paneCoverRightGap(padded, pad) {
+    return padded ? Math.max(0, asNumber(pad)) : 0
+}
+
+// Album view frames the art as a feature, so it keeps the same right margin as
+// the karaoke reading surface instead of running flush with the library pane.
+// The browser's edge alone follows Cover padding.
+function coverPaneEdgeGap(options) {
+    var o = options || {}
+    if (o.albumView) return Math.max(0, asNumber(o.readingMargin))
+    return paneCoverRightGap(o.padded, o.pad)
+}
+
 // The square the cover is drawn at in its pane, or 0 when no pane is showing.
 // The cap is the room the three lists must keep rather than a fixed share of the
 // window, so a full-height cover is reachable on a large display. The floor keeps
@@ -69,8 +86,9 @@ function paneCoverSize(options) {
     var reserved = o.minListWidth === undefined
         ? browserListMinWidth(asNumber(o.windowWidth), ui)
         : asNumber(o.minListWidth)
-    // The shared right gutter is always in the pane. Padding adds only the inner
-    // margin and its rule; all of it is width the cover itself cannot use.
+    // The right margin from the padding setting is always in the pane. Padding
+    // adds the inner margin and its rule too; all of it is width the cover
+    // itself cannot use.
     var paneExtras = asNumber(o.edgeGap)
     if (o.padded)
         paneExtras += asNumber(o.coverPad) + asNumber(o.rule)
@@ -79,9 +97,9 @@ function paneCoverSize(options) {
         Math.min(asNumber(o.heroCover), maxCover))
 }
 
-// Width of the artwork pane: the cover, the shared right gutter, and -- when
-// padding is on -- the inner margin plus the rule. With padding off the cover
-// meets the divider and rides over the rule, so no strip is reserved there.
+// Width of the artwork pane: the cover, its right margin, and -- when padding
+// is on -- the inner margin plus the rule. With padding off the cover meets both
+// the divider and the panel edge, riding over the rule with no strip reserved.
 // Album view never reserves the rule: its pane sits beside the centred column.
 function coverPaneWidth(options) {
     var o = options || {}
@@ -377,6 +395,8 @@ if (typeof module !== "undefined" && module.exports) {
         heroCover: heroCover,
         browserListMinWidth: browserListMinWidth,
         albumCoverSize: albumCoverSize,
+        paneCoverRightGap: paneCoverRightGap,
+        coverPaneEdgeGap: coverPaneEdgeGap,
         paneCoverSize: paneCoverSize,
         coverPaneWidth: coverPaneWidth,
         coverBandInset: coverBandInset,

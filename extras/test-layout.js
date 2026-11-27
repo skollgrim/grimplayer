@@ -99,8 +99,35 @@ const pane = (over) => Object.assign({
     windowWidth: 1200, uiScale: 1
 }, over)
 
+check("paneCoverRightGap: the pane's right edge follows Cover padding", () => {
+    assert.equal(Layout.paneCoverRightGap(false, 14), 0)
+    assert.equal(Layout.paneCoverRightGap(true, 14), 14)
+    // A bad padding value must never pull the cover past the panel edge.
+    assert.equal(Layout.paneCoverRightGap(true, -4), 0)
+})
+
+check("coverPaneEdgeGap: album view keeps the karaoke margin", () => {
+    // Album view is framed the same way whatever Cover padding says.
+    assert.equal(Layout.coverPaneEdgeGap({ albumView: true, readingMargin: 40 }), 40)
+    assert.equal(Layout.coverPaneEdgeGap({
+        albumView: true, readingMargin: 40, padded: true, pad: 14
+    }), 40)
+    // Only the library pane runs flush when padding is off.
+    assert.equal(Layout.coverPaneEdgeGap({ readingMargin: 40 }), 0)
+    assert.equal(Layout.coverPaneEdgeGap({
+        padded: true, pad: 14, readingMargin: 40
+    }), 14)
+})
+
 check("paneCoverSize: hidden is zero", () => {
     assert.equal(Layout.paneCoverSize(pane({ shown: false })), 0)
+})
+
+check("paneCoverSize: padding off lets the cover reach the panel edge", () => {
+    // The lists keep 480 of 1200, so a 700px hero fits with no right gap.
+    assert.equal(Layout.paneCoverSize(pane({ heroCover: 700, edgeGap: 0 })), 700)
+    // Anything larger is held back only by the room the lists need.
+    assert.equal(Layout.paneCoverSize(pane({ heroCover: 780, edgeGap: 0 })), 720)
 })
 
 check("paneCoverSize: the browser uses its hero while the lists keep their room", () => {
@@ -172,6 +199,10 @@ check("coverPaneWidth: the shared right gutter widens the pane, not the cover", 
     assert.equal(Layout.coverPaneWidth(width({ edgeGap: 40 })), 600 + 40 + 14 + 1)
     assert.equal(Layout.coverPaneWidth(width({ padded: false, edgeGap: 40 })), 600 + 40)
     assert.equal(Layout.coverPaneWidth(width({ albumView: true, edgeGap: 40 })), 600 + 40 + 14)
+})
+
+check("coverPaneWidth: padding off leaves just the cover in the pane", () => {
+    assert.equal(Layout.coverPaneWidth(width({ padded: false, edgeGap: 0 })), 600)
 })
 
 check("coverPaneWidth: hidden is zero", () => {

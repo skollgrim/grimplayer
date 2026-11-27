@@ -603,17 +603,23 @@ Item {
     // margin gives way on its own as the cover grows to fill the pane.
     readonly property int bandPadding: Math.round(14 * prefs.uiScale)
     readonly property int floatGutter: Math.round(20 * prefs.uiScale)
-    // The right-hand gutter is shared by every cover placement, so album view,
-    // lyrics view and karaoke all frame the art against the same edge. It is part
-    // of the pane's width, not the cover's: the room comes out of the lists, so
-    // adding it never shrinks the artwork that was sized to fill the pane.
-    readonly property int coverEdgeGap: Math.round(40 * prefs.uiScale)
+    // The reading views (album and karaoke) frame their art against the same
+    // margin, so switching between them does not press the cover to the edge.
+    readonly property int readingMargin: Math.round(40 * prefs.uiScale)
     // Everything above the footer strip: the lists and the artwork pane.
     readonly property int paneHeight: Math.max(0, window.height - root.stripHeight)
-    // Horizontal margin kept on the list side of the cover, from the padding
-    // setting. The right edge is owned by coverEdgeGap instead; padding off means
-    // the art meets the pane divider (and rides over the rule) on that side only.
+    // In the library the margin comes from one setting for every edge of the
+    // artwork pane: padding off runs the cover flush to the divider and the
+    // panel edge, padding on gives it the same inset on the right as inside.
+    // Album view keeps readingMargin instead. Either way it is part of the
+    // pane's width, not the cover's, so it comes out of the lists' room.
     readonly property int coverPad: prefs.coverPadding ? root.bandPadding : 0
+    readonly property int coverEdgeGap: LayoutMath.coverPaneEdgeGap({
+        albumView: root.albumView,
+        padded: prefs.coverPadding,
+        pad: root.coverPad,
+        readingMargin: root.readingMargin
+    })
 
     // The artwork size is a share of the pane region rather than a pixel count,
     // so the art scales with the window: 100% is the full distance from the very
@@ -672,11 +678,11 @@ Item {
         rule: root.coverPaneRule,
         edgeGap: root.coverEdgeGap
     })
-    // Width of the artwork pane: the cover, the shared right gutter, and -- when
-    // padding is on -- the inner margin plus the rule strip. With padding off the
-    // cover meets the divider and rides over the rule, so only the gutter and the
-    // art remain in the pane; the rule shows above and below the art, as if the
-    // cover had eaten the stretch it covers (see the CoverArt item below).
+    // Width of the artwork pane: the cover, its right margin, and -- when padding
+    // is on -- the inner margin plus the rule strip. With padding off the cover
+    // meets the divider and the panel edge, riding over the rule; the rule shows
+    // above and below the art, as if the cover had eaten the stretch it covers
+    // (see the CoverArt item below).
     readonly property int coverPaneWidth: LayoutMath.coverPaneWidth({
         shown: root.coverPaneShown,
         albumView: root.albumView,
@@ -740,9 +746,9 @@ Item {
         root.heroCover, root.albumCoverSize, root.karaokeCoverSize,
         root.floatingCoverSize,
         prefs.karaokeCover === "background" ? window.height : 0)
-    // The reading surface's margin is the same right gutter the pane views use,
-    // so the karaoke column and its side cover line up with album and lyrics.
-    readonly property int karaokeMargin: root.coverEdgeGap
+    // Karaoke's reading surface shares the album view's margin, so both frame
+    // their art the same way. Only the library pane follows Cover padding.
+    readonly property int karaokeMargin: root.readingMargin
     readonly property int karaokeCoverGap: Math.round(10 * prefs.uiScale)
     // The side cover's width plus the gap before the text. Reserved as a right
     // margin so the lyrics centre in the room left over, which is what moves
@@ -2735,13 +2741,13 @@ Item {
                 : (root.karaokeCoverSide ? root.karaokeCoverSize
                     : (root.coverPaneShown ? root.paneCoverSize : root.floatingCoverSize))
             height: root.karaokeCoverBackground ? root.karaokeBackgroundBox.height : width
-            // Every framed placement keeps the same right gutter: the pane views
-            // through coverEdgeGap, karaoke through its alias. The pane itself is
-            // sized to include that gutter, so padding only moves the cover off
-            // the divider on the inner side and the rule stays hidden there.
-            // Floating, it keeps its own gutter. A karaoke side cover sits in the
-            // column reserved on the right, vertically centred on the text; the
-            // background cover is centred by its box and pushed behind the lyrics
+            // The library pane takes its right margin from Cover padding, so the
+            // art reaches the panel edge when it is off and is inset evenly when
+            // it is on. Album view keeps readingMargin instead, matching karaoke;
+            // the floating cover keeps its own gutter. The pane is sized to
+            // include the margin, so the rule stays hidden behind the art on the
+            // inner side. A karaoke side cover sits in the right column, centred;
+            // the background cover is centred by its box and pushed behind the lyrics
             // with a negative z.
             x: root.karaokeCoverBackground ? root.karaokeBackgroundBox.x
                 : (root.karaokeCoverSide

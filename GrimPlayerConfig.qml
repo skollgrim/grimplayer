@@ -54,19 +54,19 @@ Item {
 
         // Air above the now-playing title, in logical pixels. The strip grows by
         // this much and its content row is inset by the same amount, so raising
-        // it adds breathing room without moving the title or the transport.
-        property int stripTopGap: 10
+        // it adds breathing room without moving the title or the transport. The
+        // small default keeps the strip tight on a laptop panel.
+        property int stripTopGap: 2
 
         // Year prefix on the albums pane, from the tracks' Date tags.
         property bool albumYears: true
 
         // Which edges of the playing row carry the accent bar: "none", "left",
         // "right" or "both". The tint is always on -- this only decides where
-        // the bars sit, so "none" keeps the tint and drops the bars. The right
-        // edge is the default: the labels start at the left margin, so a bar on
-        // the right sits in the margin past the text's end and marks the row
-        // without crowding what it says.
-        property string playingMarker: "right"
+        // the bars sit, so "none" keeps the tint and drops the bars. The left
+        // edge is the default: it marks the row in the margin before the labels
+        // and leaves the duration on the right unobstructed.
+        property string playingMarker: "left"
         property string coverDecodeSize: "medium"
 
         // Recolour the whole panel from the playing album's cover art, instead
@@ -271,9 +271,10 @@ Item {
         // "middle" or "bottom". Only meaningful while cover band is active.
         property string coverBandAlign: "middle"
 
-        // Keep a margin between the cover and the pane edges in the artwork pane.
-        // Off runs the cover flush to the edges, filling the pane; on restores the
-        // original inset on all four sides. Only meaningful while cover band is active.
+        // Keep a margin between the cover and the library pane edges. Off runs the
+        // browser art flush; on restores the inset on all four sides. Album view
+        // keeps the same right margin as karaoke either way. Only meaningful while
+        // cover band is active.
         property bool coverPadding: false
 
         // Interface sizing. uiScale is a single multiplier over every derived size --
@@ -1177,7 +1178,7 @@ Item {
             section: "nowPlaying",
             label: "Strip top gap",
             hint: "Air above the now-playing title. The strip grows by the same amount, so the title and transport stay put",
-            // Zero restores the old flush title; 10 is the roomy default. The
+            // Zero restores the old flush title; 2 is the tight default. The
             // wider rungs above it are for a panel read from further away.
             options: [0, 2, 4, 6, 8, 10, 12, 16, 20, 24],
             format: function (v) { return v + " px" }
@@ -1297,7 +1298,7 @@ Item {
             key: "coverPadding",
             section: "artwork",
             label: "Cover padding",
-            hint: "Keep a margin between the cover and the pane edges; off runs it flush",
+            hint: "Margin between the cover and the library pane edges; off runs it flush",
             options: [true, false],
             dependsOn: function () { return store.coverBandMode !== "off" },
             after: "coverBandMode"
