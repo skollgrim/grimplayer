@@ -28,40 +28,67 @@ function heroCover(paneHeight, scalePct, uiScale) {
         Math.round(asNumber(paneHeight) * asNumber(scalePct) / 100))
 }
 
+// Width the three lists keep beside the artwork pane. Up to a readable maximum
+// it is the old 40% of the window, so a small panel behaves exactly as before.
+// Past that the lists stop growing and the cover may take the whole pane height:
+// on a large, tall window a fixed 40% would hold the art short of the top and the
+// strip even though there is plenty of room for both.
+function browserListMinWidth(windowWidth, uiScale) {
+    var ui = asNumber(uiScale) || 1
+    return Math.min(Math.round(asNumber(windowWidth) * 0.40),
+        Math.round(680 * ui))
+}
+
 // Album view borrows the artwork pane even when the browser folds the cover
 // back to a floating corner. There it is a square beside one centred column of
-// titles, so it is capped at half the window width rather than 60%. The optional
-// scale is the album/karaoke cover-size setting: 100 leaves the natural fit
-// alone, lower shares hold the art back. The readability floor is not scaled.
-function albumCoverSize(windowWidth, paneHeight, minListWidth, coverPad, uiScale, scalePct) {
-    var room = asNumber(windowWidth) - asNumber(minListWidth) - asNumber(coverPad) * 2
-    var fit = Math.min(asNumber(paneHeight), Math.round(asNumber(windowWidth) * 0.50), room)
+// titles, so it is capped at half the window width rather than 60%. The shared
+// right gutter and the padding's inner margin come out of the room, each once.
+// The optional scale is album view's cover-size setting: 100 leaves the natural
+// fit alone, lower shares hold the art back, and higher shares grow it into the
+// room the titles can spare. It still stops at the pane height and the list's
+// readable floor. The floor itself is not scaled.
+function albumCoverSize(windowWidth, paneHeight, minListWidth, coverPad, uiScale, scalePct, edgeGap) {
+    var height = asNumber(paneHeight)
+    var room = asNumber(windowWidth) - asNumber(minListWidth)
+        - asNumber(edgeGap) - asNumber(coverPad)
+    var fit = Math.min(height, Math.round(asNumber(windowWidth) * 0.50), room)
     var pct = scalePct === undefined ? 100 : asNumber(scalePct)
-    return Math.max(Math.round(48 * uiScale), Math.round(fit * pct / 100))
+    var scaled = Math.round(fit * pct / 100)
+    return Math.max(Math.round(48 * uiScale), Math.min(height, room, scaled))
 }
 
 // The square the cover is drawn at in its pane, or 0 when no pane is showing.
-// The 60% cap leaves the three lists a readable share of the width on a short,
-// wide window; the floor keeps a tiny panel from drawing a postage stamp.
+// The cap is the room the three lists must keep rather than a fixed share of the
+// window, so a full-height cover is reachable on a large display. The floor keeps
+// a tiny panel from drawing a postage stamp.
 function paneCoverSize(options) {
     var o = options || {}
     if (!o.shown) return 0
     if (o.albumView) return o.albumCover
-    return Math.max(Math.round(48 * o.uiScale),
-        Math.min(o.heroCover, Math.round(asNumber(o.windowWidth) * 0.60)))
+    var ui = asNumber(o.uiScale) || 1
+    var reserved = o.minListWidth === undefined
+        ? browserListMinWidth(asNumber(o.windowWidth), ui)
+        : asNumber(o.minListWidth)
+    // The shared right gutter is always in the pane. Padding adds only the inner
+    // margin and its rule; all of it is width the cover itself cannot use.
+    var paneExtras = asNumber(o.edgeGap)
+    if (o.padded)
+        paneExtras += asNumber(o.coverPad) + asNumber(o.rule)
+    var maxCover = asNumber(o.windowWidth) - reserved - paneExtras
+    return Math.max(Math.round(48 * ui),
+        Math.min(asNumber(o.heroCover), maxCover))
 }
 
-// Width of the artwork pane. With a margin the cover is held in from the edges,
-// so the pane spans that margin on each side plus the rule on its inner edge.
-// With no margin the cover runs flush to both edges and rides over the rule, so
-// the pane is sized to the cover alone and no strip is reserved. Album view
-// never reserves the rule: its pane sits beside the centred column instead.
+// Width of the artwork pane: the cover, the shared right gutter, and -- when
+// padding is on -- the inner margin plus the rule. With padding off the cover
+// meets the divider and rides over the rule, so no strip is reserved there.
+// Album view never reserves the rule: its pane sits beside the centred column.
 function coverPaneWidth(options) {
     var o = options || {}
     if (!o.shown) return 0
     var pad = o.padded ? asNumber(o.coverPad) : 0
     var rule = o.padded && !o.albumView ? asNumber(o.rule) : 0
-    return asNumber(o.paneCoverSize) + pad * 2 + rule
+    return asNumber(o.paneCoverSize) + asNumber(o.edgeGap) + pad + rule
 }
 
 // How far the cover is held off the pane edge it is aligned to. Fixed at the
@@ -89,15 +116,18 @@ function floatingCoverSize(hero, windowWidth, paneHeight, gutter, uiScale) {
             asNumber(paneHeight) - gutter * 2))
 }
 
-// Karaoke's cover beside the lyrics: as tall as the reading area, capped at the
-// same 60% the pane uses and by the readable text column that has to remain. The
-// same cover-size setting scales it; 100 is the natural fit and the floor holds.
+// Karaoke's cover beside the lyrics: as tall as the reading area, capped at its
+// own 60% of the window and by the readable text column that has to remain. The
+// same cover-size setting scales it: 100 is the natural fit, lower shares hold
+// the art back, higher shares grow into the room the words can spare. Even at
+// the top rung the text column and the reading height keep their floor.
 function karaokeCoverSize(windowWidth, windowHeight, margin, gap, minTextWidth, uiScale, scalePct) {
-    var fit = Math.min(asNumber(windowHeight) - margin * 2,
-        Math.round(asNumber(windowWidth) * 0.60),
-        asNumber(windowWidth) - margin * 2 - gap - minTextWidth)
+    var heightRoom = asNumber(windowHeight) - margin * 2
+    var textRoom = asNumber(windowWidth) - margin * 2 - gap - minTextWidth
+    var fit = Math.min(heightRoom, Math.round(asNumber(windowWidth) * 0.60), textRoom)
     var pct = scalePct === undefined ? 100 : asNumber(scalePct)
-    return Math.max(Math.round(48 * uiScale), Math.round(fit * pct / 100))
+    var scaled = Math.round(fit * pct / 100)
+    return Math.max(Math.round(48 * uiScale), Math.min(heightRoom, textRoom, scaled))
 }
 
 // Karaoke's background cover: a wash behind the words that fills the reading
@@ -222,12 +252,15 @@ function seekEdgeInset(thickness, uiScale) {
 // so the strip gives that space back instead of holding an empty band. Above a
 // 9px seeker the bar's slot grows, and the strip grows with it so the title keeps
 // the same breathing room instead of being pushed towards the top edge. Seeker
-// as edge adds its inset on top without changing the room left for the row.
-function stripHeight(inline, seekThickness, uiScale, seekEdge) {
+// as edge adds its inset on top without changing the room left for the row. The
+// optional top pad is air above the title: it grows the band and is inset from
+// the content row by the same amount, so the transport does not shift down.
+function stripHeight(inline, seekThickness, uiScale, seekEdge, topPad) {
     var base = inline ? 66 : 84
     var extra = Math.max(0, Math.round(asNumber(seekThickness)) - 9)
     var plain = Math.round((base + extra) * (asNumber(uiScale) || 1))
     return plain + (seekEdge ? seekEdgeInset(seekThickness, uiScale) : 0)
+        + asNumber(topPad)
 }
 
 // The compositor's frame around the panel, in logical pixels. Hyprland reports
@@ -342,6 +375,7 @@ if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         coverScalePct: coverScalePct,
         heroCover: heroCover,
+        browserListMinWidth: browserListMinWidth,
         albumCoverSize: albumCoverSize,
         paneCoverSize: paneCoverSize,
         coverPaneWidth: coverPaneWidth,

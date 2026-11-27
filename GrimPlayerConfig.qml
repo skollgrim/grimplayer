@@ -52,6 +52,11 @@ Item {
         // bar to read as a deliberate band under the now-playing strip.
         property int seekThickness: 9
 
+        // Air above the now-playing title, in logical pixels. The strip grows by
+        // this much and its content row is inset by the same amount, so raising
+        // it adds breathing room without moving the title or the transport.
+        property int stripTopGap: 10
+
         // Year prefix on the albums pane, from the tracks' Date tags.
         property bool albumYears: true
 
@@ -162,12 +167,10 @@ Item {
 
         // What is named above the titles in album view: "off" leaves the surface
         // to the songs, "title" names the record, "artist" names the artist,
-        // "both" names the two, and "full" adds the year and running time. The
-        // look is a separate choice: "quiet" is the small muted caption the view
-        // opened with, "label" is a touch larger and heavier, and "heading" reads
-        // as a small title over the track list.
+        // "both" names the two, and "full" adds the year and running time. How
+        // that line is drawn is no longer a second choice: Info text sets both
+        // its size and, as it grows, its weight from muted label to small heading.
         property string albumInfo: "full"
-        property string albumInfoStyle: "quiet"
 
         // Album view's track list has its own type size and rhythm: the large
         // centred titles are read at a glance while the record plays, so the
@@ -195,9 +198,15 @@ Item {
         // durations, so the titles lead and the numbers read as quiet indexes.
         property bool trackNumberMuted: false
 
-        // Rounded corners on the artwork. Off draws it as a plain square, corner
-        // to corner.
-        property bool coverRounded: true
+        // Corner radius of the artwork, in logical pixels. Zero draws a plain
+        // square, corner to corner; the border ring follows the same radius. Ten
+        // is the radius the rounded look always had.
+        property int coverRoundness: 10
+
+        // Album view and karaoke frame a large cover, so each can choose the
+        // fuller 20px radius instead of the global artwork radius. Both start on.
+        property bool albumCoverRound: true
+        property bool karaokeCoverRound: true
 
         // Which repeat mode the panel is in: 0 off, 1 repeat album, 2 repeat song.
         // Stored here rather than read back from MPD because album repeat is a loop
@@ -226,12 +235,12 @@ Item {
         // visit.
         property int coverScale: 30
 
-        // The cover's size in album view and karaoke, the two surfaces whose art
-        // is sized by the view rather than by the browser's cover pane. A share
-        // of the room the layout can give it: 100 leaves the natural fit alone,
-        // smaller values hold the art back. One setting for both so switching
-        // between them never jumps the picture's size.
-        property int stageCoverScale: 100
+        // The covers album view and karaoke size for themselves, as a share of
+        // the room each layout can give them: 100 leaves the natural fit alone,
+        // smaller values hold the art back. The library/browser cover keeps its
+        // own size under Artwork (coverScale); these two live with their views.
+        property int albumCoverScale: 100
+        property int karaokeCoverScale: 100
 
         // How long a cover takes to fade in when the album changes, in
         // milliseconds. Zero swaps instantly. The previous cover stays on screen
@@ -478,16 +487,18 @@ Item {
     function saveNow() {
         var out = {}
         // Only real properties, not the id or the functions hanging off it.
-        var keys = ["musicDir", "wrapAround", "seekThickness", "albumYears",
+        var keys = ["musicDir", "wrapAround", "seekThickness", "stripTopGap", "albumYears",
                     "playingMarker", "adaptiveColors", "fetchCovers",
                     "keyboardStyle", "rowSpacing", "findPlace",
                     "findScale", "rowSeparators",
                     "focusGlow", "paneHeadings", "paneSeparators", "borderWidth", "stripSeparator",
                     "stripSeekEdge", "progressInline", "quietTime", "coverBorder", "coverPlaceholder",
-                    "coverBorderWidth", "coverRounded", "upNextCover", "upNextCoverSize",
-                    "albumInfo", "albumInfoStyle", "albumFont", "albumTrackSpacing",
+                    "coverBorderWidth", "coverRoundness", "albumCoverRound", "karaokeCoverRound",
+                    "upNextCover", "upNextCoverSize",
+                    "albumInfo", "albumFont", "albumTrackSpacing",
                     "trackAlign", "albumLyrics",
-                    "repeatMode", "shuffleMode", "coverScale", "stageCoverScale",
+                    "repeatMode", "shuffleMode", "coverScale",
+                    "albumCoverScale", "karaokeCoverScale",
                     "trackNumberFormat", "trackNumberMuted",
                     "coverTransition", "coverBandMode", "coverBandAlign", "coverPadding",
                     "coverBandMinPct",
@@ -544,6 +555,11 @@ Item {
         if (obj && typeof obj.coverBand === "boolean" && obj.coverBandMode === undefined) {
             obj.coverBandMode = obj.coverBand ? "on" : "off"
         }
+        // Corner rounding was a toggle; it is a radius now. A file that chose
+        // square keeps square, and one that chose round keeps the old 10px look.
+        // An explicit radius always wins over the old switch.
+        if (obj.coverRoundness === undefined && obj.coverRounded !== undefined)
+            obj.coverRoundness = obj.coverRounded ? 10 : 0
         // The playing row's tint used to be a switch; it is always on now. A
         // file that chose where the accent bar sits keeps that choice.
         if (obj.playingMarker === undefined && obj.playingMarkerSides !== undefined)
@@ -576,6 +592,19 @@ Item {
         // the same surface: on keeps the full caption, off shows none of it.
         if (obj.albumInfo === undefined && obj.albumCaption !== undefined) {
             obj.albumInfo = obj.albumCaption ? "full" : "off"
+        }
+        // Caption style and caption size were two rows over the same line; Info
+        // text is one. Fold the old style's size lift into the stored offset so a
+        // label or heading keeps its emphasis instead of silently going quiet.
+        // An explicit Info text value still wins on its own; both together add
+        // the lift, clamped to the new range.
+        var oldStyleLift = obj.albumInfoStyle === "heading" ? 4
+            : obj.albumInfoStyle === "label" ? 1 : 0
+        if (oldStyleLift !== 0) {
+            var oldInfoOffset = Number(obj.fontCaption)
+            if (!isFinite(oldInfoOffset)) oldInfoOffset = 0
+            obj.fontCaption = Math.max(-4,
+                Math.min(16, oldInfoOffset + oldStyleLift))
         }
         // Karaoke used to share the lyrics view's size. A file written before
         // the split has no karaokeFont, so seed it from the lyrics size: the
@@ -616,12 +645,22 @@ Item {
             if (obj.lyricsInfoAlbum === undefined)
                 obj.lyricsInfoAlbum = false
         }
-        // The background cover used to share the side cover's size. Seed the new
-        // row from that value so an existing wash keeps the size it already had;
-        // a file that has the new key keeps its own answer.
-        if (obj.karaokeBackgroundScale === undefined
-                && obj.stageCoverScale !== undefined) {
-            obj.karaokeBackgroundScale = obj.stageCoverScale
+        // Album view and karaoke's side cover used to share one size. Seed both
+        // view rows from the old key so an existing file keeps the size it had;
+        // an explicit new key always wins. The background wash was seeded from
+        // the same old value when it gained its own row.
+        if (obj.stageCoverScale !== undefined) {
+            // The old row reached 10%; the new one starts at 50, so lift a
+            // smaller saved value into the first rung rather than losing it.
+            var oldStage = Number(obj.stageCoverScale)
+            if (isFinite(oldStage)) {
+                if (obj.albumCoverScale === undefined)
+                    obj.albumCoverScale = Math.max(50, Math.min(150, oldStage))
+                if (obj.karaokeCoverScale === undefined)
+                    obj.karaokeCoverScale = Math.max(50, Math.min(110, oldStage))
+            }
+            if (obj.karaokeBackgroundScale === undefined)
+                obj.karaokeBackgroundScale = obj.stageCoverScale
         }
         for (var k in obj) {
             if (store[k] === undefined) continue
@@ -720,6 +759,7 @@ Item {
     readonly property string musicDir: store.musicDir
     readonly property bool wrapAround: store.wrapAround
     readonly property int seekThickness: store.seekThickness
+    readonly property int stripTopGap: store.stripTopGap
     readonly property bool albumYears: store.albumYears
     readonly property string playingMarker: store.playingMarker
     readonly property string coverDecodeSize: store.coverDecodeSize
@@ -747,14 +787,15 @@ Item {
     readonly property bool upNextCover: store.upNextCover
     readonly property int upNextCoverSize: store.upNextCoverSize
     readonly property string albumInfo: store.albumInfo
-    readonly property string albumInfoStyle: store.albumInfoStyle
     readonly property int albumFont: store.albumFont
     readonly property int albumTrackSpacing: store.albumTrackSpacing
     readonly property string trackAlign: store.trackAlign
     readonly property bool albumLyrics: store.albumLyrics
     readonly property string trackNumberFormat: store.trackNumberFormat
     readonly property bool trackNumberMuted: store.trackNumberMuted
-    readonly property bool coverRounded: store.coverRounded
+    readonly property int coverRoundness: store.coverRoundness
+    readonly property bool albumCoverRound: store.albumCoverRound
+    readonly property bool karaokeCoverRound: store.karaokeCoverRound
     readonly property int repeatMode: store.repeatMode
     readonly property int shuffleMode: store.shuffleMode
 
@@ -771,7 +812,8 @@ Item {
         saveSoon()
     }
     readonly property int coverScale: store.coverScale
-    readonly property int stageCoverScale: store.stageCoverScale
+    readonly property int albumCoverScale: store.albumCoverScale
+    readonly property int karaokeCoverScale: store.karaokeCoverScale
     readonly property int karaokeBackgroundScale: store.karaokeBackgroundScale
     readonly property int coverTransition: store.coverTransition
     readonly property string coverBandMode: store.coverBandMode
@@ -1129,6 +1171,16 @@ Item {
             format: function (v) { return v + " px" }
         },
         {
+            key: "stripTopGap",
+            section: "nowPlaying",
+            label: "Strip top gap",
+            hint: "Air above the now-playing title. The strip grows by the same amount, so the title and transport stay put",
+            // Zero restores the old flush title; 10 is the roomy default. The
+            // wider rungs above it are for a panel read from further away.
+            options: [0, 2, 4, 6, 8, 10, 12, 16, 20, 24],
+            format: function (v) { return v + " px" }
+        },
+        {
             key: "iconSize",
             section: "nowPlaying",
             label: "Icon size",
@@ -1176,11 +1228,12 @@ Item {
             format: function (v) { return v + " px" }
         },
         {
-            key: "coverRounded",
+            key: "coverRoundness",
             section: "artwork",
-            label: "Round corners",
-            hint: "Round the artwork's corners; off draws it as a plain square",
-            options: [true, false],
+            label: "Artwork rounding",
+            hint: "Corner radius of the cover art; zero draws square corners, and the border ring follows the same radius",
+            options: [0, 2, 4, 6, 8, 10, 12, 16, 20, 24],
+            format: function (v) { return v === 0 ? "square" : v + " px" }
         },
         {
             key: "coverTransition",
@@ -1268,14 +1321,6 @@ Item {
             format: function (v) { return v + "%" }
         },
         {
-            key: "stageCoverScale",
-            section: "artwork",
-            label: "Album & side cover size",
-            hint: "Size of the artwork in album view and karaoke's side cover, as a share of the room the layout can give it; 100% is the natural fit",
-            options: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-            format: function (v) { return v + "%" }
-        },
-        {
             key: "coverBandMinPct",
             section: "artwork",
             label: "Pane above",
@@ -1292,15 +1337,15 @@ Item {
 
         // ---- Album view ----
         //
-        // The now-playing surface's own choices: what its caption says and how it
-        // looks, where its titles and the lyrics sharing them sit, whether those
-        // lyrics share it, and the preview of the album that follows. They are not
-        // browser panes or a second lyric view, so they get a tab of their own
-        // rather than sitting among the list and cover settings.
+        // The now-playing surface's own choices: what its details say, how large
+        // that line reads, where its titles and the lyrics sharing them sit,
+        // whether those lyrics share it, and the preview of the album that follows.
+        // They are not browser panes or a second lyric view, so they get a tab of
+        // their own rather than sitting among the list and cover settings.
         {
             key: "albumInfo",
             section: "album",
-            label: "Album info",
+            label: "Album details",
             hint: "Above the titles in album view: nothing, the album, the artist, both, or both with the year and running time",
             options: ["off", "title", "artist", "both", "full"],
             format: function (v) {
@@ -1309,18 +1354,16 @@ Item {
             }
         },
         {
-            key: "albumInfoStyle",
-            section: "album",
-            label: "Caption style",
-            hint: "Quiet is the small muted caption; label is a little larger and heavier; heading reads as a small title",
-            options: ["quiet", "label", "heading"],
-        },
-        {
             key: "fontCaption",
             section: "album",
-            label: "Captions",
-            hint: "Small caption type: the album's name above the titles, the Up next label and the MPD status line, as an offset from the theme",
-            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
+            label: "Info text",
+            hint: "Album details above the titles, the Up next label and the MPD status line, as an offset from the theme. Larger values also make the album details heavier, from muted label to small heading",
+            // One control now owns both the size and the emphasis of the album
+            // line. The positive ramp is deliberately longer than the other font
+            // offsets: this is the line people want to push furthest when the
+            // panel is read from across the room. Five steps up to the old top,
+            // then wider rungs so +16 is reachable without a long walk.
+            options: [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16],
             format: root.deltaText
         },
         {
@@ -1369,6 +1412,21 @@ Item {
             dependsOn: function () { return store.upNextCover },
             after: "upNextCover",
             format: function (v) { return v + "%" }
+        },
+        {
+            key: "albumCoverScale",
+            section: "album",
+            label: "Cover size",
+            hint: "Size of the artwork in album view, as a share of its natural fit; 100% is that fit, 50% the smallest, and larger values grow into the room the titles can spare",
+            options: [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150],
+            format: function (v) { return v + "%" }
+        },
+        {
+            key: "albumCoverRound",
+            section: "album",
+            label: "Rounder cover",
+            hint: "Give album view's cover a fuller 20px corner radius instead of the global Artwork rounding",
+            options: [true, false],
         },
 
         // ---- Lyrics ----
@@ -1562,6 +1620,25 @@ Item {
             format: function (v) {
                 return v === "side" ? "Beside" : v === "background" ? "Background" : "Hidden"
             }
+        },
+        {
+            key: "karaokeCoverScale",
+            section: "karaoke",
+            label: "Cover size",
+            hint: "Size of karaoke's framed cover beside the words, as a share of its natural fit; 100% is that fit, 50% the smallest, and 110% the largest the words can spare",
+            options: [50, 60, 70, 80, 90, 100, 110],
+            dependsOn: function () { return store.karaokeCover === "side" },
+            after: "karaokeCover",
+            format: function (v) { return v + "%" }
+        },
+        {
+            key: "karaokeCoverRound",
+            section: "karaoke",
+            label: "Rounder cover",
+            hint: "Give karaoke's side cover a fuller 20px corner radius instead of the global Artwork rounding; a background cover stays square",
+            options: [true, false],
+            dependsOn: function () { return store.karaokeCover === "side" },
+            after: "karaokeCover"
         },
         {
             key: "karaokeBackgroundScale",

@@ -794,14 +794,13 @@ Item {
     property bool coverBorder: true
     property int coverBorderWidth: 1
 
-    // Whether the artwork carries rounded corners. Off draws it as a plain
-    // square, corner to corner; the ring above follows this, so a square cover
-    // gets a square ring.
-    property bool rounded: true
+    // Corner radius of the artwork in logical pixels. Zero draws it as a plain
+    // square, corner to corner; the ring above follows the same radius, so a
+    // square cover gets a square ring.
+    property int cornerRadiusPx: 10
 
-    // The corner radius the frame and its ring share: the rounded look, or zero
-    // when the artwork is drawn square.
-    readonly property int cornerRadius: root.rounded ? Math.round(10 * root.uiScale) : 0
+    // The corner radius the frame and its ring share, scaled with the interface.
+    readonly property int cornerRadius: Math.round(root.cornerRadiusPx * root.uiScale)
 
     // Whether an album with no artwork anywhere shows the disc. Off leaves the
     // corner empty rather than standing in a graphic for a cover that does not

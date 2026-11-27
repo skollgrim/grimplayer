@@ -43,8 +43,8 @@ Item {
     property bool fetchCovers: true
 
     // Mirrors the panel's artwork rounding, so the preview's corners match how
-    // the cover is drawn in the player.
-    property bool coverRounded: true
+    // the cover is drawn in the player. Zero is a square preview.
+    property int coverRoundness: 10
 
     // The panel's colour tokens, injected. The editor is modal over the panel,
     // so it follows the same palette as everything behind it.
@@ -1938,7 +1938,7 @@ Item {
                             quantize: false
                             transitionDuration: root.coverTransition
                             fetchCovers: root.fetchCovers
-                            rounded: root.coverRounded
+                            cornerRadiusPx: root.coverRoundness
                             visible: root.coverAction !== "remove"
                             overrideSource: root.coverChosen ? Covers.fileUrl(root.coverPath) : ""
                         }

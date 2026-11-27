@@ -37,6 +37,12 @@ check("heroCover: a share of the pane, with a scaled floor", () => {
     assert.equal(Layout.heroCover(0, 100, 1), 48)
 })
 
+check("browserListMinWidth: the old 40% until a readable maximum", () => {
+    assert.equal(Layout.browserListMinWidth(1200, 1), 480)
+    assert.equal(Layout.browserListMinWidth(2384, 1), 680)
+    assert.equal(Layout.browserListMinWidth(3000, 1.5), 1020)
+})
+
 // ---- album view's square ----
 
 check("albumCoverSize: half the window width binds on a normal panel", () => {
@@ -60,6 +66,13 @@ check("albumCoverSize: a cramped window still gets the floor", () => {
     assert.equal(Layout.albumCoverSize(300, 700, 240, 20, 1.5), 72)
 })
 
+check("albumCoverSize: the shared right gutter is reserved once", () => {
+    // Room is width - list - gutter - padding; the old formula took padding twice.
+    assert.equal(Layout.albumCoverSize(1000, 900, 700, 0, 1, 100, 40), 260)
+    assert.equal(Layout.albumCoverSize(1000, 900, 700, 0, 1, 100, 0), 300)
+    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 100, 40), 600)
+})
+
 check("albumCoverSize: the scale holds the art back from the natural fit", () => {
     // natural fit 600: 50% is 300, 25% is 150; an omitted scale still means 100%
     assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1), 600)
@@ -70,6 +83,13 @@ check("albumCoverSize: the scale holds the art back from the natural fit", () =>
 check("albumCoverSize: scaling never drops below the readability floor", () => {
     // fit 600, 5% is 30, floored at 48
     assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 5), 48)
+})
+
+check("albumCoverSize: above 100 grows into spare room but keeps the list", () => {
+    // fit 600, 150% is 900, held to the 700px pane height.
+    assert.equal(Layout.albumCoverSize(1200, 700, 240, 14, 1, 150), 700)
+    // On a tall panel there is room: fit 592, 150% is 888, under the 904 room.
+    assert.equal(Layout.albumCoverSize(1184, 1492, 240, 0, 1, 150, 40), 888)
 })
 
 // ---- the pane's square ----
@@ -83,9 +103,37 @@ check("paneCoverSize: hidden is zero", () => {
     assert.equal(Layout.paneCoverSize(pane({ shown: false })), 0)
 })
 
-check("paneCoverSize: the browser uses its hero, capped at 60% of the width", () => {
+check("paneCoverSize: the browser uses its hero while the lists keep their room", () => {
     assert.equal(Layout.paneCoverSize(pane({})), 700)
     assert.equal(Layout.paneCoverSize(pane({ windowWidth: 800 })), 480)
+})
+
+check("paneCoverSize: a tall large window fills the pane instead of stopping at 60%", () => {
+    // 60% of 2384 is only 1430; the lists need 680 and the gutter 40, so all
+    // 1492px still fit.
+    assert.equal(Layout.paneCoverSize(pane({
+        windowWidth: 2384, heroCover: 1492, edgeGap: 40
+    })), 1492)
+    // Padding, its rule and the gutter come out of the list room, not the cover.
+    assert.equal(Layout.paneCoverSize(pane({
+        windowWidth: 2384, heroCover: 1492, padded: true,
+        coverPad: 14, rule: 1, edgeGap: 40
+    })), 1492)
+})
+
+check("paneCoverSize: the shared right gutter holds the cover off the edge", () => {
+    // The lists keep 480, the gutter keeps 40, so a 700px hero settles at 680.
+    assert.equal(Layout.paneCoverSize(pane({
+        windowWidth: 1200, heroCover: 700, edgeGap: 40
+    })), 680)
+})
+
+check("paneCoverSize: a very large window stops at the readable list maximum", () => {
+    // 40% would be 1200, but the lists hold at 680 and the gutter at 40,
+    // leaving 2280 for the art.
+    assert.equal(Layout.paneCoverSize(pane({
+        windowWidth: 3000, heroCover: 2600, edgeGap: 40
+    })), 2280)
 })
 
 check("paneCoverSize: album view uses its own square", () => {
@@ -95,7 +143,7 @@ check("paneCoverSize: album view uses its own square", () => {
 })
 
 check("paneCoverSize: a tiny window falls back to the floor", () => {
-    // min(700, round(70 * 0.6) = 42) -> 42, floored to 48
+    // The lists keep 40% of 70 = 28, leaving 42; 42 is floored to 48.
     assert.equal(Layout.paneCoverSize(pane({ windowWidth: 70 })), 48)
     assert.equal(Layout.paneCoverSize(pane({ windowWidth: 70, uiScale: 2 })), 96)
 })
@@ -107,17 +155,23 @@ const width = (over) => Object.assign({
     coverPad: 14, padded: true, rule: 1
 }, over)
 
-check("coverPaneWidth: padding on reserves both margins and the rule", () => {
-    assert.equal(Layout.coverPaneWidth(width({})), 600 + 28 + 1)
+check("coverPaneWidth: padding adds the inner margin and the rule", () => {
+    assert.equal(Layout.coverPaneWidth(width({})), 600 + 14 + 1)
 })
 
-check("coverPaneWidth: padding off leaves the cover flush, no rule strip", () => {
+check("coverPaneWidth: padding off leaves the cover on the divider, no rule strip", () => {
     assert.equal(Layout.coverPaneWidth(width({ padded: false })), 600)
     assert.equal(Layout.coverPaneWidth(width({ padded: false, rule: 3 })), 600)
 })
 
 check("coverPaneWidth: album view never reserves the rule", () => {
-    assert.equal(Layout.coverPaneWidth(width({ albumView: true })), 600 + 28)
+    assert.equal(Layout.coverPaneWidth(width({ albumView: true })), 600 + 14)
+})
+
+check("coverPaneWidth: the shared right gutter widens the pane, not the cover", () => {
+    assert.equal(Layout.coverPaneWidth(width({ edgeGap: 40 })), 600 + 40 + 14 + 1)
+    assert.equal(Layout.coverPaneWidth(width({ padded: false, edgeGap: 40 })), 600 + 40)
+    assert.equal(Layout.coverPaneWidth(width({ albumView: true, edgeGap: 40 })), 600 + 40 + 14)
 })
 
 check("coverPaneWidth: hidden is zero", () => {
@@ -174,6 +228,13 @@ check("karaokeCoverSize: the scale holds the art back from the natural fit", () 
     // natural fit 454: 50% is 227; an omitted scale still means 100%
     assert.equal(Layout.karaokeCoverSize(756, 826, 40, 10, 200, 1), 454)
     assert.equal(Layout.karaokeCoverSize(756, 826, 40, 10, 200, 1, 50), 227)
+})
+
+check("karaokeCoverSize: above 100 grows but keeps the words' column", () => {
+    // 110% of 454 is 499, held to the 466px the text can spare.
+    assert.equal(Layout.karaokeCoverSize(756, 826, 40, 10, 200, 1, 110), 466)
+    // With more room the full rung applies: 110% of 710 is 781, under the 894 room.
+    assert.equal(Layout.karaokeCoverSize(1184, 1558, 40, 10, 200, 1, 110), 781)
 })
 
 check("karaokeBackgroundCover: 100% fills the parent", () => {
@@ -377,6 +438,14 @@ check("stripHeight: inline progress drops the clock's empty row", () => {
 check("stripHeight: the scale rounds once at the end", () => {
     assert.equal(Layout.stripHeight(true, 9, 1.25), 83)
     assert.equal(Layout.stripHeight(false, 15, 1.25), 113)
+})
+
+check("stripHeight: top pad grows the band without moving the row", () => {
+    // The row is inset by the same pad, so its height -- and the transport's
+    // centre line -- is unchanged; only air above the title is added.
+    assert.equal(Layout.stripHeight(true, 9, 1, false, 10) - Layout.stripHeight(true, 9, 1), 10)
+    assert.equal(Layout.stripHeight(false, 15, 1.25, true, 13)
+        - Layout.stripHeight(false, 15, 1.25, true), 13)
 })
 
 check("stripHeight: the seeker edge keeps the row's height", () => {

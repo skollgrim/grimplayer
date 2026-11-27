@@ -110,7 +110,7 @@ TestCase {
 
     // The tabs promise a home for every setting. Pin both the order and the
     // rows whose place is easiest to drift: the folder and keys in General, the
-    // strip in Now playing, the browser in Library view, the shared captions in
+    // strip in Now playing, the browser in Library view, the info text in
     // Album view.
     function test_tabs_group_settings_by_subject() {
         var order = ["general", "nowPlaying", "artwork", "lyrics",
@@ -129,9 +129,13 @@ TestCase {
             adaptiveColors: "general", fetchCovers: "general", lyricsDownloads: "general",
             wrapAround: "library", playingMarker: "library",
             fontSubtitle: "library", albumYears: "library",
-            seekThickness: "nowPlaying", iconSize: "nowPlaying", fontTitle: "nowPlaying",
+            seekThickness: "nowPlaying", stripTopGap: "nowPlaying",
+            iconSize: "nowPlaying", fontTitle: "nowPlaying",
             fontBody: "nowPlaying", stripSeparator: "nowPlaying", stripSeekEdge: "nowPlaying",
             progressInline: "nowPlaying", quietTime: "nowPlaying",
+            coverRoundness: "artwork",
+            albumCoverRound: "album", karaokeCoverRound: "karaoke",
+            albumCoverScale: "album", karaokeCoverScale: "karaoke",
             fontCaption: "album",
             albumFont: "album", albumTrackSpacing: "album",
             lyricsFollow: "lyricsView", lyricsAlign: "lyricsView",
@@ -267,6 +271,20 @@ TestCase {
         compare(config.seekThickness, 15)
     }
 
+    function test_strip_top_gap_starts_roomy_and_survives_a_save() {
+        var e = entryFor("stripTopGap")
+        verify(e !== null, "the strip top gap row should exist")
+        compare(config.stripTopGap, 10)
+        compare(config.codeDefaults.stripTopGap, 10)
+        compare(e.options[0], 0)
+        compare(e.options[e.options.length - 1], 24)
+        config.assign(e, 20)
+        compare(config.stripTopGap, 20)
+        config.reset()
+        config.applyStored({ stripTopGap: 20 })
+        compare(config.stripTopGap, 20)
+    }
+
     // A hand-edited or older file can hold a value the row does not offer. The
     // first step must land on a real option, whichever way it went: the bare
     // arithmetic wraps -1 past the end and would land second-to-last.
@@ -379,6 +397,95 @@ TestCase {
         config.reset()
         config.applyStored({ albumCaption: false, albumInfo: "artist" })
         compare(config.albumInfo, "artist")
+    }
+
+    // Style and size were two rows over the album line; Info text is the only
+    // control now, and its positive ramp reaches far enough for a distant seat.
+    function test_album_details_have_one_info_text_control() {
+        var details = entryFor("albumInfo")
+        verify(details !== null, "the album details row should exist")
+        compare(details.label, "Album details")
+        verify(entryFor("albumInfoStyle") === null,
+            "the separate caption style row should be gone")
+        var info = entryFor("fontCaption")
+        verify(info !== null, "the info text row should exist")
+        compare(info.label, "Info text")
+        verify(info.options[info.options.length - 1] >= 16,
+            "Info text should reach +16")
+    }
+
+    // The retired style row folded into Info text, so a label or heading keeps
+    // its emphasis instead of silently dropping back to the muted default.
+    function test_the_old_caption_style_migrates_into_info_text() {
+        config.reset()
+        compare(config.fontCaption, config.codeDefaults.fontCaption)
+        config.applyStored({ albumInfoStyle: "quiet" })
+        compare(config.fontCaption, 0)
+        config.reset()
+        config.applyStored({ albumInfoStyle: "label" })
+        compare(config.fontCaption, 1)
+        config.reset()
+        config.applyStored({ albumInfoStyle: "heading" })
+        compare(config.fontCaption, 4)
+        config.reset()
+        config.applyStored({ albumInfoStyle: "heading", fontCaption: 6 })
+        compare(config.fontCaption, 10)
+        config.reset()
+        config.applyStored({ albumInfoStyle: "heading", fontCaption: 16 })
+        compare(config.fontCaption, 16)
+    }
+
+    // The two large framed covers start at the fuller radius and can fall back
+    // to the global artwork radius with their own switches.
+    function test_large_covers_start_at_the_fuller_radius() {
+        verify(entryFor("albumCoverRound") !== null,
+            "album view should have its own rounding switch")
+        verify(entryFor("karaokeCoverRound") !== null,
+            "karaoke should have its own rounding switch")
+        compare(config.albumCoverRound, true)
+        compare(config.karaokeCoverRound, true)
+        compare(config.codeDefaults.albumCoverRound, true)
+        compare(config.codeDefaults.karaokeCoverRound, true)
+    }
+
+    // The library keeps its cover size under Artwork; the two larger framed
+    // covers now carry their own size rows in their own tabs.
+    function test_large_covers_have_their_own_size_rows() {
+        verify(entryFor("albumCoverScale") !== null,
+            "album view should size its own cover")
+        verify(entryFor("karaokeCoverScale") !== null,
+            "karaoke should size its own side cover")
+        compare(config.albumCoverScale, 100)
+        compare(config.karaokeCoverScale, 100)
+        var album = entryFor("albumCoverScale")
+        var karaoke = entryFor("karaokeCoverScale")
+        compare(album.label, "Cover size")
+        compare(karaoke.label, "Cover size")
+        compare(album.options[0], 50)
+        compare(karaoke.options[0], 50)
+        compare(album.options[album.options.length - 1], 150)
+        compare(karaoke.options[karaoke.options.length - 1], 110)
+        compare(entryFor("coverScale").section, "artwork",
+            "the library cover size stays under Artwork")
+    }
+
+    // Corner rounding was a switch; it is a radius now. Square stays square,
+    // round keeps the old 10px look, and an explicit radius still wins.
+    function test_the_old_round_corners_switch_migrates_to_a_radius() {
+        var e = entryFor("coverRoundness")
+        verify(e !== null, "the artwork rounding row should exist")
+        compare(e.options[0], 0)
+        compare(e.options[e.options.length - 1], 24)
+        config.reset()
+        compare(config.coverRoundness, config.codeDefaults.coverRoundness)
+        config.applyStored({ coverRounded: false })
+        compare(config.coverRoundness, 0)
+        config.reset()
+        config.applyStored({ coverRounded: true })
+        compare(config.coverRoundness, 10)
+        config.reset()
+        config.applyStored({ coverRounded: false, coverRoundness: 16 })
+        compare(config.coverRoundness, 16)
     }
 
     // The playing tint lost its switch; the row that remains only picks the
@@ -582,6 +689,12 @@ TestCase {
         config.reset()
         config.applyStored({ stageCoverScale: 40 })
         compare(config.karaokeBackgroundScale, 40, "an old file keeps its wash size")
+        compare(config.albumCoverScale, 50, "a smaller old size lifts to the new floor")
+        compare(config.karaokeCoverScale, 50, "karaoke lifts with it")
+        config.reset()
+        config.applyStored({ stageCoverScale: 40, albumCoverScale: 70 })
+        compare(config.albumCoverScale, 70, "an explicit album size wins")
+        compare(config.karaokeCoverScale, 50, "karaoke still takes the old size")
     }
 
     // Karaoke lines the words up on its own setting, so the reading view's choice

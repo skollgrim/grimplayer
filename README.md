@@ -15,10 +15,10 @@ With **Adaptive colours** on, the panel follows the playing album's sleeve:
 
 - **Simple, minimal, three-pane layout** for browsing artists, albums and tracks.
 - **Album-focused** — plays albums locally and offline with no queue management or saved playlists.
-- **Cover art** — finds covers in the album folder, falls back to embedded art (extracted with `ffmpeg` and cached), and can optionally fetch missing covers online.
+- **Cover art** — finds covers in the album folder, falls back to embedded art (extracted with `ffmpeg` and cached), and can optionally fetch missing covers online. **Artwork rounding** under Artwork sets the cover's corner radius from 0 (square) to 24px; the border ring follows it. Album view and karaoke each have a **Rounder cover** switch, on by default, that gives their large framed cover a 20px radius instead; turning it off follows the global radius. Karaoke's background wash stays square.
 - **Responsive artwork** — the cover gets its own pane on a window with room for it, and folds back to a small floating corner cover when the window is small. `Cover pane` pins that on or off, or leaves it to `auto`, which measures the window against the monitor it is on; `Pane above` tunes the window size floor the pane is kept to.
 - **Adaptive colours** — optionally matches the panel's colors to the playing album.
-- **A strip that gives way** — on a narrow window the now-playing strip tightens its margins and shortens the volume track, then drops the track and keeps the speaker, so the title and the transport never squeeze each other. Optional refinements draw a quiet **Strip separator** along its top edge in the pane rule colour and width, or turn the seeker itself into that boundary with **Seeker as edge**, which holds **Inline progress** on while it is active. Inline progress puts `elapsed | seek | total` on one row so the strip gives back the clock's empty space, and a taller seeker gets a taller strip so the title keeps its room. **Time size** simply picks Small or Regular. All are in Now playing.
+- **A strip that gives way** — on a narrow window the now-playing strip tightens its margins and shortens the volume track, then drops the track and keeps the speaker, so the title and the transport never squeeze each other. Optional refinements draw a quiet **Strip separator** along its top edge in the pane rule colour and width, or turn the seeker itself into that boundary with **Seeker as edge**, which holds **Inline progress** on while it is active. Inline progress puts `elapsed | seek | total` on one row so the strip gives back the clock's empty space, and a taller seeker gets a taller strip so the title keeps its room. **Strip top gap** sets the air above the title from 0 to 24px; the strip grows with it while the title and transport stay put. **Time size** simply picks Small or Regular. All are in Now playing.
 - **Keyboard style** — choose what letter keys do: `Find` jumps to a matching row as you type (the default), `Vim` uses `j/k/h/l/g/G` to navigate, and `Off` leaves letters inert while arrows still work. During a find, `Space` adds a word to the search instead of toggling playback. Typed letters, transport replies and MPD errors all share one position and size — **Notice position** under General puts them above the now-playing strip or in the middle of the tracks pane, and **Notice size** sets their text size together. In the tracks pane a number jumps to that track.
 - **Quiet track numbers** — the tracks pane writes `01.` or `01 -` before each title, and can hold the number back in the same muted ink as the durations.
 - **Lyrics** (`Alt` + `L`) — embedded lyrics, a `.lrc`/`.txt` beside the track, or the shared `~/.lyrics` cache, read before anything is fetched; synced lyrics highlight the playing line, and can follow it with the view. The playing album's titles can sit beside the words.
@@ -406,16 +406,18 @@ selection to the playing album, and a track change moves it along, so the same
 keys work there — `↑`/`↓` or `j`/`k` to move, typing to jump, `Enter` to play the
 row under the caret. The cover is a square capped at half the window width and
 held back on a narrow window so the titles keep a readable measure; the
-cover-pane margin, position and border settings apply as they do in the browser.
+cover-pane margin, position and border settings apply as they do in the browser,
+and every pane view keeps the same shared right gutter as karaoke.
 `Alt` + `A` again, or `Esc`, returns to the browser, and `Alt` + `L` or
 `Alt` + `K` switches straight to the lyrics or karaoke view. Clicking a title
 plays it at once, rather than selecting it and waiting for `Enter`. Nothing
 playing leaves the current selection in place, so the view still has an album to
-show. The record can be named above the titles: `Album info` under **Album view**
+show. The record can be named above the titles: `Album details` under **Album view**
 cycles through nothing, the album, the artist, both, or both with the year and
-running time read from the album's tags. `Caption style` changes how that line is
-drawn — the quiet dotted sleeve label it opens with, a slightly larger label, or
-a small heavy heading — without changing what it says. The same tab's
+running time read from the album's tags. `Info text` sets the size of that line,
+the *Up next* label and the MPD status line; above the theme size it also turns
+the album line from a muted sleeve label into a label and then a small heading,
+all with one control and rungs up to +16. The same tab's
 `Track title size` and `Track spacing` set the type size and the gap between
 titles for album view alone, so the browser's `Rows` no longer changes them;
 `Alt` + `=` / `-` nudges the title size while this view is showing.
@@ -425,9 +427,12 @@ spacing, follow the tab's `Track alignment`, and the shared words follow the
 one `Alignment` setting under Lyrics, so the two columns can be lined up
 independently. On a window too narrow for both, the titles keep the surface.
 `Alt` + `Shift` + `=` / `-` resizes the cover in whichever view is showing: the
-browser and reading view use the artwork-pane **Cover size**, album view and
-karaoke's side cover share **Album & side cover size**, and karaoke's background
-wash uses its own **Background cover size** while it is showing. Hovering a
+browser and library view use the artwork-pane **Cover size** under Artwork,
+album view uses **Cover size** under Album view, karaoke's framed cover uses
+**Cover size** under Karaoke view, and its background wash uses **Background
+cover size** while it is showing. Album view runs from 50% to 150% of the natural
+fit, karaoke from 50% to 110%, each stopping short of the room the titles or
+words need. Hovering a
 title lights it exactly as the caret does, but the highlight follows a live pointer: a key press
 hides the cursor and takes the highlight with it, and moving the pointer again
 brings both back.

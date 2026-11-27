@@ -61,13 +61,13 @@ Item {
     // Whether that caption is drawn. Album view can be left to the songs alone,
     // so this is a stored preference rather than a fixed part of the surface.
     property bool showCaption: true
-    // How the caption is drawn, separately from what it says. "quiet" is the
-    // small muted sleeve label the view opened with; "label" lifts the type a
-    // step, and "heading" gives it a heavier, small-title treatment.
-    property string captionStyle: "quiet"
-    readonly property bool captionLabel: root.captionStyle !== "quiet"
-    readonly property bool captionHeading: root.captionStyle === "heading"
+    // Info text owns both the size and the emphasis of the album line. At the
+    // theme size it is the small muted sleeve label the view opened with; past
+    // +1 it gains weight, and at +4 it reads as a small heading. There is no
+    // second style row to disagree with the size the user chose.
     readonly property int captionFontOffset: root.prefs ? root.prefs.fontCaption : 0
+    readonly property bool captionLabel: root.captionFontOffset >= 1
+    readonly property bool captionHeading: root.captionFontOffset >= 4
 
     // Shown when the column has no rows. The panel supplies the reason -- still
     // connecting, loading, or an album with no tracks -- so the empty surface
@@ -175,8 +175,8 @@ Item {
     // The record's identity above the titles. The panel supplies the words; this
     // file only draws them, elided rather than wrapped when the column is narrow.
     // By default it is a sleeve label -- small, muted and tracked like the panel's
-    // other captions -- but the look is a stored choice, so "heading" can read as
-    // a small title without changing what it says.
+    // other small text -- and Info text's offset lifts both its size and weight,
+    // so a larger value reads as a small title without changing what it says.
     Column {
         id: caption
         anchors.top: parent.top
@@ -194,7 +194,6 @@ Item {
             color: root.colMuted
             font.family: root.themeFont.family
             font.pixelSize: Math.round((root.themeFont.bodySmall
-                + (root.captionHeading ? 4 : root.captionLabel ? 2 : 0)
                 + root.captionFontOffset) * root.uiScale)
             font.weight: root.captionHeading ? Font.DemiBold
                 : root.captionLabel ? Font.Medium : Font.Normal
@@ -211,7 +210,6 @@ Item {
             opacity: root.captionHeading ? 0.9 : root.captionLabel ? 0.85 : 0.75
             font.family: root.themeFont.family
             font.pixelSize: Math.round((root.themeFont.caption
-                + (root.captionHeading ? 3 : root.captionLabel ? 1 : 0)
                 + root.captionFontOffset) * root.uiScale)
             font.weight: root.captionHeading ? Font.Medium : Font.Normal
             font.letterSpacing: root.captionHeading ? 0.2 : root.captionLabel ? 0.4 : 0.6
