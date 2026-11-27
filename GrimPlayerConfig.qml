@@ -729,8 +729,11 @@ Item {
     Component.onCompleted: {
         // Capture the defaults while the store still holds them: this runs before
         // applyStored() touches a single one, and never again.
-        for (var d = 0; d < entries.length; d++)
+        for (var d = 0; d < entries.length; d++) {
+            // An action row holds no value, so it has no default to capture.
+            if (root.isAction(entries[d])) continue
             codeDefaults[entries[d].key] = store[entries[d].key]
+        }
         // Read synchronously: the panel mounts at shell startup and the panes
         // bind to these values on their first evaluation, so an async load would
         // show one frame at the defaults and then jump.
@@ -1686,6 +1689,8 @@ Item {
     }
 
     function assign(entry, value) {
+        // An action is fired, not stored: it has no property behind the row.
+        if (isAction(entry)) return
         if (entry.set) entry.set(value)
         else store[entry.key] = value
         // Any value the settings machinery writes is a choice, so the music

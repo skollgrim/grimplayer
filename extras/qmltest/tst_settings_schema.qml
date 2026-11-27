@@ -33,17 +33,45 @@ TestCase {
     }
 
     function test_every_row_names_a_store_property() {
+        var valued = 0
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
+            // An action row is fired rather than stored, so it has neither.
+            if (config.isAction(e)) continue
+            valued++
             verify(config.valueFor(e) !== undefined,
                 "no stored value behind the row " + e.key)
             verify(config.codeDefaults[e.key] !== undefined,
                 "no captured default for the row " + e.key)
         }
         // The store may hold values with no row (the repeat and shuffle modes),
-        // but never the other way round: a resolved default per row, and no
-        // entry left without one.
-        compare(Object.keys(config.codeDefaults).length, config.entries.length)
+        // but never the other way round: a resolved default per value row, and
+        // no entry left without one.
+        compare(Object.keys(config.codeDefaults).length, valued)
+    }
+
+    function test_action_rows_fire_without_holding_a_value() {
+        var e = entryFor("rescanLibrary")
+        verify(e !== null, "the rescan action should exist")
+        verify(config.isAction(e), "rescan should be an action row")
+        verify(config.valueFor(e) === undefined, "an action holds no stored value")
+        verify(config.codeDefaults.rescanLibrary === undefined,
+            "an action has no captured default")
+
+        var fired = ""
+        var firedKey = ""
+        config.actionTriggered.connect(function (action, entry) {
+            fired = action
+            firedKey = entry.key
+        })
+        config.assign(e, "anything")
+        config.triggerAction(e)
+        compare(fired, "rescanLibrary")
+        compare(firedKey, "rescanLibrary")
+        // A value row must stay a value row: it does not fire the action signal.
+        fired = ""
+        config.triggerAction(entryFor("musicDir"))
+        compare(fired, "")
     }
 
     function test_keys_are_unique() {
@@ -58,8 +86,9 @@ TestCase {
     function test_every_row_offers_options_or_is_free_text() {
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
-            verify((e.options && e.options.length > 0) || config.isText(e),
-                e.key + " has no options and is not a text row")
+            verify((e.options && e.options.length > 0)
+                    || config.isText(e) || config.isAction(e),
+                e.key + " has no options and is not a text or action row")
             verify(e.label && e.label.length > 0, e.key + " has no label")
             verify(e.hint && e.hint.length > 0, e.key + " has no hint")
         }
@@ -71,7 +100,7 @@ TestCase {
     function test_option_types_match_their_property() {
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
-            if (config.isText(e)) continue
+            if (config.isText(e) || config.isAction(e)) continue
             var current = config.valueFor(e)
             for (var o = 0; o < e.options.length; o++) {
                 compare(typeof e.options[o], typeof current,
@@ -86,6 +115,7 @@ TestCase {
     function test_every_default_is_an_offered_option() {
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
+            if (config.isAction(e)) continue
             var value = config.codeDefaults[e.key]
             if (config.isText(e)) {
                 compare(typeof value, "string", e.key + " does not rest at a string")
@@ -243,6 +273,7 @@ TestCase {
     function test_reset_restores_the_captured_defaults() {
         for (var i = 0; i < config.entries.length; i++) {
             var e = config.entries[i]
+            if (config.isAction(e)) continue
             if (config.isText(e)) {
                 config.assign(e, "/tmp/somewhere-else")
                 continue
@@ -253,6 +284,7 @@ TestCase {
         config.reset()
         for (var j = 0; j < config.entries.length; j++) {
             var row = config.entries[j]
+            if (config.isAction(row)) continue
             compare(config.valueFor(row), config.codeDefaults[row.key],
                 row.key + " did not come back to its default")
         }
